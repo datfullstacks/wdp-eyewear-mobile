@@ -49,6 +49,7 @@ export default function RegisterScreen({ navigation }) {
       });
     } catch (e) {
       setApiError(e?.response?.data?.message || "Đăng ký thất bại");
+      console.log("Register error:", e);
     }
   };
 

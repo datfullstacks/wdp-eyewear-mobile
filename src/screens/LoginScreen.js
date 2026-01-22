@@ -12,6 +12,7 @@ import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuthStore } from "../store/authStore";
+import Toast from "react-native-toast-message";
 
 const loginSchema = z.object({
   email: z.string().email("Email không hợp lệ"),
@@ -36,8 +37,14 @@ export default function LoginScreen({ navigation }) {
       setApiError("");
       await login(values);
       // AppNavigation sẽ tự chuyển stack khi token có
+      Toast.show({
+        type: "success",
+        text1: "Đăng nhập thành công",
+        text2: "Đã lưu dữ liệu",
+      });
     } catch (e) {
       setApiError(e?.response?.data?.message || "Đăng nhập thất bại");
+      console.log("Login error", e);
     }
   };
 
