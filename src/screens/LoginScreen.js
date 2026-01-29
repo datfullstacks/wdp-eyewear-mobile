@@ -36,12 +36,16 @@ export default function LoginScreen({ navigation }) {
     try {
       setApiError("");
       await login(values);
-      // AppNavigation sẽ tự chuyển stack khi token có
+
       Toast.show({
         type: "success",
         text1: "Đăng nhập thành công",
         text2: "Đã lưu dữ liệu",
       });
+
+      // ✅ LOGIN XONG -> VỀ HOME
+      // replace để tránh back quay lại Login
+      navigation.replace("Tabs");
     } catch (e) {
       setApiError(e?.response?.data?.message || "Đăng nhập thất bại");
       console.log("Login error", e);
@@ -56,7 +60,7 @@ export default function LoginScreen({ navigation }) {
     autoCapitalize,
     name,
   }) => (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 8 }}>
       <Text style={styles.label}>{label}</Text>
       <Controller
         control={control}
@@ -64,17 +68,14 @@ export default function LoginScreen({ navigation }) {
         render={({ field: { value, onChange, onBlur } }) => (
           <TextInput
             placeholder={placeholder}
-            placeholderTextColor="rgba(255,255,255,0.55)"
+            placeholderTextColor="rgba(15, 23, 42, 0.45)"
             value={value}
             onChangeText={onChange}
             onBlur={onBlur}
             secureTextEntry={secureTextEntry}
             keyboardType={keyboardType}
             autoCapitalize={autoCapitalize}
-            style={[
-              styles.input,
-              errors[name] ? styles.inputErrorBorder : null,
-            ]}
+            style={[styles.input, errors[name] ? styles.inputErrorBorder : null]}
           />
         )}
       />
@@ -86,7 +87,7 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.root}>
-      {/* Dreamy background blobs */}
+      {/* Soft pastel blobs */}
       <View style={[styles.blob, styles.blob1]} />
       <View style={[styles.blob, styles.blob2]} />
       <View style={[styles.blob, styles.blob3]} />
@@ -100,10 +101,12 @@ export default function LoginScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.card}>
-            <Text style={styles.title}>Welcome back</Text>
-            <Text style={styles.subtitle}>Let’s continue your dreamy shopping ✨</Text>
+            <Text style={styles.title}>Đăng Nhập</Text>
+            <Text style={styles.subtitle}>
+              Hãy tiếp tục chuyến mua sắm trong mơ của bạn!✨
+            </Text>
 
-            <View style={{ gap: 14, marginTop: 14 }}>
+            <View style={{ gap: 14, marginTop: 18 }}>
               {renderInput({
                 label: "Email",
                 placeholder: "john@example.com",
@@ -113,7 +116,7 @@ export default function LoginScreen({ navigation }) {
               })}
 
               {renderInput({
-                label: "Password",
+                label: "Mật khẩu",
                 placeholder: "••••••••",
                 name: "password",
                 secureTextEntry: true,
@@ -132,19 +135,27 @@ export default function LoginScreen({ navigation }) {
               disabled={isSubmitting}
               style={({ pressed }) => [
                 styles.button,
-                isSubmitting ? { opacity: 0.65 } : null,
+                isSubmitting ? { opacity: 0.7 } : null,
                 pressed ? { transform: [{ scale: 0.99 }] } : null,
               ]}
             >
               <Text style={styles.buttonText}>
-                {isSubmitting ? "Signing in..." : "Login"}
+                {isSubmitting ? "Đang đăng nhập..." : "Đăng Nhập"}
               </Text>
             </Pressable>
 
             <Pressable onPress={() => navigation.navigate("Register")}>
               <Text style={styles.footerText}>
                 Chưa có tài khoản?{" "}
-                <Text style={styles.footerLink}>Register</Text>
+                <Text style={styles.footerLink}>Đăng ký</Text>
+              </Text>
+            </Pressable>
+
+            {/* Optional: nút quay về Home nếu user không muốn login */}
+            <Pressable onPress={() => navigation.replace("Tabs")}>
+              <Text style={[styles.footerText, { marginTop: 10 }]}>
+                Hoặc{" "}
+                <Text style={styles.footerLink}>Tiếp tục xem Trang chủ</Text>
               </Text>
             </Pressable>
           </View>
@@ -157,7 +168,7 @@ export default function LoginScreen({ navigation }) {
 const styles = {
   root: {
     flex: 1,
-    backgroundColor: "#0B1020",
+    backgroundColor: "#F6F7FB",
   },
   centerWrap: {
     flexGrow: 1,
@@ -169,123 +180,122 @@ const styles = {
   card: {
     borderRadius: 24,
     padding: 18,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(15, 23, 42, 0.06)",
     shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
-    overflow: "hidden",
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
 
   title: {
     fontSize: 24,
-    fontWeight: "800",
-    color: "rgba(255,255,255,0.95)",
+    fontWeight: "900",
+    color: "#0F172A",
     letterSpacing: 0.2,
   },
   subtitle: {
     marginTop: 6,
     fontSize: 13,
-    color: "rgba(255,255,255,0.70)",
+    color: "rgba(15, 23, 42, 0.65)",
   },
 
   label: {
     fontSize: 12,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.78)",
+    fontWeight: "800",
+    color: "rgba(15, 23, 42, 0.7)",
     letterSpacing: 0.2,
   },
 
   input: {
-    height: 46,
+    height: 48,
     borderRadius: 14,
     paddingHorizontal: 14,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(15, 23, 42, 0.03)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    color: "rgba(255,255,255,0.92)",
+    borderColor: "rgba(15, 23, 42, 0.10)",
+    color: "#0F172A",
   },
   inputErrorBorder: {
-    borderColor: "rgba(255,120,180,0.85)",
+    borderColor: "rgba(239, 68, 68, 0.65)",
+    backgroundColor: "rgba(239, 68, 68, 0.04)",
   },
 
   errorText: {
     marginTop: 2,
     fontSize: 12,
-    color: "rgba(255,160,200,0.95)",
+    color: "rgba(239, 68, 68, 0.9)",
+    fontWeight: "600",
   },
 
   apiErrorBox: {
     marginTop: 14,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "rgba(255, 80, 140, 0.12)",
+    backgroundColor: "rgba(239, 68, 68, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255, 120, 180, 0.28)",
+    borderColor: "rgba(239, 68, 68, 0.18)",
   },
   apiErrorText: {
-    color: "rgba(255,200,220,0.95)",
+    color: "rgba(185, 28, 28, 0.95)",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 
   button: {
     marginTop: 14,
-    height: 48,
+    height: 50,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.24)",
-    shadowColor: "#000",
+    backgroundColor: "#4F46E5",
+    shadowColor: "#4F46E5",
     shadowOpacity: 0.25,
-    shadowRadius: 12,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   },
   buttonText: {
-    color: "rgba(255,255,255,0.95)",
+    color: "rgba(255,255,255,0.98)",
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "900",
     letterSpacing: 0.3,
   },
 
   footerText: {
     marginTop: 14,
     textAlign: "center",
-    color: "rgba(255,255,255,0.70)",
+    color: "rgba(15, 23, 42, 0.65)",
     fontSize: 13,
   },
   footerLink: {
-    color: "rgba(255,255,255,0.92)",
-    fontWeight: "800",
+    color: "#4F46E5",
+    fontWeight: "900",
     textDecorationLine: "underline",
   },
 
   blob: {
     position: "absolute",
-    width: 260,
-    height: 260,
-    borderRadius: 260,
+    width: 280,
+    height: 280,
+    borderRadius: 280,
     opacity: 0.55,
   },
   blob1: {
-    top: -80,
-    left: -90,
-    backgroundColor: "rgba(155, 120, 255, 0.45)",
+    top: -90,
+    left: -110,
+    backgroundColor: "rgba(99, 102, 241, 0.25)",
   },
   blob2: {
-    bottom: -120,
-    right: -90,
-    backgroundColor: "rgba(80, 200, 255, 0.35)",
+    bottom: -130,
+    right: -100,
+    backgroundColor: "rgba(16, 185, 129, 0.18)",
   },
   blob3: {
     top: 220,
-    right: -140,
-    backgroundColor: "rgba(255, 120, 200, 0.22)",
+    right: -150,
+    backgroundColor: "rgba(236, 72, 153, 0.14)",
   },
 };

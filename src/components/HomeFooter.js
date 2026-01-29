@@ -42,8 +42,7 @@ function FeatureItem({ icon, label }) {
 
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: 18,
-    paddingBottom: 24,
+    marginTop: 18
   },
 
   featureCard: {
@@ -54,6 +53,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
   },
 
   featureItem: {
@@ -74,13 +78,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     flexDirection: "row",
     gap: 12,
-    justifyContent: "center",
+    justifyContent: "center"
   },
 
   actionBtn: {
     flex: 1,
     maxWidth: 200,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "white",
     borderRadius: 999,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -88,6 +92,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
   },
 
   actionText: {
