@@ -1,25 +1,23 @@
 // components/CartIconButton.js
-import React, { useEffect } from "react";
+import React from "react";
 import { TouchableOpacity, View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCartStore } from "../store/cartStore";
+import { useAuthStore } from "../store/authStore";
 
 export default function CartIconButton({ onPress }) {
+  const token = useAuthStore((s) => s.token);
+
   const items = useCartStore((s) => s.items);
   const isHydrating = useCartStore((s) => s.isHydrating);
-  const hydrate = useCartStore((s) => s.hydrate);
 
-  // đảm bảo badge đúng ngay khi mở app
-  useEffect(() => {
-    if (isHydrating) hydrate();
-  }, [isHydrating, hydrate]);
-
-  const qty = items.reduce((sum, it) => sum + (it.qty || 0), 0);
+  // Nếu chưa login => không hiển thị badge (tránh “dính” data user khác)
+  const qty = token ? items.reduce((sum, it) => sum + (it.qty || 0), 0) : 0;
 
   return (
     <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={onPress}>
       <Ionicons name="cart-outline" size={25} color="blue" />
-      {qty > 0 ? (
+      {token && !isHydrating && qty > 0 ? (
         <View style={styles.cartDot}>
           <Text style={styles.cartDotText}>{qty > 9 ? "9+" : String(qty)}</Text>
         </View>

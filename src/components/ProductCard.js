@@ -2,16 +2,28 @@ import React from "react";
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFavoriteStore } from "../store/favoriteStore";
+import { useNavigation } from "@react-navigation/native";
+import { useAuthStore } from "../store/authStore";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v) + "đ";
 
 export default function ProductCard({ item, onPress }) {
+  const navigation = useNavigation();
+  const token = useAuthStore((s) => s.token);
   const toggleFav = useFavoriteStore((s) => s.toggle);
+
+  const requireLogin = () => {
+    Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để thêm yêu thích.", [
+      { text: "Hủy", style: "cancel" },
+      { text: "Đăng nhập", onPress: () => navigation.navigate("Login") },
+    ]);
+  };
 
   // ✅ subscribe vào ids -> tự re-render khi ids đổi
   const fav = useFavoriteStore((s) => s.ids.includes(item?.id));
 
   const handleFavPress = () => {
+    if (!token) return requireLogin();
     if (!item?.id) return;
 
     if (fav) {

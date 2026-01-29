@@ -19,6 +19,8 @@ import { MOCK_PRODUCTS, getRelatedProducts } from "../data/mockProducts";
 import { useCartStore } from "../store/cartStore";
 import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
+import { Alert } from "react-native";
+import { useAuthStore } from "../store/authStore";
 
 /* -------------------- helpers -------------------- */
 
@@ -38,8 +40,16 @@ const ORDER_TYPES = {
 /* -------------------- Screen -------------------- */
 
 export default function ProductDetailScreen({ navigation, route }) {
+  const token = useAuthStore((s) => s.token);
   const passedItem = route?.params?.item;
   const [specsOpen, setSpecsOpen] = useState(true);
+
+  const requireLogin = () => {
+    Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để sử dụng tính năng này.", [
+      { text: "Hủy", style: "cancel" },
+      { text: "Đăng nhập", onPress: () => navigation.navigate("Login") },
+    ]);
+  };
 
   const product = useMemo(() => {
     if (passedItem) return passedItem;
@@ -109,6 +119,7 @@ export default function ProductDetailScreen({ navigation, route }) {
   const onToggleAccordion = (key) => setOpen((p) => ({ ...p, [key]: !p[key] }));
 
   const onAddToCart = useCallback(() => {
+    if (!token) return requireLogin();
     if (!product || !canBuy) return;
 
     if (product.type === "LENS") {
@@ -128,14 +139,16 @@ export default function ProductDetailScreen({ navigation, route }) {
     }
 
     Toast.show({ type: "success", text1: "Đã thêm vào giỏ", text2: product.name });
-  }, [product, canBuy, addItem, orderType, rxOD, rxOS, colorId, qty, size]);
+  }, [token, product, canBuy, addItem, orderType, rxOD, rxOS, colorId, qty, size]);
 
   const onBuyNow = () => {
+    if (!token) return requireLogin();
     onAddToCart();
     navigation.navigate("Tabs", { screen: "CartTab" });
   };
 
   const onToggleFav = () => {
+    if (!token) return requireLogin();
     if (!product) return;
     const wasFav = fav;
     toggleFav(product);

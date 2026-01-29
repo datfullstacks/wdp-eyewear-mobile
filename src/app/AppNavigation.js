@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "../store/authStore";
 import { useCartStore } from "../store/cartStore";
-import { useFavoriteStore } from "../store/favoriteStore"; // ✅ add
+import { useFavoriteStore } from "../store/favoriteStore";
 
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
@@ -18,7 +18,7 @@ import ProductsScreen from "../screens/ProductsScreen";
 import CartScreen from "../screens/CartScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import ProductDetailScreen from "../screens/ProductDetailScreen";
-import FavoritesScreen from "../screens/FavoritesScreen"; // ✅ add
+import FavoritesScreen from "../screens/FavoritesScreen";
 
 const RootStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -27,7 +27,7 @@ const HomeStack = createNativeStackNavigator();
 const ProductsStack = createNativeStackNavigator();
 const CartStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
-const FavoritesStack = createNativeStackNavigator(); // ✅ add
+const FavoritesStack = createNativeStackNavigator();
 
 function HomeStackScreen() {
   return (
@@ -63,7 +63,7 @@ function ProfileStackScreen() {
   );
 }
 
-// ✅ Favorites stack
+// Favorites stack
 function FavoritesStackScreen() {
   return (
     <FavoritesStack.Navigator screenOptions={{ headerShown: false }}>
@@ -95,7 +95,7 @@ function MainTabs({ navigation }) {
           let iconName = "home-outline";
           if (route.name === "HomeTab") iconName = focused ? "home" : "home-outline";
           if (route.name === "ProductsTab") iconName = focused ? "cube" : "cube-outline";
-          if (route.name === "FavTab") iconName = focused ? "heart" : "heart-outline"; // ✅ add
+          if (route.name === "FavTab") iconName = focused ? "heart" : "heart-outline";
           if (route.name === "CartTab") iconName = focused ? "clipboard" : "clipboard-outline";
           if (route.name === "ProfileTab") iconName = focused ? "person" : "person-outline";
           return <Ionicons name={iconName} size={22} color={color} />;
@@ -136,22 +136,18 @@ function MainTabs({ navigation }) {
         })}
       />
 
-      {/* ✅ Favorites Tab */}
       <Tab.Screen
         name="FavTab"
         component={FavoritesStackScreen}
         options={{ tabBarLabel: "Yêu thích" }}
-        listeners={({ navigation }) => ({
+        listeners={{
           tabPress: (e) => {
-            e.preventDefault();
-            navigation.dispatch(
-              CommonActions.navigate({
-                name: "FavTab",
-                params: { screen: "Favorites" },
-              })
-            );
+            if (!token) {
+              e.preventDefault();
+              navigation.navigate("Login");
+            }
           },
-        })}
+        }}
       />
 
       <Tab.Screen
@@ -188,19 +184,28 @@ function MainTabs({ navigation }) {
 export default function AppNavigation() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
   const isHydratingAuth = useAuthStore((s) => s.isHydrating);
+  const userKey = useAuthStore((s) => s.userKey);
 
-  const hydrateCart = useCartStore((s) => s.hydrate);
+  // cart: setUser sẽ tự hydrate theo key user
+  const setCartUser = useCartStore((s) => s.setUser);
   const isHydratingCart = useCartStore((s) => s.isHydrating);
 
-  // ✅ hydrate favorites
-  const hydrateFav = useFavoriteStore((s) => s.hydrate);
+  // fav: setUser sẽ tự hydrate theo key user
+  const setFavUser = useFavoriteStore((s) => s.setUser);
   const isHydratingFav = useFavoriteStore((s) => s.isHydrating);
 
+  // 1) hydrate auth trước
   useEffect(() => {
     hydrateAuth();
-    hydrateCart();
-    hydrateFav();
-  }, [hydrateAuth, hydrateCart, hydrateFav]);
+  }, [hydrateAuth]);
+
+  // 2) auth hydrate xong => set user cho cart + fav (tự hydrate đúng storage key)
+  useEffect(() => {
+    if (!isHydratingAuth) {
+      setCartUser(userKey);
+      setFavUser(userKey);
+    }
+  }, [isHydratingAuth, userKey, setCartUser, setFavUser]);
 
   if (isHydratingAuth || isHydratingCart || isHydratingFav) return null;
 

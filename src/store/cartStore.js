@@ -2,7 +2,8 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const CART_KEY = "cart_v1";
+const CART_KEY_BASE = "cart_v1";
+const makeCartKey = (userKey) => (userKey ? `${CART_KEY_BASE}:${userKey}` : null);
 
 function safeJsonParse(str, fallback) {
   try {
@@ -18,7 +19,6 @@ function makeLineKey({ productId, orderType, variantKey, rxKey }) {
 }
 
 function isRxFilled(rxOD, rxOS) {
-  // Tuỳ bạn bắt buộc field nào. Hiện UI detail đang nhập CYL + AXIS cho mỗi mắt.
   const okEye = (eye) => {
     if (!eye) return false;
     const cyl = String(eye.CYL ?? "").trim();
@@ -29,7 +29,6 @@ function isRxFilled(rxOD, rxOS) {
 }
 
 function pickProductSnapshot(p) {
-  // Lưu snapshot để Cart hiển thị ổn định
   return {
     id: p.id,
     type: p.type, // "LENS" | "FRAME"
@@ -45,10 +44,23 @@ function pickProductSnapshot(p) {
 export const useCartStore = create((set, get) => ({
   items: [],
   isHydrating: true,
+  userKey: null,
+
+  // gọi khi auth đổi user
+  setUser: async (userKey) => {
+    set({ userKey: userKey || null, isHydrating: true, items: [] });
+    await get().hydrate();
+  },
 
   hydrate: async () => {
+    const key = makeCartKey(get().userKey);
+    if (!key) {
+      set({ items: [], isHydrating: false });
+      return;
+    }
+
     try {
-      const raw = await AsyncStorage.getItem(CART_KEY);
+      const raw = await AsyncStorage.getItem(key);
       const data = safeJsonParse(raw, []);
       set({ items: Array.isArray(data) ? data : [], isHydrating: false });
     } catch {
@@ -57,14 +69,20 @@ export const useCartStore = create((set, get) => ({
   },
 
   _persist: async (items) => {
+    const key = makeCartKey(get().userKey);
+    if (!key) return;
     try {
-      await AsyncStorage.setItem(CART_KEY, JSON.stringify(items));
+      await AsyncStorage.setItem(key, JSON.stringify(items));
     } catch {}
   },
 
-  getTotalQty: () => {
-    return get().items.reduce((sum, it) => sum + (it.qty || 0), 0);
+  clear: () => {
+    const key = makeCartKey(get().userKey);
+    set({ items: [] });
+    if (key) AsyncStorage.removeItem(key).catch(() => {});
   },
+
+  getTotalQty: () => get().items.reduce((sum, it) => sum + (it.qty || 0), 0),
 
   addItem: ({ product, orderType, qty, variant, rxOD, rxOS }) => {
     const pSnap = pickProductSnapshot(product);
@@ -91,12 +109,7 @@ export const useCartStore = create((set, get) => ({
         ? `Màu: ${variant?.colorName || "—"}, Size: ${variant?.size || "—"}`
         : null;
 
-    // Theo UI Cart: cần nhập đơn kính + chọn tròng trước checkout :contentReference[oaicite:3]{index=3}
-    // - Nếu là LENS: coi như "tròng" đã chọn rồi (lensSelected = true).
-    // - prescriptionFilled: true nếu nhập đủ OD/OS
-    const prescriptionFilled =
-      product.type === "LENS" ? isRxFilled(rxOD, rxOS) : false;
-
+    const prescriptionFilled = product.type === "LENS" ? isRxFilled(rxOD, rxOS) : false;
     const lensSelected = product.type === "LENS" ? true : false;
 
     set((state) => {
@@ -106,7 +119,6 @@ export const useCartStore = create((set, get) => ({
       let nextItems = [];
 
       if (idx >= 0) {
-        // gộp qty
         nextItems = state.items.map((x, i) =>
           i === idx ? { ...x, qty: Math.min(99, (x.qty || 0) + nextQty) } : x
         );
@@ -119,8 +131,8 @@ export const useCartStore = create((set, get) => ({
             orderType: orderType || "READY",
             qty: nextQty,
             variantText,
-            variant: variant || null, // lưu colorId/size cho FRAME
-            rxOD: rxOD || null, // lưu RX cho LENS
+            variant: variant || null,
+            rxOD: rxOD || null,
             rxOS: rxOS || null,
             prescriptionFilled,
             lensSelected,
@@ -158,10 +170,5 @@ export const useCartStore = create((set, get) => ({
       get()._persist(next);
       return { items: next };
     });
-  },
-
-  clear: () => {
-    set({ items: [] });
-    AsyncStorage.removeItem(CART_KEY).catch(() => {});
   },
 }));

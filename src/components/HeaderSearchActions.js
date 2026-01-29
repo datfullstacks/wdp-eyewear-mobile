@@ -1,7 +1,10 @@
 import React from "react";
-import { View, TextInput, TouchableOpacity, StyleSheet } from "react-native";
+import { View, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+
 import CartIconButton from "./CartIconButton";
+import { useAuthStore } from "../store/authStore";
 
 export default function HeaderSearchActions({
   value,
@@ -9,10 +12,35 @@ export default function HeaderSearchActions({
   placeholder = "Tìm gọng kính, tròng kính, dịch vụ...",
   onPressFav,
   onPressCart,
-  onSubmit, 
+  onSubmit,
   containerStyle,
   inputStyle,
 }) {
+  const navigation = useNavigation();
+  const token = useAuthStore((s) => s.token);
+
+  const requireLogin = (after) => {
+    Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để sử dụng tính năng này.", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đăng nhập",
+        onPress: () => navigation.navigate("Login", { next: after || null }),
+      },
+    ]);
+  };
+
+  const handlePressFav = () => {
+    if (!token) return requireLogin("FavTab");
+    if (onPressFav) return onPressFav();
+    navigation.navigate("FavTab");
+  };
+
+  const handlePressCart = () => {
+    if (!token) return requireLogin("CartTab");
+    if (onPressCart) return onPressCart();
+    navigation.navigate("CartTab");
+  };
+
   return (
     <View style={[styles.row, containerStyle]}>
       <View style={styles.searchWrap}>
@@ -24,15 +52,15 @@ export default function HeaderSearchActions({
           placeholderTextColor="#9AA4B2"
           style={[styles.searchInput, inputStyle]}
           returnKeyType="search"
-          onSubmitEditing={() => onSubmit?.()} 
+          onSubmitEditing={() => onSubmit?.()}
         />
       </View>
 
-      <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={onPressFav}>
+      <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={handlePressFav}>
         <Ionicons name="heart" size={25} color="red" />
       </TouchableOpacity>
 
-      <CartIconButton onPress={onPressCart} />
+      <CartIconButton onPress={handlePressCart} />
     </View>
   );
 }
