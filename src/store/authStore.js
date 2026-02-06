@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { getToken, saveToken, removeToken } from "../services/tokenStorage";
-import { loginApi, registerApi, meApi } from "../services/authService";
+import { loginApi, registerApi, googleLoginApi, meApi } from "../services/authService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const USER_KEY_STORAGE = "AUTH_USERKEY_V1";
@@ -107,6 +107,25 @@ export const useAuthStore = create((set, get) => ({
 
     // nếu register không trả token -> login lại
     await get().login({ email, password });
+  },
+
+  loginWithGoogle: async ({ accessToken }) => {
+    const data = await googleLoginApi({ accessToken });
+
+    const token = getTokenFromResponse(data);
+    if (!token) throw new Error("Google login response missing a string token");
+
+    await saveToken(token);
+    set({ token, error: null });
+
+    const userFromLogin = getUserFromResponse(data);
+    if (userFromLogin) {
+      const userKey = makeUserKey({ user: userFromLogin });
+      if (userKey) await AsyncStorage.setItem(USER_KEY_STORAGE, String(userKey));
+      set({ user: userFromLogin, userKey });
+    } else {
+      await get().fetchMe();
+    }
   },
 
   logout: async () => {

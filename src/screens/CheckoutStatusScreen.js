@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { api } from "../services/apiClient";
 
 const PAYMENT_STATUS_META = {
   PENDING_QR: {
@@ -133,6 +134,82 @@ const buildAddressLines = (addr) => {
   return lines;
 };
 
+const normalizePaymentMethod = (value, payNow = 0) => {
+  const method = String(value || "").trim().toUpperCase();
+  if (method) return method;
+  return payNow > 0 ? "SEPAY" : "COD";
+};
+
+const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) => {
+  if (typeof status === "string" && PAYMENT_STATUS_META[status]) return status;
+
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "paid") return "PAID";
+  if (normalized === "failed") return "FAILED";
+  if (normalized === "refunded") return "REFUNDED";
+  if (normalized === "expired") return "EXPIRED";
+  if (normalized === "partial") return "PENDING_QR";
+  if (normalized === "pending") {
+    return method === "COD" || payNow <= 0 ? "PENDING_COD" : "PENDING_QR";
+  }
+
+  return method === "COD" || payNow <= 0 ? "PENDING_COD" : "PENDING_QR";
+};
+
+const normalizeOrderStatus = (status) => {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "pending" || normalized === "confirmed") return "CONFIRMED";
+  if (normalized === "processing") return "PACKING";
+  if (normalized === "shipped") return "SHIPPING";
+  if (normalized === "delivered") return "DELIVERED";
+  return String(status || "CONFIRMED").toUpperCase();
+};
+
+const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
+  const localBreakdown = localOrder.breakdown || {};
+  const localPayment = localOrder.payment || {};
+  const serverPayment = serverOrder.payment || {};
+  const nextPaymentStatus = serverPayment.status || serverOrder.paymentStatus || localPayment.status;
+  const inferredPaidAt =
+    String(nextPaymentStatus || "").toLowerCase() === "paid"
+      ? serverOrder.updatedAt || serverOrder.createdAt || localPayment.paidAt || null
+      : localPayment.paidAt || null;
+
+  return {
+    ...localOrder,
+    ...serverOrder,
+    orderId:
+      serverOrder._id ||
+      serverOrder.id ||
+      serverOrder.orderId ||
+      localOrder.orderId ||
+      localOrder.id,
+    code: serverOrder.code || localOrder.code,
+    breakdown: {
+      subtotal: serverOrder.subtotal ?? localBreakdown.subtotal,
+      shippingFee: serverOrder.shippingFee ?? localBreakdown.shippingFee,
+      discountAmount: serverOrder.discountAmount ?? localBreakdown.discountAmount,
+      total: serverOrder.total ?? localBreakdown.total,
+      payNow: serverOrder.payNowTotal ?? serverOrder.payNow ?? localBreakdown.payNow,
+      payLater: serverOrder.payLaterTotal ?? serverOrder.payLater ?? localBreakdown.payLater,
+    },
+    payment: {
+      ...localPayment,
+      ...serverPayment,
+      method: serverPayment.method || serverOrder.paymentMethod || localPayment.method,
+      status: nextPaymentStatus,
+      amount: serverPayment.amount ?? serverOrder.payNowTotal ?? localPayment.amount,
+      paymentCode:
+        serverPayment.paymentCode ||
+        serverPayment.code ||
+        serverOrder.paymentCode ||
+        localPayment.paymentCode,
+      content: serverPayment.content || serverOrder.paymentCode || localPayment.content,
+      paidAt: serverPayment.paidAt || serverOrder.paidAt || inferredPaidAt,
+    },
+  };
+};
+
 const DEMO_ORDER = {
   orderId: "OD123456",
   createdAt: new Date().toISOString(),
@@ -182,9 +259,11 @@ const normalizeOrder = (raw) => {
     breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
 
   const payment = raw?.payment || {};
-  const paymentMethod = payment.method || raw?.paymentMethod || (payNow > 0 ? "SEPAY" : "COD");
-  const paymentStatus =
-    payment.status || raw?.paymentStatus || (payNow > 0 ? "PENDING_QR" : "PENDING_COD");
+  const paymentMethod = normalizePaymentMethod(payment.method || raw?.paymentMethod, payNow);
+  const paymentStatus = normalizePaymentStatus(payment.status || raw?.paymentStatus, {
+    payNow,
+    method: paymentMethod,
+  });
   const paymentCode = firstTextValue(
     payment.paymentCode,
     payment.transactionId,
@@ -264,9 +343,9 @@ const normalizeOrder = (raw) => {
     : null;
 
   return {
-    orderId: raw?.orderId || raw?.code || raw?.id || "OD--",
+    orderId: raw?.orderId || raw?._id || raw?.code || raw?.id || "OD--",
     createdAt: raw?.createdAt || paymentCreatedAt,
-    status: raw?.status || "CONFIRMED",
+    status: normalizeOrderStatus(raw?.status),
     address,
     items: raw?.items || [],
     totals: {
@@ -295,11 +374,53 @@ const normalizeOrder = (raw) => {
 };
 
 export default function CheckoutStatusScreen({ navigation, route }) {
-  const rawOrder = route?.params?.order || DEMO_ORDER;
+  const initialOrder = route?.params?.order || null;
+  const [serverOrder, setServerOrder] = useState(null);
+
+  const rawOrder = useMemo(() => {
+    if (initialOrder && serverOrder) return mergeOrderSnapshot(initialOrder, serverOrder);
+    return serverOrder || initialOrder || DEMO_ORDER;
+  }, [initialOrder, serverOrder]);
+
   const order = useMemo(() => normalizeOrder(rawOrder), [rawOrder]);
+  const pollOrderId = useMemo(() => {
+    const id = rawOrder?.orderId || rawOrder?._id || rawOrder?.id;
+    if (!id) return null;
+    return String(id);
+  }, [rawOrder]);
 
   const [paymentStatus, setPaymentStatus] = useState(order.payment.status);
   const [paidAt, setPaidAt] = useState(order.payment.paidAt || null);
+
+  useEffect(() => {
+    if (!pollOrderId || pollOrderId === "OD--" || /^OD\d+$/i.test(pollOrderId)) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const fetchOrder = async () => {
+      try {
+        const res = await api.get(`/api/orders/${pollOrderId}`);
+        const data = res?.data?.data || res?.data || null;
+        if (!cancelled && data) {
+          setServerOrder(data);
+        }
+      } catch (error) {
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.log("order polling failed", error?.response?.data || error?.message || error);
+        }
+      }
+    };
+
+    fetchOrder();
+    const timer = setInterval(fetchOrder, 8000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [pollOrderId]);
 
   useEffect(() => {
     setPaymentStatus(order.payment.status);
