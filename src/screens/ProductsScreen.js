@@ -224,7 +224,7 @@ export default function ProductsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       {/* Header */}
-      <View style={styles.header}>
+      {/* <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
             onPress={() =>
@@ -237,6 +237,22 @@ export default function ProductsScreen({ navigation }) {
 
           <Text style={styles.headerTitle}>Sản phẩm</Text>
         </View>
+      </View> */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
+            activeOpacity={0.85}
+            style={styles.iconBtn} // ✅ giống Fav
+          >
+            <Ionicons name="chevron-back" size={22} color="#111827" />
+          </TouchableOpacity>
+
+          <Text style={styles.headerTitle}>Sản phẩm</Text>
+        </View>
+
+        {/* bên phải để trống như Fav (hoặc để placeholder nếu bạn muốn cân tuyệt đối) */}
+        <View style={styles.iconBtn} />
       </View>
 
       {/* Search + Fav + Cart */}
@@ -498,6 +514,16 @@ export default function ProductsScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F7FB" },
 
+  // header: {
+  //   paddingHorizontal: 12,
+  //   paddingTop: 6,
+  //   paddingBottom: 10,
+  //   flexDirection: "row",
+  //   alignItems: "center",
+  //   justifyContent: "space-between",
+  // },
+  // headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
+  // headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
   header: {
     paddingHorizontal: 12,
     paddingTop: 6,
@@ -506,8 +532,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
   headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 5 },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   searchWrap: {
     marginHorizontal: PAGE_PADDING,
