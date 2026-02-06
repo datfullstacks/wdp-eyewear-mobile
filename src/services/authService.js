@@ -1,13 +1,19 @@
 import { api } from "./apiClient";
 
+//Dang nhap
 export async function loginApi({ email, password }) {
-  // Sửa endpoint cho đúng API của bạn
   const res = await api.post("/api/auth/login", { email, password });
-  return res.data?.data ?? res.data; // ví dụ: { accessToken, user }
+  return res.data?.data ?? res.data;
 }
 
+//Dang ky
 export async function registerApi({ name, email, password, role }) {
-  // đổi endpoint cho đúng API bạn
   const res = await api.post("/api/auth/register", { name, email, password, role });
-  return res.data?.data ?? res.data; // có thể trả { token, user } hoặc chỉ message
+  return res.data?.data ?? res.data; 
+}
+
+//Lay thong tin nguoi dung hien tai
+export async function meApi() {
+  const res = await api.get("/api/auth/me");
+  return res.data?.data ?? null;
 }

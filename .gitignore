@@ -42,3 +42,15 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local docs and data
+product.md
+seeds/
+
+# local helper scripts (tmp)
+tmp_delete.py
+tmp_lines.py
+tmp_print.py
+tmp_products5k.py
+tmp_search.py
+tmp_view.py

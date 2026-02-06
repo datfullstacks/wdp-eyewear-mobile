@@ -1,7 +1,7 @@
 // screens/ProfileScreen.js
+import React, { useEffect, useMemo } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useMemo } from "react";
 import {
   Platform,
   Pressable,
@@ -11,42 +11,24 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthStore } from "../store/authStore";
 
 const AVATAR_URI =
   "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=320&q=80";
 
-// Demo data (bạn thay bằng user thật khi có API)
-const demoUser = {
-  name: "Minh Nguyen",
-  email: "minhngocnguyen17012004@gmail.com",
-  tier: "Silver Member",
-  points: 1280,
-  pendingOrders: 3,
-  favorites: 8,
-  addresses: 2,
-  prescription: "Saved",
-};
-
-const demoGlasses = [
-  { id: "1", name: "Avery Round", meta: "Tortoise • $120", icon: "glasses-outline" },
-  { id: "2", name: "Neo Aviator", meta: "Gold • $95", icon: "glasses-outline" },
-  { id: "3", name: "Classic Square", meta: "Black • $89", icon: "glasses-outline" },
-  { id: "4", name: "Clear Frame", meta: "Crystal • $79", icon: "glasses-outline" },
-];
-
 // Accent colors
 const STAT_ACCENTS = {
-  orders: { bg: "#EEF2FF", fg: "#4F46E5" }, // indigo
-  favorites: { bg: "#FCE7F3", fg: "#DB2777" }, // pink
-  addresses: { bg: "#ECFDF5", fg: "#059669" }, // green
-  rx: { bg: "#EFF6FF", fg: "#2563EB" }, // blue
+  orders: { bg: "#EEF2FF", fg: "#4F46E5" },
+  favorites: { bg: "#FCE7F3", fg: "#DB2777" },
+  addresses: { bg: "#ECFDF5", fg: "#059669" },
+  rx: { bg: "#EFF6FF", fg: "#2563EB" },
 };
 
 const SETTING_ACCENTS = {
-  payments: { bg: "#FFFBEB", fg: "#D97706" }, // amber
-  support: { bg: "#F3E8FF", fg: "#7C3AED" }, // purple
-  noti: { bg: "#ECFEFF", fg: "#0891B2" }, // cyan
+  payments: { bg: "#FFFBEB", fg: "#D97706" },
+  support: { bg: "#F3E8FF", fg: "#7C3AED" },
+  noti: { bg: "#ECFEFF", fg: "#0891B2" },
 };
 
 /* -------------------- UI primitives -------------------- */
@@ -135,25 +117,69 @@ function LoginRequired({ navigation }) {
 
 export default function ProfileScreen({ navigation }) {
   const greeting = useMemo(() => "My Profile", []);
-  const token = useAuthStore((s) => s.token); // ✅ check token
+
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const isHydrating = useAuthStore((s) => s.isHydrating);
+  const fetchMe = useAuthStore((s) => s.fetchMe);
   const logout = useAuthStore((s) => s.logout);
 
-  // ✅ Nếu chưa login (hoặc vừa logout xong), show màn yêu cầu đăng nhập
+  // ✅ Nếu có token mà chưa có user (hoặc vừa mở app) => gọi /me
+  useEffect(() => {
+    if (token && !user && !isHydrating) {
+      fetchMe?.();
+    }
+  }, [token, user, isHydrating, fetchMe]);
+
+  // ✅ Nếu chưa login
   if (!token) {
     return (
-      <View style={styles.screen}>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Tài khoản</Text>
         </View>
         <LoginRequired navigation={navigation} />
-      </View>
+      </SafeAreaView>
     );
   }
 
-  // ===== Logged in UI =====
+  // ✅ Loading state khi đang hydrate hoặc đang fetch user
+  if (isHydrating || !user) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Tài khoản</Text>
+        </View>
+        <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
+          <Text style={{ fontWeight: "800", color: "#111827" }}>
+            Đang tải hồ sơ...
+          </Text>
+          <Text style={{ marginTop: 6, fontWeight: "600", color: "#6B7280" }}>
+            Nếu bị kẹt, kiểm tra token / Authorization header.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ===== User thật =====
+  const displayName = user?.name || "—";
+  const displayEmail = user?.email || "—";
+
+  // (Tạm thời) stats vẫn demo cho UI, sau này nối API orders/favs/addresses...
+  const stats = {
+    tier: "Member",
+    points: 0,
+    pendingOrders: 0,
+    favorites: 0,
+    addresses: 0,
+    prescription: "—",
+  };
+
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
 
       {/* Header */}
@@ -162,7 +188,6 @@ export default function ProfileScreen({ navigation }) {
 
         <Pressable
           onPress={() => {
-            // navigation?.navigate("EditProfile");
             console.log("Edit profile");
           }}
           style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
@@ -172,10 +197,7 @@ export default function ProfileScreen({ navigation }) {
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Profile card */}
         <Card style={{ padding: 16 }}>
           <View style={styles.profileTop}>
@@ -189,12 +211,12 @@ export default function ProfileScreen({ navigation }) {
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{demoUser.name}</Text>
-              <Text style={styles.email}>{demoUser.email}</Text>
+              <Text style={styles.name}>{displayName}</Text>
+              <Text style={styles.email}>{displayEmail}</Text>
 
               <View style={styles.pillRow}>
-                <Pill icon="sparkles-outline" label={demoUser.tier} />
-                <Pill icon="trophy-outline" label={`${demoUser.points} pts`} />
+                <Pill icon="sparkles-outline" label={stats.tier} />
+                <Pill icon="trophy-outline" label={`${stats.points} pts`} />
               </View>
             </View>
           </View>
@@ -202,7 +224,7 @@ export default function ProfileScreen({ navigation }) {
           {/* Quick stats */}
           <View style={styles.statGrid}>
             <Pressable
-              onPress={() => console.log("My Orders")}
+              onPress={() => navigation.navigate("Orders")}
               style={({ pressed }) => [
                 styles.statItem,
                 { backgroundColor: STAT_ACCENTS.orders.bg, borderColor: "rgba(79,70,229,0.18)" },
@@ -211,13 +233,13 @@ export default function ProfileScreen({ navigation }) {
             >
               <Ionicons name="cube-outline" size={18} color={STAT_ACCENTS.orders.fg} />
               <Text style={[styles.statValue, { color: STAT_ACCENTS.orders.fg }]}>
-                {demoUser.pendingOrders}
+                {stats.pendingOrders}
               </Text>
               <Text style={styles.statLabel}>Pending</Text>
             </Pressable>
 
             <Pressable
-              onPress={() => console.log("Favorites")}
+              onPress={() => navigation.navigate("Favorites")}
               style={({ pressed }) => [
                 styles.statItem,
                 { backgroundColor: STAT_ACCENTS.favorites.bg, borderColor: "rgba(219,39,119,0.18)" },
@@ -226,13 +248,13 @@ export default function ProfileScreen({ navigation }) {
             >
               <Ionicons name="heart-outline" size={18} color={STAT_ACCENTS.favorites.fg} />
               <Text style={[styles.statValue, { color: STAT_ACCENTS.favorites.fg }]}>
-                {demoUser.favorites}
+                {stats.favorites}
               </Text>
               <Text style={styles.statLabel}>Favorites</Text>
             </Pressable>
 
             <Pressable
-              onPress={() => console.log("Addresses")}
+              onPress={() => navigation.navigate("AddressBook")}
               style={({ pressed }) => [
                 styles.statItem,
                 { backgroundColor: STAT_ACCENTS.addresses.bg, borderColor: "rgba(5,150,105,0.18)" },
@@ -241,13 +263,13 @@ export default function ProfileScreen({ navigation }) {
             >
               <Ionicons name="location-outline" size={18} color={STAT_ACCENTS.addresses.fg} />
               <Text style={[styles.statValue, { color: STAT_ACCENTS.addresses.fg }]}>
-                {demoUser.addresses}
+                {stats.addresses}
               </Text>
               <Text style={styles.statLabel}>Addresses</Text>
             </Pressable>
 
             <Pressable
-              onPress={() => console.log("Prescription")}
+              onPress={() => navigation.navigate("Prescription")}
               style={({ pressed }) => [
                 styles.statItem,
                 { backgroundColor: STAT_ACCENTS.rx.bg, borderColor: "rgba(37,99,235,0.18)" },
@@ -256,7 +278,7 @@ export default function ProfileScreen({ navigation }) {
             >
               <Ionicons name="reader-outline" size={18} color={STAT_ACCENTS.rx.fg} />
               <Text style={[styles.statValue, { color: STAT_ACCENTS.rx.fg }]}>
-                {demoUser.prescription}
+                {stats.prescription}
               </Text>
               <Text style={styles.statLabel}>Rx</Text>
             </Pressable>
@@ -266,11 +288,11 @@ export default function ProfileScreen({ navigation }) {
         {/* Actions */}
         <Card style={{ paddingVertical: 6 }}>
           <RowItem
-            icon="bag-handle-outline"
+            icon="receipt-outline"
             title="My Orders"
             subtitle="Track shipping & returns"
-            rightText={`${demoUser.pendingOrders} pending`}
-            onPress={() => console.log("My Orders")}
+            rightText={`${stats.pendingOrders} pending`}
+            onPress={() => navigation.navigate("Orders")}
             accent={{ bg: "#EEF2FF", fg: "#4F46E5" }}
           />
           <Divider />
@@ -278,8 +300,8 @@ export default function ProfileScreen({ navigation }) {
             icon="heart-outline"
             title="Favorites"
             subtitle="Saved frames & lenses"
-            rightText={`${demoUser.favorites} items`}
-            onPress={() => console.log("Favorites")}
+            rightText={`${stats.favorites} items`}
+            onPress={() => navigation.navigate("Favorites")}
             accent={{ bg: "#FCE7F3", fg: "#DB2777" }}
           />
           <Divider />
@@ -288,7 +310,7 @@ export default function ProfileScreen({ navigation }) {
             title="My Prescription"
             subtitle="PD, Rx, lens preferences"
             rightText="View"
-            onPress={() => console.log("Prescription")}
+            onPress={() => navigation.navigate("Prescription")}
             accent={{ bg: "#EFF6FF", fg: "#2563EB" }}
           />
           <Divider />
@@ -296,48 +318,11 @@ export default function ProfileScreen({ navigation }) {
             icon="location-outline"
             title="Address Book"
             subtitle="Default shipping address"
-            rightText={`${demoUser.addresses}`}
-            onPress={() => console.log("Address Book")}
+            rightText={`${stats.addresses}`}
+            onPress={() => navigation.navigate("AddressBook")}
             accent={{ bg: "#ECFDF5", fg: "#059669" }}
           />
         </Card>
-
-        {/* Collection */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>My Glasses Collection</Text>
-
-          <Pressable
-            onPress={() => console.log("View all collection")}
-            style={({ pressed }) => [styles.linkBtn, pressed && styles.pressed]}
-          >
-            <Text style={styles.linkBtnText}>View all</Text>
-            <Ionicons name="chevron-forward" size={16} color="#2563EB" />
-          </Pressable>
-        </View>
-
-        <View style={styles.grid}>
-          {demoGlasses.slice(0, 4).map((g) => (
-            <Pressable
-              key={g.id}
-              onPress={() => console.log("Open glass:", g.id)}
-              style={({ pressed }) => [styles.glassCard, pressed && styles.pressedSoft]}
-            >
-              <View style={styles.glassTop}>
-                <View style={styles.glassIcon}>
-                  <Ionicons name={g.icon} size={20} color="#111827" />
-                </View>
-                <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-              </View>
-
-              <Text style={styles.glassName} numberOfLines={1}>
-                {g.name}
-              </Text>
-              <Text style={styles.glassMeta} numberOfLines={1}>
-                {g.meta}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
 
         {/* Settings */}
         <View style={styles.sectionHeader}>
@@ -349,7 +334,7 @@ export default function ProfileScreen({ navigation }) {
             icon="card-outline"
             title="Payments"
             subtitle="Cards & billing"
-            onPress={() => console.log("Payments")}
+            onPress={() => navigation.navigate("Payments")}
             accent={SETTING_ACCENTS.payments}
           />
           <Divider />
@@ -357,7 +342,7 @@ export default function ProfileScreen({ navigation }) {
             icon="chatbubble-ellipses-outline"
             title="Support"
             subtitle="Chat with us"
-            onPress={() => console.log("Support")}
+            onPress={() => navigation.navigate("Support")}
             accent={SETTING_ACCENTS.support}
           />
           <Divider />
@@ -365,7 +350,7 @@ export default function ProfileScreen({ navigation }) {
             icon="notifications-outline"
             title="Notifications"
             subtitle="Order updates & deals"
-            onPress={() => console.log("Notifications")}
+            onPress={() => navigation.navigate("Notifications")}
             accent={SETTING_ACCENTS.noti}
           />
           <Divider />
@@ -373,19 +358,19 @@ export default function ProfileScreen({ navigation }) {
             icon="log-out-outline"
             title="Sign out"
             subtitle="Log out of this device"
-            onPress={logout} // ✅ logout -> token null -> render LoginRequired
+            onPress={logout}
             danger
           />
         </Card>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 /* -------------------- Styles -------------------- */
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F6F8FB" },
+  safe: { flex: 1, backgroundColor: "#F6F8FB" },
 
   header: {
     paddingTop: Platform.OS === "android" ? 25 : 10,
@@ -483,28 +468,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   sectionTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-
-  linkBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 12 },
-  linkBtnText: { color: "#2563EB", fontWeight: "900" },
-
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 6 },
-  glassCard: {
-    width: "48.5%",
-    borderRadius: 18,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.07)",
-    padding: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 1,
-  },
-  glassTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  glassIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
-  glassName: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  glassMeta: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
 
   // pressed helpers
   pressed: { opacity: 0.75 },
