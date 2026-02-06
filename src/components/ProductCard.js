@@ -7,6 +7,10 @@ import { useAuthStore } from "../store/authStore";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v) + "đ";
 
+// fallback nếu item.image rỗng
+const FALLBACK_IMG =
+  "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
+
 export default function ProductCard({ item, onPress }) {
   const navigation = useNavigation();
   const token = useAuthStore((s) => s.token);
@@ -19,7 +23,6 @@ export default function ProductCard({ item, onPress }) {
     ]);
   };
 
-  // ✅ subscribe vào ids -> tự re-render khi ids đổi
   const fav = useFavoriteStore((s) => s.ids.includes(item?.id));
 
   const handleFavPress = () => {
@@ -41,10 +44,16 @@ export default function ProductCard({ item, onPress }) {
     }
   };
 
+  const img = item?.image || item?.posterUrl || FALLBACK_IMG;
+  const brand = item?.brand ? String(item.brand) : null;
+
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.9}>
-      <View style={styles.imageWrap}>
-        {!!item.discountPct && (
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
+      {/* IMAGE full-bleed */}
+      <View style={styles.media}>
+        <Image source={{ uri: img }} style={styles.image} />
+
+        {!!item?.discountPct && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>-{item.discountPct}%</Text>
           </View>
@@ -58,9 +67,7 @@ export default function ProductCard({ item, onPress }) {
           />
         </TouchableOpacity>
 
-        <Image source={{ uri: item.image }} style={styles.image} />
-
-        {!!item.status && (
+        {!!item?.status && (
           <View style={styles.statusPill}>
             <Text style={styles.statusText} numberOfLines={1}>
               {item.status}
@@ -69,45 +76,54 @@ export default function ProductCard({ item, onPress }) {
         )}
       </View>
 
-      <Text numberOfLines={2} style={styles.name}>
-        {item.name}
-      </Text>
+      {/* INFO area (có padding riêng) */}
+      <View style={styles.info}>
+        {!!brand && (
+          <Text style={styles.brand} numberOfLines={1}>
+            {brand}
+          </Text>
+        )}
 
-      <View style={styles.row}>
-        <Text style={styles.price} numberOfLines={1}>
-          {formatVND(item.price)}
+        <Text numberOfLines={2} ellipsizeMode="tail" style={styles.name}>
+          {item?.name}
         </Text>
 
-        <View style={styles.dots}>
-          {(item.color || []).slice(0, 3).map((c, idx) => (
-            <View key={`${c}-${idx}`} style={[styles.dot, { backgroundColor: String(c).toLowerCase() }]} />
-          ))}
+        <View style={styles.row}>
+          <Text style={styles.price} numberOfLines={1}>
+            {formatVND(item?.price || 0)}
+          </Text>
+
+          <View style={styles.dots}>
+            {(item?.color || []).slice(0, 3).map((c, idx) => (
+              <View
+                key={`${c}-${idx}`}
+                style={[styles.dot, { backgroundColor: String(c).toLowerCase() }]}
+              />
+            ))}
+          </View>
         </View>
       </View>
     </TouchableOpacity>
   );
 }
 
-
-const IMAGE_H = 110;
-const NAME_LINES = 2;
-const NAME_LINE_H = 16;
+const IMAGE_H = 140;
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 10,
-    minHeight: IMAGE_H + 10 + NAME_LINES * NAME_LINE_H + 10 + 20 + 10,
+    overflow: "hidden", // ✅ để ảnh “dính” bo góc như Shopee
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-    marginBottom: 5,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+    marginBottom: 8,
   },
 
-  imageWrap: { borderRadius: 14, overflow: "hidden", position: "relative" },
+  // media full-bleed
+  media: { position: "relative" },
   image: { width: "100%", height: IMAGE_H },
 
   badge: {
@@ -148,22 +164,34 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 11, fontWeight: "700", color: "#111827" },
 
+  // info area
+  info: { padding: 10, paddingTop: 8 },
+
+  brand: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#6B7280",
+    marginBottom: 3,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+
   name: {
-    marginTop: 8,
     fontSize: 12.5,
     fontWeight: "700",
     color: "#111827",
-    lineHeight: NAME_LINE_H,
-    minHeight: NAME_LINES * NAME_LINE_H,
+    lineHeight: 16,
+    minHeight: 32, // 2 lines
   },
 
   row: {
-    marginTop: 6,
+    marginTop: 8,
     minHeight: 20,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+
   price: {
     fontSize: 14,
     fontWeight: "900",

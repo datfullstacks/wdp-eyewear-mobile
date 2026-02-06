@@ -1,5 +1,5 @@
 // screens/CartScreen.js
-import React, { useMemo, useEffect } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useCartStore } from "../store/cartStore";
+import { buildCheckoutPayload, buildCheckoutItems, fetchCheckoutQuote } from "../services/checkoutService";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v || 0) + "đ";
 
@@ -40,6 +41,7 @@ export default function CartScreen({ navigation }) {
   const removeItemStore = useCartStore((s) => s.removeItem);
   const setFlags = useCartStore((s) => s.setFlags);
   const clear = useCartStore((s) => s.clear);
+  const [isQuoting, setIsQuoting] = useState(false);
 
   useEffect(() => {
     if (isHydrating) hydrate();
@@ -56,6 +58,8 @@ export default function CartScreen({ navigation }) {
   const discount = useMemo(() => Math.round(subtotal * 0.2), [subtotal]);
   const shipping = items.length > 0 ? 30000 : 0;
   const total = Math.max(0, subtotal - discount + shipping);
+  const checkoutItems = useMemo(() => buildCheckoutItems(items), [items]);
+  const shippingMethod = "standard";
 
   const setQty = (key, nextQty) => {
     setQtyStore(key, nextQty);
@@ -66,6 +70,49 @@ export default function CartScreen({ navigation }) {
       { text: "Hủy", style: "cancel" },
       { text: "Xóa", style: "destructive", onPress: () => removeItemStore(key) },
     ]);
+  };
+
+  const proceedCheckout = async () => {
+    if (!canCheckout || isQuoting) return;
+    if (checkoutItems.length !== items.length) {
+      Alert.alert(
+        "Thiếu thông tin sản phẩm",
+        "Một số sản phẩm trong giỏ không có ID hợp lệ. Vui lòng xóa và thêm lại sản phẩm."
+      );
+      return;
+    }
+    try {
+      setIsQuoting(true);
+      const payload = buildCheckoutPayload({
+        items: checkoutItems,
+        shippingFee: shipping,
+        discountAmount: discount,
+        shippingMethod,
+      });
+
+      console.log("checkout quote payload", payload);
+      const quote = await fetchCheckoutQuote(payload);
+      navigation.navigate("Checkout", {
+        quote,
+        quoteMeta: {
+          shippingFee: shipping,
+          discountAmount: discount,
+          shippingMethod,
+        },
+      });
+    } catch (err) {
+      const data = err?.response?.data || {};
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn("checkout quote error", err?.response?.status, data || err?.message);
+      }
+      const errors = Array.isArray(data.errors)
+        ? data.errors.map((e) => e.msg).filter(Boolean).join("\n")
+        : null;
+      const message = errors || data.message || data.error || err?.message;
+      Alert.alert("Không lấy được báo giá", message || "Vui lòng thử lại.");
+    } finally {
+      setIsQuoting(false);
+    }
   };
 
   return (
@@ -174,9 +221,9 @@ export default function CartScreen({ navigation }) {
 
             <TouchableOpacity
               activeOpacity={0.9}
-              disabled={!canCheckout}
-              style={[styles.checkoutBtn, !canCheckout && styles.checkoutBtnDisabled]}
-              onPress={() => Alert.alert("Thanh toán", "Demo: chuyển checkout")}
+              disabled={!canCheckout || isQuoting}
+              style={[styles.checkoutBtn, (!canCheckout || isQuoting) && styles.checkoutBtnDisabled]}
+              onPress={proceedCheckout}
             >
               <Text style={[styles.checkoutText, !canCheckout && styles.checkoutTextDisabled]}>
                 Tiến hành thanh toán

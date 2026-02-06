@@ -16,7 +16,7 @@ import HeaderSearchActions from "../components/HeaderSearchActions";
 import HomeBanner from "../components/HomeBanner";
 import HomeFooter from "../components/HomeFooter";
 import ProductCard from "../components/ProductCard";
-import { MOCK_PRODUCTS } from "../data/mockProducts";
+import { useProducts } from "../hooks/useProducts";
 import { useAuthStore } from "../store/authStore";
 
 const { width } = Dimensions.get("window");
@@ -45,15 +45,15 @@ const BANNERS = [
   },
 ];
 
-const CATEGORIES = [
-  { id: "1", label: "Gọng kính", lib: "fa5", icon: "glasses" },
-  { id: "2", label: "Tròng kính", lib: "ion", icon: "aperture-outline" },
-  { id: "3", label: "Kính râm", lib: "ion", icon: "glasses" },
-  { id: "4", label: "Phụ kiện", lib: "ion", icon: "bag-handle-outline" },
-  { id: "5", label: "Dịch vụ", lib: "ion", icon: "construct-outline" },
-];
+// const CATEGORIES = [
+//   { id: "1", label: "Gọng kính", lib: "fa5", icon: "glasses" },
+//   { id: "2", label: "Tròng kính", lib: "ion", icon: "aperture-outline" },
+//   { id: "3", label: "Kính râm", lib: "ion", icon: "glasses" },
+//   { id: "4", label: "Phụ kiện", lib: "ion", icon: "bag-handle-outline" },
+//   { id: "5", label: "Dịch vụ", lib: "ion", icon: "construct-outline" },
+// ];
 
-const FILTER_CHIPS = ["In-stock", "Pre-order", "Làm kính theo đơn"];
+// const FILTER_CHIPS = ["In-stock", "Pre-order", "Làm kính theo đơn"];
 
 // ===== Helper: chunk array theo pageSize =====
 function chunkArray(arr, size) {
@@ -114,6 +114,7 @@ export default function HomeScreen({ navigation }) {
   const logout = useAuthStore((s) => s.logout);
 
   const [query, setQuery] = useState("");
+  const { products } = useProducts();
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -155,7 +156,7 @@ export default function HomeScreen({ navigation }) {
             onChangeText={setQuery}
             placeholder="Tìm gọng kính, tròng kính, dịch vụ..."
             onPressFav={() => navigation.navigate("FavTab")}
-            onPressCart={() => navigation.navigate("CartTab")}
+            onPressCart={() => navigation.navigate("CartFlow", { screen: "Cart" })}
             onSubmit={() => {
               const q = query.trim();
               navigation.navigate("ProductsTab", {
@@ -170,7 +171,7 @@ export default function HomeScreen({ navigation }) {
         <HomeBanner banners={BANNERS} autoPlay intervalMs={3000} />
 
         {/* CATEGORIES */}
-        <ScrollView
+        {/* <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.catRow}
@@ -191,10 +192,10 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.catLabel}>{c.label}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </ScrollView> */}
 
         {/* CHIPS */}
-        <ScrollView
+        {/* <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipRow}
@@ -204,7 +205,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.chipText}>{t}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </ScrollView> */}
 
         {/* SECTION: Bán chạy */}
         <View style={styles.sectionRow}>
@@ -217,7 +218,7 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <ProductPager
-          products={MOCK_PRODUCTS}
+          products={products}
           onPressItem={(item) => navigation.navigate("ProductDetail", { item })}
         />
 
@@ -232,7 +233,7 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <ProductPager
-          products={MOCK_PRODUCTS}
+          products={products}
           onPressItem={(item) => navigation.navigate("ProductDetail", { item })}
         />
 
@@ -247,7 +248,7 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <ProductPager
-          products={MOCK_PRODUCTS}
+          products={products}
           onPressItem={(item) => navigation.navigate("ProductDetail", { item })}
         />
 

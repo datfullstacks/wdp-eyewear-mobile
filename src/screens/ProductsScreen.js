@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import ProductCard from "../components/ProductCard";
-import { MOCK_PRODUCTS } from "../data/mockProducts";
+import { useProducts } from "../hooks/useProducts";
 
 const { width } = Dimensions.get("window");
 const PAGE_PADDING = 16;
@@ -80,6 +80,7 @@ function BottomSheet({ visible, title, onClose, children }) {
 export default function ProductsScreen({ navigation }) {
   const route = useRoute();
   const [query, setQuery] = useState("");
+  const { products, isLoading, isError } = useProducts();
 
   useEffect(() => {
     const q = route?.params?.q;
@@ -161,7 +162,7 @@ export default function ProductsScreen({ navigation }) {
     const q = query.trim().toLowerCase();
 
     // 1) search
-    let arr = MOCK_PRODUCTS.filter((p) => {
+    let arr = products.filter((p) => {
       if (!q) return true;
       return (p.name || "").toLowerCase().includes(q);
     });
@@ -206,6 +207,7 @@ export default function ProductsScreen({ navigation }) {
 
     return sorted;
   }, [
+    products,
     query,
     typeFrame,
     typeLens,
@@ -244,7 +246,7 @@ export default function ProductsScreen({ navigation }) {
           onChangeText={setQuery}
           placeholder="Tìm gọng kính, tròng kính, dịch vụ..."
           onPressFav={() => navigation.navigate("FavTab")}
-          onPressCart={() => navigation.navigate("CartTab")}
+          onPressCart={() => navigation.navigate("CartFlow", { screen: "Cart" })}
         />
       </View>
 
@@ -331,10 +333,17 @@ export default function ProductsScreen({ navigation }) {
 
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyTitle}>Không tìm thấy sản phẩm</Text>
-            <Text style={styles.emptySub}>
-              Thử đổi từ khóa hoặc xoá bộ lọc để xem thêm.
+            <Text style={styles.emptyTitle}>
+              {isLoading ? "Đang tải sản phẩm..." : "Không tìm thấy sản phẩm"}
             </Text>
+            {!isLoading && (
+              <Text style={styles.emptySub}>
+                Thử đổi từ khóa hoặc xoá bộ lọc để xem thêm.
+              </Text>
+            )}
+            {isError && !isLoading && (
+              <Text style={styles.emptySub}>Không tải được dữ liệu từ API.</Text>
+            )}
           </View>
         }
         ListFooterComponent={<View style={{ height: 16 }} />}

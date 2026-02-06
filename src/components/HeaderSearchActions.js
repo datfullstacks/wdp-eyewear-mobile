@@ -36,9 +36,9 @@ export default function HeaderSearchActions({
   };
 
   const handlePressCart = () => {
-    if (!token) return requireLogin("CartTab");
+    if (!token) return requireLogin("CartFlow", { screen: "Cart" });
     if (onPressCart) return onPressCart();
-    navigation.navigate("CartTab");
+    navigation.navigate("CartFlow", { screen: "Cart" });
   };
 
   return (

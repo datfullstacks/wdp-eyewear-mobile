@@ -16,7 +16,10 @@ import RegisterScreen from "../screens/RegisterScreen";
 import HomeScreen from "../screens/HomeScreen";
 import ProductsScreen from "../screens/ProductsScreen";
 import CartScreen from "../screens/CartScreen";
+import CheckoutScreen from "../screens/CheckoutScreen";
+import CheckoutStatusScreen from "../screens/CheckoutStatusScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import OrdersScreen from "../screens/OrdersScreen";
 import ProductDetailScreen from "../screens/ProductDetailScreen";
 import FavoritesScreen from "../screens/FavoritesScreen";
 
@@ -28,6 +31,7 @@ const ProductsStack = createNativeStackNavigator();
 const CartStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
 const FavoritesStack = createNativeStackNavigator();
+const OrdersStack = createNativeStackNavigator();
 
 function HomeStackScreen() {
   return (
@@ -51,6 +55,8 @@ function CartStackScreen() {
   return (
     <CartStack.Navigator screenOptions={{ headerShown: false }}>
       <CartStack.Screen name="Cart" component={CartScreen} />
+      <CartStack.Screen name="Checkout" component={CheckoutScreen} />
+      <CartStack.Screen name="CheckoutStatus" component={CheckoutStatusScreen} />
     </CartStack.Navigator>
   );
 }
@@ -59,9 +65,19 @@ function ProfileStackScreen() {
   return (
     <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
       <ProfileStack.Screen name="Profile" component={ProfileScreen} />
+      <ProfileStack.Screen name="Orders" component={OrdersScreen} />
     </ProfileStack.Navigator>
   );
 }
+
+function OrdersStackScreen() {
+  return (
+    <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
+      <OrdersStack.Screen name="Orders" component={OrdersScreen} />
+    </OrdersStack.Navigator>
+  );
+}
+
 
 // Favorites stack
 function FavoritesStackScreen() {
@@ -96,7 +112,7 @@ function MainTabs({ navigation }) {
           if (route.name === "HomeTab") iconName = focused ? "home" : "home-outline";
           if (route.name === "ProductsTab") iconName = focused ? "cube" : "cube-outline";
           if (route.name === "FavTab") iconName = focused ? "heart" : "heart-outline";
-          if (route.name === "CartTab") iconName = focused ? "clipboard" : "clipboard-outline";
+          if (route.name === "OrdersTab") iconName = focused ? "clipboard" : "clipboard-outline";
           if (route.name === "ProfileTab") iconName = focused ? "person" : "person-outline";
           return <Ionicons name={iconName} size={22} color={color} />;
         },
@@ -151,17 +167,17 @@ function MainTabs({ navigation }) {
       />
 
       <Tab.Screen
-        name="CartTab"
-        component={CartStackScreen}
+        name="OrdersTab"
+        component={OrdersStackScreen}
         options={{ tabBarLabel: "Đơn hàng" }}
-        listeners={{
+        listeners={({ navigation }) => ({
           tabPress: (e) => {
             if (!token) {
               e.preventDefault();
               navigation.navigate("Login");
             }
           },
-        }}
+        })}
       />
 
       <Tab.Screen
@@ -215,6 +231,7 @@ export default function AppNavigation() {
         <RootStack.Screen name="Tabs" component={MainTabs} />
         <RootStack.Screen name="Login" component={LoginScreen} />
         <RootStack.Screen name="Register" component={RegisterScreen} />
+        <RootStack.Screen name="CartFlow" component={CartStackScreen} />
       </RootStack.Navigator>
     </NavigationContainer>
   );

@@ -15,7 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 
 import { useFavoriteStore } from "../store/favoriteStore";
-import { MOCK_PRODUCTS, getRelatedProducts } from "../data/mockProducts";
+import { useProducts } from "../hooks/useProducts";
+import { getRelatedProducts } from "../services/productService";
 import { useCartStore } from "../store/cartStore";
 import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
@@ -42,6 +43,8 @@ const ORDER_TYPES = {
 export default function ProductDetailScreen({ navigation, route }) {
   const token = useAuthStore((s) => s.token);
   const passedItem = route?.params?.item;
+  const passedId = route?.params?.id || route?.params?.productId;
+  const { products } = useProducts();
   const [specsOpen, setSpecsOpen] = useState(true);
 
   const requireLogin = () => {
@@ -53,8 +56,9 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const product = useMemo(() => {
     if (passedItem) return passedItem;
-    return MOCK_PRODUCTS?.[0] || null;
-  }, [passedItem]);
+    if (passedId) return products.find((p) => p.id === passedId) || null;
+    return products?.[0] || null;
+  }, [passedItem, passedId, products]);
 
   // hydrate cart 1 lần
   useEffect(() => {
@@ -73,7 +77,12 @@ export default function ProductDetailScreen({ navigation, route }) {
     return product.discountPct ?? calcDiscountPct(product.price, product.originalPrice);
   }, [product]);
 
-  const headerTitle = product?.type === "LENS" ? "Chi tiết tròng kính" : "Chi tiết gọng kính";
+  const headerTitle =
+    product?.type === "LENS"
+      ? "Chi tiết tròng kính"
+      : product?.type === "FRAME"
+        ? "Chi tiết gọng kính"
+        : "Chi tiết sản phẩm";
 
   // Order type
   const [orderType, setOrderType] = useState(
@@ -84,6 +93,21 @@ export default function ProductDetailScreen({ navigation, route }) {
   const [colorId, setColorId] = useState(product?.type === "FRAME" ? product?.colors?.[0]?.id : null);
   const [size, setSize] = useState(product?.type === "FRAME" ? product?.sizes?.[0] : "M");
   const [qty, setQty] = useState(1);
+
+  useEffect(() => {
+    if (!product) return;
+    setOrderType(product.defaultOrderType || product.orderTypes?.[0] || "READY");
+
+    if (product.type === "FRAME") {
+      setColorId(product.colors?.[0]?.id || null);
+      setSize(product.sizes?.[0] || "M");
+    } else {
+      setColorId(null);
+      setSize("M");
+    }
+
+    setQty(1);
+  }, [product]);
 
   // LENS Rx
   const [rxOD, setRxOD] = useState({ CYL: "", AXIS: "" });
@@ -106,8 +130,8 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const related = useMemo(() => {
     if (!product) return [];
-    return getRelatedProducts(MOCK_PRODUCTS, product.relatedIds || []);
-  }, [product]);
+    return getRelatedProducts(products, product);
+  }, [product, products]);
 
   const canBuy = product?.stockStatus !== "OUT_OF_STOCK";
   const minQty = product?.qtyLimits?.min ?? 1;
@@ -286,7 +310,7 @@ function HeaderBar({ navigation, title }) {
           <Ionicons name="heart" size={24} color="#EF4444" />
         </TouchableOpacity>
 
-        <CartIconButton onPress={() => navigation.navigate("Tabs", { screen: "CartTab" })} />
+        <CartIconButton onPress={() => navigation.navigate("CartFlow", { screen: "Cart" })} />
       </View>
     </View>
   );
@@ -389,46 +413,57 @@ function LensOptions({ rxOD, rxOS, setRxOD, setRxOS, canBuy, onAdd, onBuyNow }) 
 }
 
 function FrameOptions({ product, colorId, setColorId, size, setSize, qty, incQty, decQty, canBuy, onAdd, onBuyNow }) {
+  const hasColors = Array.isArray(product?.colors) && product.colors.length > 0;
+  const hasSizes = Array.isArray(product?.sizes) && product.sizes.length > 0;
+
   return (
     <Card>
-      <Text style={styles.sectionTitle}>Màu sắc</Text>
-      <View style={styles.colorRow}>
-        {(product.colors || []).map((c) => {
-          const active = c.id === colorId;
-          return (
-            <TouchableOpacity
-              key={c.id}
-              activeOpacity={0.85}
-              onPress={() => setColorId(c.id)}
-              style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
-            >
-              <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {hasColors && (
+        <>
+          <Text style={styles.sectionTitle}>Màu sắc</Text>
+          <View style={styles.colorRow}>
+            {(product.colors || []).map((c) => {
+              const active = c.id === colorId;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  activeOpacity={0.85}
+                  onPress={() => setColorId(c.id)}
+                  style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
+                >
+                  <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
 
-      <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Kích thước</Text>
-      <View style={styles.sizeRow}>
-        {(product.sizes || []).map((s) => {
-          const active = s === size;
-          return (
-            <TouchableOpacity
-              key={s}
-              activeOpacity={0.85}
-              onPress={() => setSize(s)}
-              style={[styles.sizePill, active && styles.sizePillActive]}
-            >
-              <Text style={[styles.sizeText, active && styles.sizeTextActive]}>{s}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {hasSizes && (
+        <>
+          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Kích thước</Text>
+          <View style={styles.sizeRow}>
+            {(product.sizes || []).map((s) => {
+              const active = s === size;
+              return (
+                <TouchableOpacity
+                  key={s}
+                  activeOpacity={0.85}
+                  onPress={() => setSize(s)}
+                  style={[styles.sizePill, active && styles.sizePillActive]}
+                >
+                  <Text style={[styles.sizeText, active && styles.sizeTextActive]}>{s}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
 
       <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Số lượng</Text>
       <View style={styles.qtyRow}>
         <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={decQty}>
-          <Text style={styles.qtyBtnText}>−</Text>
+          <Text style={styles.qtyBtnText}>-</Text>
         </TouchableOpacity>
         <Text style={styles.qtyValue}>{qty}</Text>
         <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={incQty}>

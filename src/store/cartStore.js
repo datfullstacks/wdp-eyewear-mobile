@@ -31,6 +31,7 @@ function isRxFilled(rxOD, rxOS) {
 function pickProductSnapshot(p) {
   return {
     id: p.id,
+    apiId: p.apiId || null,
     type: p.type, // "LENS" | "FRAME"
     name: p.name,
     image: p.image,

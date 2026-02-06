@@ -5,7 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import ProductCard from "../components/ProductCard";
-import { MOCK_PRODUCTS } from "../data/mockProducts";
+import { useProducts } from "../hooks/useProducts";
 import { useFavoriteStore } from "../store/favoriteStore";
 
 const { width } = Dimensions.get("window");
@@ -19,6 +19,7 @@ export default function FavoritesScreen({ navigation }) {
   const hydrate = useFavoriteStore((s) => s.hydrate);
   const toggle = useFavoriteStore((s) => s.toggle);
   const clear = useFavoriteStore((s) => s.clear);
+  const { products, isLoading } = useProducts();
 
   useEffect(() => {
     if (isHydrating) hydrate();
@@ -26,8 +27,8 @@ export default function FavoritesScreen({ navigation }) {
 
   const data = useMemo(() => {
     const setIds = new Set(ids);
-    return MOCK_PRODUCTS.filter((p) => setIds.has(p.id));
-  }, [ids]);
+    return products.filter((p) => setIds.has(p.id));
+  }, [ids, products]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -72,15 +73,23 @@ export default function FavoritesScreen({ navigation }) {
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <Ionicons name="heart-outline" size={44} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>Chưa có sản phẩm yêu thích</Text>
-            <Text style={styles.emptySub}>Hãy bấm ♥ ở sản phẩm để lưu lại nhé.</Text>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={styles.goBtn}
-              onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
-            >
-              <Text style={styles.goBtnText}>Đi mua sắm</Text>
-            </TouchableOpacity>
+            <Text style={styles.emptyTitle}>
+              {isLoading ? "Đang tải danh sách..." : "Chưa có sản phẩm yêu thích"}
+            </Text>
+            {!isLoading && (
+              <Text style={styles.emptySub}>
+                Hãy bấm ♥ ở sản phẩm để lưu lại nhé.
+              </Text>
+            )}
+            {!isLoading && (
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.goBtn}
+                onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
+              >
+                <Text style={styles.goBtnText}>Đi mua sắm</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
         ListFooterComponent={<View style={{ height: 16 }} />}
