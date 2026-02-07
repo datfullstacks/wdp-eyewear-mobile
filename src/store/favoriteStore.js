@@ -1,6 +1,12 @@
 // src/store/favoriteStore.js
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
+import {
+  addMyFavoriteApi,
+  clearMyFavoritesApi,
+  getMyFavoriteIdsApi,
+  removeMyFavoriteApi,
+} from "../services/userService";
 
 const FAV_KEY_BASE = "FAVORITES_V1";
 const makeFavKey = (userKey) => (userKey ? `${FAV_KEY_BASE}:${userKey}` : null);
@@ -9,6 +15,13 @@ export const useFavoriteStore = create((set, get) => ({
   ids: [],
   isHydrating: true,
   userKey: null,
+
+  applyIds: async (ids) => {
+    const normalized = Array.isArray(ids) ? ids.map((x) => String(x)) : [];
+    set({ ids: normalized });
+    await get().persist(normalized);
+    return normalized;
+  },
 
   setUser: async (userKey) => {
     set({ userKey: userKey || null, isHydrating: true, ids: [] });
@@ -29,6 +42,12 @@ export const useFavoriteStore = create((set, get) => ({
     } catch {
       set({ ids: [], isHydrating: false });
     }
+
+    // Sync from backend when logged in, fallback to local storage on errors.
+    try {
+      const remoteIds = await getMyFavoriteIdsApi();
+      await get().applyIds(remoteIds);
+    } catch {}
   },
 
   persist: async (ids) => {
@@ -41,20 +60,36 @@ export const useFavoriteStore = create((set, get) => ({
 
   isFav: (id) => get().ids.includes(id),
 
-  toggle: (productOrId) => {
+  toggle: async (productOrId) => {
     const id = typeof productOrId === "string" ? productOrId : productOrId?.id;
     if (!id) return;
 
-    const ids = get().ids;
-    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [id, ...ids];
+    const ids = get().ids.map((x) => String(x));
+    const targetId = String(id);
+    const isRemoving = ids.includes(targetId);
+    const next = isRemoving ? ids.filter((x) => x !== targetId) : [targetId, ...ids];
 
     set({ ids: next });
-    get().persist(next);
+    await get().persist(next);
+
+    try {
+      const remoteIds = isRemoving
+        ? await removeMyFavoriteApi(targetId)
+        : await addMyFavoriteApi(targetId);
+      await get().applyIds(remoteIds);
+    } catch {
+      set({ ids });
+      await get().persist(ids);
+    }
   },
 
-  clear: () => {
+  clear: async () => {
     const key = makeFavKey(get().userKey);
     set({ ids: [] });
-    if (key) AsyncStorage.removeItem(key).catch(() => {});
+    if (key) await AsyncStorage.removeItem(key).catch(() => {});
+    try {
+      const remoteIds = await clearMyFavoritesApi();
+      await get().applyIds(remoteIds);
+    } catch {}
   },
 }));

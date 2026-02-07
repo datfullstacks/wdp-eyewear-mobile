@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,12 +7,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuthStore } from "../store/authStore";
 import Toast from "react-native-toast-message";
+import { Ionicons } from "@expo/vector-icons";
+import { makeRedirectUri } from "expo-auth-session";
+import * as QueryParams from "expo-auth-session/build/QueryParams";
+import * as WebBrowser from "expo-web-browser";
+import { supabase } from "../services/supabaseClient";
+
+WebBrowser.maybeCompleteAuthSession();
+
+const redirectTo = makeRedirectUri({ path: "auth/callback" });
 
 const loginSchema = z.object({
   email: z.string().email("Email không hợp lệ"),
@@ -21,7 +31,76 @@ const loginSchema = z.object({
 
 export default function LoginScreen({ navigation }) {
   const login = useAuthStore((s) => s.login);
+  const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
   const [apiError, setApiError] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Helper: đọc access_token/refresh_token từ URL callback
+  const createSessionFromUrl = useCallback(async (url) => {
+    const { params, errorCode } = QueryParams.getQueryParams(url);
+    if (errorCode) throw new Error(errorCode);
+
+    const access_token = params.access_token;
+    const refresh_token = params.refresh_token;
+    if (!access_token || !refresh_token) return null;
+
+    const { data, error } = await supabase.auth.setSession({
+      access_token,
+      refresh_token,
+    });
+    if (error) throw error;
+    return { session: data.session, access_token };
+  }, []);
+
+  // Google Sign-In qua browser (Expo Go compatible)
+  const handleGoogleSignIn = useCallback(async () => {
+    try {
+      setApiError("");
+      setGoogleLoading(true);
+
+      console.log("redirectTo =", redirectTo);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) throw error;
+
+      // Mở browser để user đăng nhập Google
+      const res = await WebBrowser.openAuthSessionAsync(
+        data.url ?? "",
+        redirectTo
+      );
+
+      if (res.type === "success") {
+        const result = await createSessionFromUrl(res.url);
+        if (!result?.access_token) {
+          throw new Error("Không lấy được access_token từ Supabase");
+        }
+
+        // Gửi accessToken lên BE để lấy JWT + user MongoDB
+        await loginWithGoogle({ accessToken: result.access_token });
+
+        Toast.show({
+          type: "success",
+          text1: "Đăng nhập Google thành công",
+          text2: "Chào mừng bạn! 🎉",
+        });
+        navigation.replace("Tabs");
+      }
+      // res.type === "cancel" -> user đóng browser, không làm gì
+    } catch (e) {
+      setApiError(
+        e?.response?.data?.message || e?.message || "Đăng nhập Google thất bại"
+      );
+      console.log("Google sign-in error", e);
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [loginWithGoogle, navigation, createSessionFromUrl]);
 
   const {
     control,
@@ -141,6 +220,40 @@ export default function LoginScreen({ navigation }) {
             >
               <Text style={styles.buttonText}>
                 {isSubmitting ? "Đang đăng nhập..." : "Đăng Nhập"}
+              </Text>
+            </Pressable>
+
+            {/* --- Divider --- */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>Hoặc</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* --- Google Sign-In Button --- */}
+            <Pressable
+              onPress={handleGoogleSignIn}
+              disabled={googleLoading}
+              style={({ pressed }) => [
+                styles.googleButton,
+                googleLoading ? { opacity: 0.7 } : null,
+                pressed ? { transform: [{ scale: 0.99 }] } : null,
+              ]}
+            >
+              {googleLoading ? (
+                <ActivityIndicator size="small" color="#4285F4" />
+              ) : (
+                <Ionicons
+                  name="logo-google"
+                  size={20}
+                  color="#4285F4"
+                  style={{ marginRight: 8 }}
+                />
+              )}
+              <Text style={styles.googleButtonText}>
+                {googleLoading
+                  ? "Đang xử lý..."
+                  : "Đăng nhập với Google"}
               </Text>
             </Pressable>
 
@@ -297,5 +410,47 @@ const styles = {
     top: 220,
     right: -150,
     backgroundColor: "rgba(236, 72, 153, 0.14)",
+  },
+
+  /* Divider */
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 18,
+    marginBottom: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.10)",
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "rgba(15, 23, 42, 0.45)",
+  },
+
+  /* Google button */
+  googleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: "rgba(15, 23, 42, 0.12)",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  googleButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1F2A37",
+    letterSpacing: 0.2,
   },
 };

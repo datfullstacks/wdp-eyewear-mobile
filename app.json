@@ -2,6 +2,7 @@
   "expo": {
     "name": "WDP301_Mobile",
     "slug": "WDP301_Mobile",
+    "scheme": "wdpeyewear",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
