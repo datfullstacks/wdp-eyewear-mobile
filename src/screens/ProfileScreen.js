@@ -232,11 +232,6 @@ export default function ProfileScreen({ navigation }) {
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{displayName}</Text>
               <Text style={styles.email}>{displayEmail}</Text>
-
-              {/* <View style={styles.pillRow}>
-                <Pill icon="sparkles-outline" label={stats.tier} />
-                <Pill icon="trophy-outline" label={`${stats.points} pts`} />
-              </View> */}
             </View>
           </View>
 
