@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useCartStore } from "../store/cartStore";
+import { useAuthStore } from "../store/authStore";
 import {
   buildCheckoutPayload,
   buildCheckoutItems,
   fetchCheckoutQuote,
   createCheckout,
 } from "../services/checkoutService";
+import { addMyAddressApi, getMyAddressesApi } from "../services/userService";
 
 const SHIPPING_METHODS = [
   {
@@ -70,6 +72,7 @@ export default function CheckoutScreen({ navigation, route }) {
   const items = useCartStore((s) => s.items);
   const isHydrating = useCartStore((s) => s.isHydrating);
   const hydrate = useCartStore((s) => s.hydrate);
+  const token = useAuthStore((s) => s.token);
 
   const [address, setAddress] = useState(null);
   const [isEditingAddress, setIsEditingAddress] = useState(false);
@@ -80,6 +83,7 @@ export default function CheckoutScreen({ navigation, route }) {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [addressLoading, setAddressLoading] = useState(false);
 
   const quoteErrorMessage = useMemo(() => {
     const data = quoteError?.response?.data || {};
@@ -117,6 +121,42 @@ export default function CheckoutScreen({ navigation, route }) {
   }, [isHydrating, hydrate]);
 
   useEffect(() => {
+    if (!token) return;
+    let active = true;
+    setAddressLoading(true);
+
+    getMyAddressesApi()
+      .then((data) => {
+        if (!active) return;
+        const list = Array.isArray(data) ? data : [];
+        const defaultAddress = list.find((a) => a?.isDefault) || list[0] || null;
+        if (defaultAddress) {
+          setAddress({
+            fullName: defaultAddress.fullName || "",
+            phone: defaultAddress.phone || "",
+            email: defaultAddress.email || "",
+            line1: defaultAddress.line1 || "",
+            line2: defaultAddress.line2 || "",
+            ward: defaultAddress.ward || "",
+            district: defaultAddress.district || "",
+            province: defaultAddress.province || "",
+            country: defaultAddress.country || "VN",
+            note: defaultAddress.note || "",
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!active) return;
+        setAddressLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
     if (!paymentMethods.find((m) => m.id === paymentId)) {
       setPaymentId(paymentMethods[0]?.id || "cod");
     }
@@ -132,7 +172,7 @@ export default function CheckoutScreen({ navigation, route }) {
     setIsEditingAddress(false);
   };
 
-  const saveEditAddress = () => {
+  const saveEditAddress = async () => {
     const cleaned = {
       fullName: draftAddress.fullName.trim(),
       phone: draftAddress.phone.trim(),
@@ -153,8 +193,38 @@ export default function CheckoutScreen({ navigation, route }) {
         cleaned.district ||
         cleaned.province
     );
-    setAddress(hasValue ? cleaned : null);
-    setIsEditingAddress(false);
+    if (!hasValue) {
+      setAddress(null);
+      setIsEditingAddress(false);
+      return;
+    }
+
+    try {
+      if (token) {
+        const updated = await addMyAddressApi(cleaned);
+        const list = Array.isArray(updated) ? updated : [];
+        const selected = list.find((a) => a?.isDefault) || list[list.length - 1] || cleaned;
+        setAddress({
+          fullName: selected.fullName || "",
+          phone: selected.phone || "",
+          email: selected.email || "",
+          line1: selected.line1 || "",
+          line2: selected.line2 || "",
+          ward: selected.ward || "",
+          district: selected.district || "",
+          province: selected.province || "",
+          country: selected.country || "VN",
+          note: selected.note || "",
+        });
+      } else {
+        setAddress(cleaned);
+      }
+      setIsEditingAddress(false);
+    } catch (err) {
+      const data = err?.response?.data || {};
+      const message = data.message || data.error || err?.message || "Khong luu duoc dia chi";
+      Alert.alert("Dia chi", message);
+    }
   };
 
   const hasAddress = Boolean(
@@ -312,6 +382,7 @@ export default function CheckoutScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
+            {addressLoading ? <Text style={styles.addressMeta}>Dang tai so dia chi...</Text> : null}
 
             {isEditingAddress ? (
               <View style={styles.addressForm}>

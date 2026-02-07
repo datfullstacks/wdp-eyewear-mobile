@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { api } from "../services/apiClient";
 
 const PAYMENT_STATUS_META = {
   PENDING_QR: {
@@ -42,7 +43,6 @@ const PAYMENT_STATUS_META = {
   },
 };
 
-const PAYMENT_STATUS_KEYS = Object.keys(PAYMENT_STATUS_META);
 
 const ORDER_STEPS = [
   { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
@@ -133,6 +133,82 @@ const buildAddressLines = (addr) => {
   return lines;
 };
 
+const normalizePaymentMethod = (value, payNow = 0) => {
+  const method = String(value || "").trim().toUpperCase();
+  if (method) return method;
+  return payNow > 0 ? "SEPAY" : "COD";
+};
+
+const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) => {
+  if (typeof status === "string" && PAYMENT_STATUS_META[status]) return status;
+
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "paid") return "PAID";
+  if (normalized === "failed") return "FAILED";
+  if (normalized === "refunded") return "REFUNDED";
+  if (normalized === "expired") return "EXPIRED";
+  if (normalized === "partial") return "PENDING_QR";
+  if (normalized === "pending") {
+    return method === "COD" || payNow <= 0 ? "PENDING_COD" : "PENDING_QR";
+  }
+
+  return method === "COD" || payNow <= 0 ? "PENDING_COD" : "PENDING_QR";
+};
+
+const normalizeOrderStatus = (status) => {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "pending" || normalized === "confirmed") return "CONFIRMED";
+  if (normalized === "processing") return "PACKING";
+  if (normalized === "shipped") return "SHIPPING";
+  if (normalized === "delivered") return "DELIVERED";
+  return String(status || "CONFIRMED").toUpperCase();
+};
+
+const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
+  const localBreakdown = localOrder.breakdown || {};
+  const localPayment = localOrder.payment || {};
+  const serverPayment = serverOrder.payment || {};
+  const nextPaymentStatus = serverPayment.status || serverOrder.paymentStatus || localPayment.status;
+  const inferredPaidAt =
+    String(nextPaymentStatus || "").toLowerCase() === "paid"
+      ? serverOrder.updatedAt || serverOrder.createdAt || localPayment.paidAt || null
+      : localPayment.paidAt || null;
+
+  return {
+    ...localOrder,
+    ...serverOrder,
+    orderId:
+      serverOrder._id ||
+      serverOrder.id ||
+      serverOrder.orderId ||
+      localOrder.orderId ||
+      localOrder.id,
+    code: serverOrder.code || localOrder.code,
+    breakdown: {
+      subtotal: serverOrder.subtotal ?? localBreakdown.subtotal,
+      shippingFee: serverOrder.shippingFee ?? localBreakdown.shippingFee,
+      discountAmount: serverOrder.discountAmount ?? localBreakdown.discountAmount,
+      total: serverOrder.total ?? localBreakdown.total,
+      payNow: serverOrder.payNowTotal ?? serverOrder.payNow ?? localBreakdown.payNow,
+      payLater: serverOrder.payLaterTotal ?? serverOrder.payLater ?? localBreakdown.payLater,
+    },
+    payment: {
+      ...localPayment,
+      ...serverPayment,
+      method: serverPayment.method || serverOrder.paymentMethod || localPayment.method,
+      status: nextPaymentStatus,
+      amount: serverPayment.amount ?? serverOrder.payNowTotal ?? localPayment.amount,
+      paymentCode:
+        serverPayment.paymentCode ||
+        serverPayment.code ||
+        serverOrder.paymentCode ||
+        localPayment.paymentCode,
+      content: serverPayment.content || serverOrder.paymentCode || localPayment.content,
+      paidAt: serverPayment.paidAt || serverOrder.paidAt || inferredPaidAt,
+    },
+  };
+};
+
 const DEMO_ORDER = {
   orderId: "OD123456",
   createdAt: new Date().toISOString(),
@@ -182,9 +258,11 @@ const normalizeOrder = (raw) => {
     breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
 
   const payment = raw?.payment || {};
-  const paymentMethod = payment.method || raw?.paymentMethod || (payNow > 0 ? "SEPAY" : "COD");
-  const paymentStatus =
-    payment.status || raw?.paymentStatus || (payNow > 0 ? "PENDING_QR" : "PENDING_COD");
+  const paymentMethod = normalizePaymentMethod(payment.method || raw?.paymentMethod, payNow);
+  const paymentStatus = normalizePaymentStatus(payment.status || raw?.paymentStatus, {
+    payNow,
+    method: paymentMethod,
+  });
   const paymentCode = firstTextValue(
     payment.paymentCode,
     payment.transactionId,
@@ -264,9 +342,9 @@ const normalizeOrder = (raw) => {
     : null;
 
   return {
-    orderId: raw?.orderId || raw?.code || raw?.id || "OD--",
+    orderId: raw?.orderId || raw?._id || raw?.code || raw?.id || "OD--",
     createdAt: raw?.createdAt || paymentCreatedAt,
-    status: raw?.status || "CONFIRMED",
+    status: normalizeOrderStatus(raw?.status),
     address,
     items: raw?.items || [],
     totals: {
@@ -295,11 +373,53 @@ const normalizeOrder = (raw) => {
 };
 
 export default function CheckoutStatusScreen({ navigation, route }) {
-  const rawOrder = route?.params?.order || DEMO_ORDER;
+  const initialOrder = route?.params?.order || null;
+  const [serverOrder, setServerOrder] = useState(null);
+
+  const rawOrder = useMemo(() => {
+    if (initialOrder && serverOrder) return mergeOrderSnapshot(initialOrder, serverOrder);
+    return serverOrder || initialOrder || DEMO_ORDER;
+  }, [initialOrder, serverOrder]);
+
   const order = useMemo(() => normalizeOrder(rawOrder), [rawOrder]);
+  const pollOrderId = useMemo(() => {
+    const id = rawOrder?.orderId || rawOrder?._id || rawOrder?.id;
+    if (!id) return null;
+    return String(id);
+  }, [rawOrder]);
 
   const [paymentStatus, setPaymentStatus] = useState(order.payment.status);
   const [paidAt, setPaidAt] = useState(order.payment.paidAt || null);
+
+  useEffect(() => {
+    if (!pollOrderId || pollOrderId === "OD--" || /^OD\d+$/i.test(pollOrderId)) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const fetchOrder = async () => {
+      try {
+        const res = await api.get(`/api/orders/${pollOrderId}`);
+        const data = res?.data?.data || res?.data || null;
+        if (!cancelled && data) {
+          setServerOrder(data);
+        }
+      } catch (error) {
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.log("order polling failed", error?.response?.data || error?.message || error);
+        }
+      }
+    };
+
+    fetchOrder();
+    const timer = setInterval(fetchOrder, 8000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [pollOrderId]);
 
   useEffect(() => {
     setPaymentStatus(order.payment.status);
@@ -311,15 +431,19 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     0,
     ORDER_STEPS.findIndex((s) => s.key === order.status)
   );
+  const isPaymentSettled = paymentStatus === "PAID" || paymentStatus === "REFUNDED";
+  const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled;
 
-  const updatePaymentStatus = (nextStatus) => {
-    setPaymentStatus(nextStatus);
-    if (nextStatus === "PAID") {
-      setPaidAt(new Date().toISOString());
-    } else {
-      setPaidAt(null);
-    }
+  const navigateToTab = (tabName, screenName) => {
+    navigation.navigate("Tabs", {
+      screen: tabName,
+      params: screenName ? { screen: screenName } : undefined,
+    });
   };
+
+  const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
+  const handleViewOrderDetail = () => navigateToTab("OrdersTab", "Orders");
+
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -346,7 +470,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <Text style={styles.descText}>{paymentMeta.desc}</Text>
         </View>
 
-        {order.payment.qrUrl ? (
+        {shouldShowQr ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>QR thanh toán SePay</Text>
             <Text style={styles.mutedText}>Quét mã để đặt cọc và hoàn tất đơn đặt trước.</Text>
@@ -364,7 +488,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Nội dung</Text>
               <Text style={styles.metaValue}>
-                {order.payment.description || order.payment.content || "--"}
+                {order.payment.content || order.payment.paymentCode || order.payment.description || "--"}
               </Text>
             </View>
             <View style={styles.rowBetween}>
@@ -412,26 +536,32 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <Text style={styles.metaLabel}>Thời gian giao dịch</Text>
             <Text style={styles.metaValue}>{formatDateTime(paidAt)}</Text>
           </View>
-
-          <View style={styles.divider} />
-          <Text style={styles.sectionHint}>Bypass trạng thái thanh toán</Text>
-          <View style={styles.chipRow}>
-            {PAYMENT_STATUS_KEYS.map((key) => {
-              const active = key === paymentStatus;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.chip, active && styles.chipActive]}
-                  onPress={() => updatePaymentStatus(key)}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {PAYMENT_STATUS_META[key].label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
         </View>
+
+        {isPaymentSettled ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Thanh toan thanh cong</Text>
+            <Text style={styles.mutedText}>
+              Don hang da duoc ghi nhan. Ban co the mua tiep hoac xem chi tiet don.
+            </Text>
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnGhost]}
+                activeOpacity={0.85}
+                onPress={handleContinueShopping}
+              >
+                <Text style={[styles.actionText, styles.actionTextGhost]}>Mua tiep</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnPrimary]}
+                activeOpacity={0.85}
+                onPress={handleViewOrderDetail}
+              >
+                <Text style={[styles.actionText, styles.actionTextPrimary]}>Xem chi tiet</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
@@ -537,7 +667,6 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: "900" },
 
   sectionTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  sectionHint: { marginTop: 12, fontSize: 12.5, fontWeight: "800", color: "#6B7280" },
   mutedText: { marginTop: 6, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
 
   qrWrap: {
@@ -553,6 +682,23 @@ const styles = StyleSheet.create({
   rowBetween: { marginTop: 10, flexDirection: "row", justifyContent: "space-between" },
   metaLabel: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
   metaValue: { fontSize: 12.5, fontWeight: "900", color: "#111827", flexShrink: 1, textAlign: "right" },
+  actionRow: { marginTop: 12, flexDirection: "row", gap: 10 },
+  actionBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnGhost: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  actionBtnPrimary: { backgroundColor: "#2563EB" },
+  actionText: { fontSize: 13, fontWeight: "900" },
+  actionTextGhost: { color: "#111827" },
+  actionTextPrimary: { color: "#FFFFFF" },
 
   divider: { height: 1, backgroundColor: "#EEF2F7", marginVertical: 10 },
   totalLabel: { fontSize: 13.5, fontWeight: "900", color: "#111827" },
@@ -583,15 +729,4 @@ const styles = StyleSheet.create({
   stepTitle: { fontSize: 13.5, fontWeight: "900", color: "#6B7280" },
   stepTitleActive: { color: "#111827" },
   stepDesc: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
-
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-  },
-  chipActive: { backgroundColor: "#111827" },
-  chipText: { fontSize: 11.5, fontWeight: "800", color: "#6B7280" },
-  chipTextActive: { color: "#FFFFFF" },
 });
