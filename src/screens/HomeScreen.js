@@ -1,3 +1,4 @@
+// screens/HomeScreen.js
 import React, { useMemo, useState } from "react";
 import {
   Dimensions,
@@ -10,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { FontAwesome5, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import HomeBanner from "../components/HomeBanner";
@@ -21,8 +22,9 @@ import { useAuthStore } from "../store/authStore";
 
 const { width } = Dimensions.get("window");
 const GAP = 12;
-const PAGE_W = width - 32; // paddingHorizontal 16*2
-const CARD_W = (PAGE_W - GAP) / 2; // 2 cột
+const PAGE_PADDING = 16;
+const PAGE_W = width - PAGE_PADDING * 2;
+const CARD_W = (PAGE_W - GAP) / 2;
 
 const BANNERS = [
   {
@@ -45,24 +47,12 @@ const BANNERS = [
   },
 ];
 
-// const CATEGORIES = [
-//   { id: "1", label: "Gọng kính", lib: "fa5", icon: "glasses" },
-//   { id: "2", label: "Tròng kính", lib: "ion", icon: "aperture-outline" },
-//   { id: "3", label: "Kính râm", lib: "ion", icon: "glasses" },
-//   { id: "4", label: "Phụ kiện", lib: "ion", icon: "bag-handle-outline" },
-//   { id: "5", label: "Dịch vụ", lib: "ion", icon: "construct-outline" },
-// ];
-
-// const FILTER_CHIPS = ["In-stock", "Pre-order", "Làm kính theo đơn"];
-
-// ===== Helper: chunk array theo pageSize =====
 function chunkArray(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
-// ===== ProductPager: mỗi page = 2 sản phẩm (1 hàng) =====
 function ProductPager({ products = [], onPressItem }) {
   const pages = useMemo(() => chunkArray(products, 2), [products]);
   const [pageIndex, setPageIndex] = useState(0);
@@ -108,13 +98,20 @@ function ProductPager({ products = [], onPressItem }) {
   );
 }
 
-
 export default function HomeScreen({ navigation }) {
   const token = useAuthStore((s) => s.token);
   const logout = useAuthStore((s) => s.logout);
 
   const [query, setQuery] = useState("");
   const { products } = useProducts();
+
+  const submitSearch = () => {
+    const q = query.trim();
+    navigation.navigate("ProductsTab", {
+      screen: "Products",
+      params: { q },
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -123,89 +120,51 @@ export default function HomeScreen({ navigation }) {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* HEADER */}
+        {/* ✅ HEADER (giống kiểu cũ bạn làm) */}
         <View style={styles.headerWrap}>
-          {/* Row 1 */}
+          {/* Row 1: location + login/logout (không title) */}
           <View style={styles.headerRow1}>
-            <View style={styles.locationRow}>
+            <Pressable
+              onPress={() => navigation.navigate?.("AddressBook")}
+              style={styles.locationRow}
+              android_ripple={{ color: "rgba(0,0,0,0.06)" }}
+            >
               <Ionicons name="location-outline" size={16} color="#111827" />
               <Text style={styles.locationText} numberOfLines={1}>
                 Giao đến: Quận 1, TP.HCM
               </Text>
-            </View>
+              <Ionicons name="chevron-down" size={14} color="#6B7280" />
+            </Pressable>
 
             {token ? (
-              <Pressable onPress={logout} style={styles.logoutBtn}>
+              <Pressable onPress={logout} style={styles.authBtn}>
                 <Ionicons name="log-out-outline" size={14} color="#fff" />
-                <Text style={styles.logoutText}>Logout</Text>
+                <Text style={styles.authText}>Logout</Text>
               </Pressable>
             ) : (
               <Pressable
                 onPress={() => navigation.navigate("Login")}
-                style={styles.loginBtn}
+                style={[styles.authBtn, { backgroundColor: "#4F46E5" }]}
               >
                 <Ionicons name="log-in-outline" size={14} color="#fff" />
-                <Text style={styles.loginText}>Login</Text>
+                <Text style={styles.authText}>Login</Text>
               </Pressable>
             )}
           </View>
 
-          {/* Row 2: Search + Fav + Cart */}
+          {/* Row 2: Search */}
           <HeaderSearchActions
             value={query}
             onChangeText={setQuery}
             placeholder="Tìm gọng kính, tròng kính, dịch vụ..."
             onPressFav={() => navigation.navigate("FavTab")}
             onPressCart={() => navigation.navigate("CartFlow", { screen: "Cart" })}
-            onSubmit={() => {
-              const q = query.trim();
-              navigation.navigate("ProductsTab", {
-                screen: "Products",
-                params: { q },
-              });
-            }}
+            onSubmit={submitSearch}
           />
         </View>
 
         {/* BANNER */}
         <HomeBanner banners={BANNERS} autoPlay intervalMs={3000} />
-
-        {/* CATEGORIES */}
-        {/* <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.catRow}
-        >
-          {CATEGORIES.map((c) => (
-            <TouchableOpacity
-              key={c.id}
-              style={styles.catItem}
-              activeOpacity={0.85}
-            >
-              <View style={styles.catIcon}>
-                {c.lib === "fa5" ? (
-                  <FontAwesome5 name={c.icon} size={18} color="#111827" solid />
-                ) : (
-                  <Ionicons name={c.icon} size={20} color="#111827" />
-                )}
-              </View>
-              <Text style={styles.catLabel}>{c.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView> */}
-
-        {/* CHIPS */}
-        {/* <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipRow}
-        >
-          {FILTER_CHIPS.map((t) => (
-            <TouchableOpacity key={t} style={styles.chip} activeOpacity={0.85}>
-              <Text style={styles.chipText}>{t}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView> */}
 
         {/* SECTION: Bán chạy */}
         <View style={styles.sectionRow}>
@@ -224,7 +183,7 @@ export default function HomeScreen({ navigation }) {
 
         {/* SECTION: Mới về */}
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Mới Về</Text>
+          <Text style={styles.sectionTitle}>Mới về</Text>
           <TouchableOpacity
             onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
           >
@@ -252,8 +211,7 @@ export default function HomeScreen({ navigation }) {
           onPressItem={(item) => navigation.navigate("ProductDetail", { item })}
         />
 
-        {/* FOOTER */}
-        <HomeFooter onChatPress={() => { }} onCallPress={() => { }} />
+        <HomeFooter onChatPress={() => {}} onCallPress={() => {}} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -261,55 +219,48 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F7FB" },
-  listContent: { paddingHorizontal: 16, paddingBottom: 24 },
+  listContent: { paddingHorizontal: PAGE_PADDING, paddingBottom: 24 },
 
-  headerWrap: { marginTop: 8, gap: 10 },
+  // ✅ header kiểu cũ, nhưng spacing gọn & đồng bộ
+  headerWrap: {
+    marginTop: 8,
+    gap: 10,
+    marginBottom: 10,
+  },
   headerRow1: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
   },
-  locationRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6 },
-  locationText: { fontSize: 13, color: "#111827", fontWeight: "700", flexShrink: 1 },
 
-  logoutBtn: {
+  locationRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 38,
+  },
+  locationText: {
+    fontSize: 12.5,
+    color: "#111827",
+    fontWeight: "800",
+    flexShrink: 1,
+  },
+
+  authBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     backgroundColor: "#E11D48",
     paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 10,
+    height: 38,
+    borderRadius: 12,
   },
-  logoutText: { color: "#fff", fontWeight: "800", fontSize: 12 },
-
-  loginBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#4F46E5",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 10,
-  },
-  loginText: { color: "#fff", fontWeight: "800", fontSize: 12 },
-
-  catRow: { gap: 16, paddingVertical: 14 },
-  catItem: { alignItems: "center", gap: 6 },
-  catIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  catLabel: { fontSize: 12, color: "#111827", fontWeight: "700" },
-
-  chipRow: { gap: 8, paddingBottom: 6 },
-  chip: { backgroundColor: "#FFFFFF", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  chipText: { fontSize: 12, color: "#111827", fontWeight: "700" },
+  authText: { color: "#fff", fontWeight: "900", fontSize: 12 },
 
   sectionRow: {
     marginTop: 10,

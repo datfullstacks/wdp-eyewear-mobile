@@ -62,7 +62,9 @@ function RowItem({ icon, title, subtitle, rightText, onPress, danger, accent }) 
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={[styles.rowTitle, danger && { color: "#D92D20" }]}>{title}</Text>
+        <Text style={[styles.rowTitle, danger && { color: "#D92D20" }]}>
+          {title}
+        </Text>
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
 
@@ -113,9 +115,24 @@ function LoginRequired({ navigation }) {
   );
 }
 
-export default function ProfileScreen({ navigation }) {
-  const greeting = useMemo(() => "My Profile", []);
+/* -------------------- Header (same format as Favorites) -------------------- */
 
+function ProfileHeader({ right }) {
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerLeft}>
+        <View style={styles.iconBtn} />{/* placeholder để cân layout như Favorites */}
+        <Text style={styles.headerTitle}>Tài khoản</Text>
+      </View>
+
+      {right ?? <View style={styles.iconBtn} />}
+    </View>
+  );
+}
+
+/* -------------------- Screen -------------------- */
+
+export default function ProfileScreen({ navigation }) {
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const isHydrating = useAuthStore((s) => s.isHydrating);
@@ -188,9 +205,15 @@ export default function ProfileScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Tai khoan</Text>
-        </View>
+
+        <ProfileHeader
+          right={
+            <Pressable onPress={logout} style={styles.iconBtn}>
+              <Ionicons name="log-out-outline" size={20} color="#111827" />
+            </Pressable>
+          }
+        />
+
         <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
           <Text style={{ fontWeight: "800", color: "#111827" }}>Dang tai ho so...</Text>
         </View>
@@ -205,11 +228,23 @@ export default function ProfileScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
 
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{greeting}</Text>
-      </View>
+      {/* Header: same format as Favorites */}
+      <ProfileHeader
+        right={
+          <Pressable
+            onPress={() => console.log("Edit profile")}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="create-outline" size={20} color="#111827" />
+          </Pressable>
+        }
+      />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile card */}
         <Card style={{ padding: 16 }}>
           <View style={styles.profileTop}>
             <View style={styles.avatarRing}>
@@ -225,10 +260,10 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.name}>{displayName}</Text>
               <Text style={styles.email}>{displayEmail}</Text>
 
-              <View style={styles.pillRow}>
+              {/* <View style={styles.pillRow}>
                 <Pill icon="sparkles-outline" label={stats.tier} />
                 <Pill icon="trophy-outline" label={`${stats.points} pts`} />
-              </View>
+              </View> */}
             </View>
           </View>
 
@@ -237,7 +272,10 @@ export default function ProfileScreen({ navigation }) {
               onPress={() => navigation.navigate("Orders")}
               style={({ pressed }) => [
                 styles.statItem,
-                { backgroundColor: STAT_ACCENTS.orders.bg, borderColor: "rgba(79,70,229,0.18)" },
+                {
+                  backgroundColor: STAT_ACCENTS.orders.bg,
+                  borderColor: "rgba(79,70,229,0.18)",
+                },
                 pressed && styles.pressedSoft,
               ]}
             >
@@ -252,7 +290,10 @@ export default function ProfileScreen({ navigation }) {
               onPress={() => navigation.navigate("Favorites")}
               style={({ pressed }) => [
                 styles.statItem,
-                { backgroundColor: STAT_ACCENTS.favorites.bg, borderColor: "rgba(219,39,119,0.18)" },
+                {
+                  backgroundColor: STAT_ACCENTS.favorites.bg,
+                  borderColor: "rgba(219,39,119,0.18)",
+                },
                 pressed && styles.pressedSoft,
               ]}
             >
@@ -267,7 +308,10 @@ export default function ProfileScreen({ navigation }) {
               onPress={() => navigation.navigate("AddressBook")}
               style={({ pressed }) => [
                 styles.statItem,
-                { backgroundColor: STAT_ACCENTS.addresses.bg, borderColor: "rgba(5,150,105,0.18)" },
+                {
+                  backgroundColor: STAT_ACCENTS.addresses.bg,
+                  borderColor: "rgba(5,150,105,0.18)",
+                },
                 pressed && styles.pressedSoft,
               ]}
             >
@@ -282,7 +326,10 @@ export default function ProfileScreen({ navigation }) {
               onPress={() => navigation.navigate("Prescription")}
               style={({ pressed }) => [
                 styles.statItem,
-                { backgroundColor: STAT_ACCENTS.rx.bg, borderColor: "rgba(37,99,235,0.18)" },
+                {
+                  backgroundColor: STAT_ACCENTS.rx.bg,
+                  borderColor: "rgba(37,99,235,0.18)",
+                },
                 pressed && styles.pressedSoft,
               ]}
             >
@@ -378,15 +425,25 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F8FB" },
 
+  // ✅ Header giống Favorites
   header: {
-    paddingTop: Platform.OS === "android" ? 25 : 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
+    paddingTop: 6,
     paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  headerTitle: { fontSize: 22, fontWeight: "800", color: "#111827", letterSpacing: 0.2 },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   content: { paddingHorizontal: 16, paddingBottom: 24 },
 
   card: {
@@ -429,7 +486,12 @@ const styles = StyleSheet.create({
   },
   pillText: { color: "#111827", fontWeight: "700", fontSize: 12 },
 
-  statGrid: { marginTop: 14, flexDirection: "row", justifyContent: "space-between", gap: 10 },
+  statGrid: {
+    marginTop: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
   statItem: {
     flex: 1,
     borderRadius: 16,
@@ -442,8 +504,20 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 16, fontWeight: "900" },
   statLabel: { fontSize: 12, color: "#6B7280", fontWeight: "700" },
 
-  rowItem: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 14 },
-  rowIconWrap: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  rowItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  rowIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   rowTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
   rowSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "600", color: "#6B7280" },
   rowRightText: { fontSize: 12, fontWeight: "800", color: "#6B7280", marginRight: 6 },
@@ -486,7 +560,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   lockTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  lockDesc: { marginTop: 6, fontSize: 13, fontWeight: "700", color: "#6B7280", textAlign: "center", lineHeight: 18 },
+  lockDesc: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 18,
+  },
   lockBtn: {
     marginTop: 14,
     width: "100%",
