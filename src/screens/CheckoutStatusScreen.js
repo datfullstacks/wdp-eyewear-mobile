@@ -43,7 +43,6 @@ const PAYMENT_STATUS_META = {
   },
 };
 
-const PAYMENT_STATUS_KEYS = Object.keys(PAYMENT_STATUS_META);
 
 const ORDER_STEPS = [
   { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
@@ -432,15 +431,19 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     0,
     ORDER_STEPS.findIndex((s) => s.key === order.status)
   );
+  const isPaymentSettled = paymentStatus === "PAID" || paymentStatus === "REFUNDED";
+  const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled;
 
-  const updatePaymentStatus = (nextStatus) => {
-    setPaymentStatus(nextStatus);
-    if (nextStatus === "PAID") {
-      setPaidAt(new Date().toISOString());
-    } else {
-      setPaidAt(null);
-    }
+  const navigateToTab = (tabName, screenName) => {
+    navigation.navigate("Tabs", {
+      screen: tabName,
+      params: screenName ? { screen: screenName } : undefined,
+    });
   };
+
+  const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
+  const handleViewOrderDetail = () => navigateToTab("OrdersTab", "Orders");
+
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -467,7 +470,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <Text style={styles.descText}>{paymentMeta.desc}</Text>
         </View>
 
-        {order.payment.qrUrl ? (
+        {shouldShowQr ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>QR thanh toán SePay</Text>
             <Text style={styles.mutedText}>Quét mã để đặt cọc và hoàn tất đơn đặt trước.</Text>
@@ -485,7 +488,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Nội dung</Text>
               <Text style={styles.metaValue}>
-                {order.payment.description || order.payment.content || "--"}
+                {order.payment.content || order.payment.paymentCode || order.payment.description || "--"}
               </Text>
             </View>
             <View style={styles.rowBetween}>
@@ -533,26 +536,32 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <Text style={styles.metaLabel}>Thời gian giao dịch</Text>
             <Text style={styles.metaValue}>{formatDateTime(paidAt)}</Text>
           </View>
-
-          <View style={styles.divider} />
-          <Text style={styles.sectionHint}>Bypass trạng thái thanh toán</Text>
-          <View style={styles.chipRow}>
-            {PAYMENT_STATUS_KEYS.map((key) => {
-              const active = key === paymentStatus;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.chip, active && styles.chipActive]}
-                  onPress={() => updatePaymentStatus(key)}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {PAYMENT_STATUS_META[key].label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
         </View>
+
+        {isPaymentSettled ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Thanh toan thanh cong</Text>
+            <Text style={styles.mutedText}>
+              Don hang da duoc ghi nhan. Ban co the mua tiep hoac xem chi tiet don.
+            </Text>
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnGhost]}
+                activeOpacity={0.85}
+                onPress={handleContinueShopping}
+              >
+                <Text style={[styles.actionText, styles.actionTextGhost]}>Mua tiep</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnPrimary]}
+                activeOpacity={0.85}
+                onPress={handleViewOrderDetail}
+              >
+                <Text style={[styles.actionText, styles.actionTextPrimary]}>Xem chi tiet</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
@@ -658,7 +667,6 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: "900" },
 
   sectionTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  sectionHint: { marginTop: 12, fontSize: 12.5, fontWeight: "800", color: "#6B7280" },
   mutedText: { marginTop: 6, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
 
   qrWrap: {
@@ -674,6 +682,23 @@ const styles = StyleSheet.create({
   rowBetween: { marginTop: 10, flexDirection: "row", justifyContent: "space-between" },
   metaLabel: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
   metaValue: { fontSize: 12.5, fontWeight: "900", color: "#111827", flexShrink: 1, textAlign: "right" },
+  actionRow: { marginTop: 12, flexDirection: "row", gap: 10 },
+  actionBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnGhost: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  actionBtnPrimary: { backgroundColor: "#2563EB" },
+  actionText: { fontSize: 13, fontWeight: "900" },
+  actionTextGhost: { color: "#111827" },
+  actionTextPrimary: { color: "#FFFFFF" },
 
   divider: { height: 1, backgroundColor: "#EEF2F7", marginVertical: 10 },
   totalLabel: { fontSize: 13.5, fontWeight: "900", color: "#111827" },
@@ -704,15 +729,4 @@ const styles = StyleSheet.create({
   stepTitle: { fontSize: 13.5, fontWeight: "900", color: "#6B7280" },
   stepTitleActive: { color: "#111827" },
   stepDesc: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
-
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-  },
-  chipActive: { backgroundColor: "#111827" },
-  chipText: { fontSize: 11.5, fontWeight: "800", color: "#6B7280" },
-  chipTextActive: { color: "#FFFFFF" },
 });

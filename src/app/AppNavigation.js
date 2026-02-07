@@ -22,6 +22,11 @@ import ProfileScreen from "../screens/ProfileScreen";
 import OrdersScreen from "../screens/OrdersScreen";
 import ProductDetailScreen from "../screens/ProductDetailScreen";
 import FavoritesScreen from "../screens/FavoritesScreen";
+import AddressBookScreen from "../screens/AddressBookScreen";
+import PrescriptionScreen from "../screens/PrescriptionScreen";
+import PaymentsScreen from "../screens/PaymentsScreen";
+import SupportScreen from "../screens/SupportScreen";
+import NotificationsScreen from "../screens/NotificationsScreen";
 
 const RootStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -66,6 +71,11 @@ function ProfileStackScreen() {
     <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
       <ProfileStack.Screen name="Profile" component={ProfileScreen} />
       <ProfileStack.Screen name="Orders" component={OrdersScreen} />
+      <ProfileStack.Screen name="AddressBook" component={AddressBookScreen} />
+      <ProfileStack.Screen name="Prescription" component={PrescriptionScreen} />
+      <ProfileStack.Screen name="Payments" component={PaymentsScreen} />
+      <ProfileStack.Screen name="Support" component={SupportScreen} />
+      <ProfileStack.Screen name="Notifications" component={NotificationsScreen} />
     </ProfileStack.Navigator>
   );
 }

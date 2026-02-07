@@ -1,5 +1,4 @@
-// screens/ProfileScreen.js
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import {
@@ -13,11 +12,16 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthStore } from "../store/authStore";
+import {
+  getMyAddressesApi,
+  getMyFavoriteIdsApi,
+  getMyPrescriptionsApi,
+} from "../services/userService";
+import { getMyOrdersApi } from "../services/orderService";
 
 const AVATAR_URI =
   "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=320&q=80";
 
-// Accent colors
 const STAT_ACCENTS = {
   orders: { bg: "#EEF2FF", fg: "#4F46E5" },
   favorites: { bg: "#FCE7F3", fg: "#DB2777" },
@@ -30,8 +34,6 @@ const SETTING_ACCENTS = {
   support: { bg: "#F3E8FF", fg: "#7C3AED" },
   noti: { bg: "#ECFEFF", fg: "#0891B2" },
 };
-
-/* -------------------- UI primitives -------------------- */
 
 function Card({ children, style }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -79,8 +81,6 @@ function Pill({ label, icon }) {
   );
 }
 
-/* -------------------- Logged-out gate -------------------- */
-
 function LoginRequired({ navigation }) {
   return (
     <View style={styles.lockScreen}>
@@ -89,9 +89,9 @@ function LoginRequired({ navigation }) {
           <Ionicons name="lock-closed-outline" size={22} color="#111827" />
         </View>
 
-        <Text style={styles.lockTitle}>Bạn cần đăng nhập</Text>
+        <Text style={styles.lockTitle}>Ban can dang nhap</Text>
         <Text style={styles.lockDesc}>
-          Vui lòng đăng nhập để xem thông tin tài khoản, đơn hàng và yêu thích.
+          Vui long dang nhap de xem thong tin tai khoan, don hang va yeu thich.
         </Text>
 
         <Pressable
@@ -99,21 +99,19 @@ function LoginRequired({ navigation }) {
           style={({ pressed }) => [styles.lockBtn, pressed && styles.pressedSoft]}
         >
           <Ionicons name="log-in-outline" size={18} color="#fff" />
-          <Text style={styles.lockBtnText}>Đăng nhập</Text>
+          <Text style={styles.lockBtnText}>Dang nhap</Text>
         </Pressable>
 
         <Pressable
           onPress={() => navigation.navigate("HomeTab")}
           style={({ pressed }) => [styles.lockLink, pressed && styles.pressed]}
         >
-          <Text style={styles.lockLinkText}>Quay về Trang chủ</Text>
+          <Text style={styles.lockLinkText}>Quay ve trang chu</Text>
         </Pressable>
       </View>
     </View>
   );
 }
-
-/* -------------------- Screen -------------------- */
 
 export default function ProfileScreen({ navigation }) {
   const greeting = useMemo(() => "My Profile", []);
@@ -123,82 +121,95 @@ export default function ProfileScreen({ navigation }) {
   const isHydrating = useAuthStore((s) => s.isHydrating);
   const fetchMe = useAuthStore((s) => s.fetchMe);
   const logout = useAuthStore((s) => s.logout);
+  const [stats, setStats] = useState({
+    tier: "Member",
+    points: 0,
+    pendingOrders: 0,
+    favorites: 0,
+    addresses: 0,
+    prescription: "0",
+  });
 
-  // ✅ Nếu có token mà chưa có user (hoặc vừa mở app) => gọi /me
   useEffect(() => {
     if (token && !user && !isHydrating) {
       fetchMe?.();
     }
   }, [token, user, isHydrating, fetchMe]);
 
-  // ✅ Nếu chưa login
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+
+    const loadStats = async () => {
+      try {
+        const [ordersResult, favoriteIds, addresses, prescriptions] = await Promise.all([
+          getMyOrdersApi({ page: 1, limit: 100 }),
+          getMyFavoriteIdsApi(),
+          getMyAddressesApi(),
+          getMyPrescriptionsApi(),
+        ]);
+        if (!active) return;
+
+        const orders = Array.isArray(ordersResult?.items) ? ordersResult.items : [];
+        const pendingOrders = orders.filter((order) => {
+          const status = String(order?.status || "").toLowerCase();
+          return !["delivered", "cancelled", "returned"].includes(status);
+        }).length;
+
+        setStats((prev) => ({
+          ...prev,
+          pendingOrders,
+          favorites: Array.isArray(favoriteIds) ? favoriteIds.length : 0,
+          addresses: Array.isArray(addresses) ? addresses.length : 0,
+          prescription: String(Array.isArray(prescriptions) ? prescriptions.length : 0),
+        }));
+      } catch {}
+    };
+
+    loadStats();
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
   if (!token) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Tài khoản</Text>
+          <Text style={styles.headerTitle}>Tai khoan</Text>
         </View>
         <LoginRequired navigation={navigation} />
       </SafeAreaView>
     );
   }
 
-  // ✅ Loading state khi đang hydrate hoặc đang fetch user
   if (isHydrating || !user) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Tài khoản</Text>
+          <Text style={styles.headerTitle}>Tai khoan</Text>
         </View>
         <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
-          <Text style={{ fontWeight: "800", color: "#111827" }}>
-            Đang tải hồ sơ...
-          </Text>
-          <Text style={{ marginTop: 6, fontWeight: "600", color: "#6B7280" }}>
-            Nếu bị kẹt, kiểm tra token / Authorization header.
-          </Text>
+          <Text style={{ fontWeight: "800", color: "#111827" }}>Dang tai ho so...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // ===== User thật =====
-  const displayName = user?.name || "—";
-  const displayEmail = user?.email || "—";
-
-  // (Tạm thời) stats vẫn demo cho UI, sau này nối API orders/favs/addresses...
-  const stats = {
-    tier: "Member",
-    points: 0,
-    pendingOrders: 0,
-    favorites: 0,
-    addresses: 0,
-    prescription: "—",
-  };
+  const displayName = user?.name || "--";
+  const displayEmail = user?.email || "--";
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
 
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{greeting}</Text>
-
-        <Pressable
-          onPress={() => {
-            console.log("Edit profile");
-          }}
-          style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
-        >
-          <Ionicons name="create-outline" size={18} color="#1F2A37" />
-          <Text style={styles.editBtnText}>Edit</Text>
-        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Profile card */}
         <Card style={{ padding: 16 }}>
           <View style={styles.profileTop}>
             <View style={styles.avatarRing}>
@@ -221,7 +232,6 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Quick stats */}
           <View style={styles.statGrid}>
             <Pressable
               onPress={() => navigation.navigate("Orders")}
@@ -285,12 +295,11 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </Card>
 
-        {/* Actions */}
         <Card style={{ paddingVertical: 6 }}>
           <RowItem
             icon="receipt-outline"
             title="My Orders"
-            subtitle="Track shipping & returns"
+            subtitle="Track shipping and returns"
             rightText={`${stats.pendingOrders} pending`}
             onPress={() => navigation.navigate("Orders")}
             accent={{ bg: "#EEF2FF", fg: "#4F46E5" }}
@@ -299,7 +308,7 @@ export default function ProfileScreen({ navigation }) {
           <RowItem
             icon="heart-outline"
             title="Favorites"
-            subtitle="Saved frames & lenses"
+            subtitle="Saved frames and lenses"
             rightText={`${stats.favorites} items`}
             onPress={() => navigation.navigate("Favorites")}
             accent={{ bg: "#FCE7F3", fg: "#DB2777" }}
@@ -324,7 +333,6 @@ export default function ProfileScreen({ navigation }) {
           />
         </Card>
 
-        {/* Settings */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Settings</Text>
         </View>
@@ -333,7 +341,7 @@ export default function ProfileScreen({ navigation }) {
           <RowItem
             icon="card-outline"
             title="Payments"
-            subtitle="Cards & billing"
+            subtitle="Cards and billing"
             onPress={() => navigation.navigate("Payments")}
             accent={SETTING_ACCENTS.payments}
           />
@@ -349,7 +357,7 @@ export default function ProfileScreen({ navigation }) {
           <RowItem
             icon="notifications-outline"
             title="Notifications"
-            subtitle="Order updates & deals"
+            subtitle="Order updates and deals"
             onPress={() => navigation.navigate("Notifications")}
             accent={SETTING_ACCENTS.noti}
           />
@@ -367,8 +375,6 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
-/* -------------------- Styles -------------------- */
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F8FB" },
 
@@ -381,20 +387,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerTitle: { fontSize: 22, fontWeight: "800", color: "#111827", letterSpacing: 0.2 },
-
-  editBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.08)",
-  },
-  editBtnText: { fontWeight: "700", color: "#111827" },
-
   content: { paddingHorizontal: 16, paddingBottom: 24 },
 
   card: {
@@ -411,7 +403,6 @@ const styles = StyleSheet.create({
   },
 
   profileTop: { flexDirection: "row", gap: 14, alignItems: "center" },
-
   avatarRing: {
     width: 74,
     height: 74,
@@ -456,7 +447,6 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
   rowSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "600", color: "#6B7280" },
   rowRightText: { fontSize: 12, fontWeight: "800", color: "#6B7280", marginRight: 6 },
-
   divider: { height: 1, backgroundColor: "rgba(17,24,39,0.06)", marginLeft: 62 },
 
   sectionHeader: {
@@ -469,11 +459,9 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
 
-  // pressed helpers
   pressed: { opacity: 0.75 },
   pressedSoft: { opacity: 0.85, transform: [{ scale: 0.99 }] },
 
-  // Logged-out UI
   lockScreen: { flex: 1, paddingHorizontal: 16, paddingTop: 30 },
   lockCard: {
     backgroundColor: "#FFFFFF",
