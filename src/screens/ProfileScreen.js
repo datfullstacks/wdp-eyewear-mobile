@@ -91,9 +91,9 @@ function LoginRequired({ navigation }) {
           <Ionicons name="lock-closed-outline" size={22} color="#111827" />
         </View>
 
-        <Text style={styles.lockTitle}>Ban can dang nhap</Text>
+        <Text style={styles.lockTitle}>Bạn cần đăng nhập</Text>
         <Text style={styles.lockDesc}>
-          Vui long dang nhap de xem thong tin tai khoan, don hang va yeu thich.
+          Vui lòng đăng nhập để xem thông tin tài khoản, đơn hàng và yêu thích.
         </Text>
 
         <Pressable
@@ -101,14 +101,14 @@ function LoginRequired({ navigation }) {
           style={({ pressed }) => [styles.lockBtn, pressed && styles.pressedSoft]}
         >
           <Ionicons name="log-in-outline" size={18} color="#fff" />
-          <Text style={styles.lockBtnText}>Dang nhap</Text>
+          <Text style={styles.lockBtnText}>Đăng nhập</Text>
         </Pressable>
 
         <Pressable
           onPress={() => navigation.navigate("HomeTab")}
           style={({ pressed }) => [styles.lockLink, pressed && styles.pressed]}
         >
-          <Text style={styles.lockLinkText}>Quay ve trang chu</Text>
+          <Text style={styles.lockLinkText}>Quay về màng hình chính</Text>
         </Pressable>
       </View>
     </View>
@@ -194,7 +194,7 @@ export default function ProfileScreen({ navigation }) {
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Tai khoan</Text>
+          <Text style={styles.headerTitle}>Tài khoản</Text>
         </View>
         <LoginRequired navigation={navigation} />
       </SafeAreaView>
@@ -215,7 +215,7 @@ export default function ProfileScreen({ navigation }) {
         />
 
         <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
-          <Text style={{ fontWeight: "800", color: "#111827" }}>Dang tai ho so...</Text>
+          <Text style={{ fontWeight: "800", color: "#111827" }}>Đang tải hồ sơ...</Text>
         </View>
       </SafeAreaView>
     );
@@ -296,7 +296,7 @@ export default function ProfileScreen({ navigation }) {
               <Text style={[styles.statValue, { color: STAT_ACCENTS.favorites.fg }]}>
                 {stats.favorites}
               </Text>
-              <Text style={styles.statLabel}>Favorites</Text>
+              <Text style={styles.statLabel}>Yêu thích</Text>
             </Pressable>
 
             <Pressable
@@ -314,7 +314,7 @@ export default function ProfileScreen({ navigation }) {
               <Text style={[styles.statValue, { color: STAT_ACCENTS.addresses.fg }]}>
                 {stats.addresses}
               </Text>
-              <Text style={styles.statLabel}>Addresses</Text>
+              <Text style={styles.statLabel}>Địa chỉ</Text>
             </Pressable>
 
             <Pressable
@@ -376,7 +376,7 @@ export default function ProfileScreen({ navigation }) {
         </Card>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Settings</Text>
+          <Text style={styles.sectionTitle}>Cài đặt</Text>
         </View>
 
         <Card style={{ paddingVertical: 6, marginBottom: 18 }}>
@@ -420,7 +420,6 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F8FB" },
 
-  // ✅ Header giống Favorites
   header: {
     paddingHorizontal: 12,
     paddingTop: 6,

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useCartStore } from "../store/cartStore";
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -328,17 +329,17 @@ const normalizeOrder = (raw) => {
   const rawAddress = raw?.shippingAddress || raw?.address || null;
   const address = rawAddress
     ? {
-        fullName: rawAddress.fullName || rawAddress.name || "",
-        phone: rawAddress.phone || "",
-        email: rawAddress.email || "",
-        line1: rawAddress.line1 || rawAddress.line || "",
-        line2: rawAddress.line2 || "",
-        ward: rawAddress.ward || "",
-        district: rawAddress.district || "",
-        province: rawAddress.province || "",
-        country: rawAddress.country || "VN",
-        note: rawAddress.note || "",
-      }
+      fullName: rawAddress.fullName || rawAddress.name || "",
+      phone: rawAddress.phone || "",
+      email: rawAddress.email || "",
+      line1: rawAddress.line1 || rawAddress.line || "",
+      line2: rawAddress.line2 || "",
+      ward: rawAddress.ward || "",
+      district: rawAddress.district || "",
+      province: rawAddress.province || "",
+      country: rawAddress.country || "VN",
+      note: rawAddress.note || "",
+    }
     : null;
 
   return {
@@ -375,6 +376,8 @@ const normalizeOrder = (raw) => {
 export default function CheckoutStatusScreen({ navigation, route }) {
   const initialOrder = route?.params?.order || null;
   const [serverOrder, setServerOrder] = useState(null);
+  const clearCart = useCartStore((s) => s.clear);
+  const clearedRef = useRef(false);
 
   const rawOrder = useMemo(() => {
     if (initialOrder && serverOrder) return mergeOrderSnapshot(initialOrder, serverOrder);
@@ -441,6 +444,13 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     });
   };
 
+  useEffect(() => {
+    if (paymentStatus === "PAID" && !clearedRef.current) {
+      clearedRef.current = true;
+      clearCart();
+    }
+  }, [paymentStatus, clearCart]);
+
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
   const handleViewOrderDetail = () => navigateToTab("OrdersTab", "Orders");
 
@@ -464,7 +474,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         <View style={styles.card}>
           <Text style={styles.title}>Đơn hàng {order.orderId}</Text>
           <Text style={styles.subText}>Tạo lúc {formatDateTime(order.createdAt)}</Text>
-          <View style={[styles.statusPill, { backgroundColor: paymentMeta.bg }]}> 
+          <View style={[styles.statusPill, { backgroundColor: paymentMeta.bg }]}>
             <Text style={[styles.statusText, { color: paymentMeta.color }]}>{paymentMeta.label}</Text>
           </View>
           <Text style={styles.descText}>{paymentMeta.desc}</Text>
@@ -540,9 +550,9 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
         {isPaymentSettled ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Thanh toan thanh cong</Text>
+            <Text style={styles.sectionTitle}>Thanh toán thành công!</Text>
             <Text style={styles.mutedText}>
-              Don hang da duoc ghi nhan. Ban co the mua tiep hoac xem chi tiet don.
+              Đơn hàng đã đượcc ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết đơn.
             </Text>
             <View style={styles.actionRow}>
               <TouchableOpacity
@@ -550,14 +560,14 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 activeOpacity={0.85}
                 onPress={handleContinueShopping}
               >
-                <Text style={[styles.actionText, styles.actionTextGhost]}>Mua tiep</Text>
+                <Text style={[styles.actionText, styles.actionTextGhost]}>Mua tiếp</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionBtnPrimary]}
                 activeOpacity={0.85}
                 onPress={handleViewOrderDetail}
               >
-                <Text style={[styles.actionText, styles.actionTextPrimary]}>Xem chi tiet</Text>
+                <Text style={[styles.actionText, styles.actionTextPrimary]}>Xem chi tiết</Text>
               </TouchableOpacity>
             </View>
           </View>

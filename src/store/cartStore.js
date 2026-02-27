@@ -13,7 +13,6 @@ function safeJsonParse(str, fallback) {
   }
 }
 
-// Tạo key để gộp dòng (cùng sản phẩm + cùng cấu hình)
 function makeLineKey({ productId, orderType, variantKey, rxKey }) {
   return [productId, orderType || "READY", variantKey || "-", rxKey || "-"].join("|");
 }
@@ -47,7 +46,6 @@ export const useCartStore = create((set, get) => ({
   isHydrating: true,
   userKey: null,
 
-  // gọi khi auth đổi user
   setUser: async (userKey) => {
     set({ userKey: userKey || null, isHydrating: true, items: [] });
     await get().hydrate();

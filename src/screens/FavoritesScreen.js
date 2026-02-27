@@ -66,7 +66,7 @@ export default function FavoritesScreen({ navigation }) {
               item={item}
               isFav
               onPressFav={() => toggle(item)}
-              onPress={() => navigation.navigate("ProductDetail", { item })}
+              onPress={() => navigation.navigate("ProductDetail", { item, id: item.apiId })}
             />
           </View>
         )}

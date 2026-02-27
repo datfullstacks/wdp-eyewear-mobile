@@ -56,7 +56,6 @@ export default function RegisterScreen({ navigation }) {
         text2: "Bạn có thể bắt đầu mua sắm 🎉",
       });
 
-      // ✅ đăng ký xong -> về Home
       navigation.replace("Tabs");
     } catch (e) {
       setApiError(e?.response?.data?.message || "Đăng ký thất bại");
@@ -185,7 +184,7 @@ export default function RegisterScreen({ navigation }) {
             <Pressable onPress={() => navigation.replace("Tabs")}>
               <Text style={[styles.footerText, { marginTop: 10 }]}>
                 Hoặc{" "}
-                <Text style={styles.footerLink}>Tiếp tục xem Home</Text>
+                <Text style={styles.footerLink}>Tiếp tục xem màng hình chính</Text>
               </Text>
             </Pressable>
           </View>

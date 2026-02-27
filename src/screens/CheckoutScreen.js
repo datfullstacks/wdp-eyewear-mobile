@@ -382,7 +382,7 @@ export default function CheckoutScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
-            {addressLoading ? <Text style={styles.addressMeta}>Dang tai so dia chi...</Text> : null}
+            {addressLoading ? <Text style={styles.addressMeta}>Đang tải số địa chỉ...</Text> : null}
 
             {isEditingAddress ? (
               <View style={styles.addressForm}>

@@ -7,7 +7,6 @@ import { useAuthStore } from "../store/authStore";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v) + "đ";
 
-// fallback nếu item.image rỗng
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
 
@@ -46,18 +45,23 @@ export default function ProductCard({ item, onPress }) {
 
   const img = item?.image || item?.posterUrl || FALLBACK_IMG;
   const brand = item?.brand ? String(item.brand) : null;
+  const isOutOfStock = item?.stockStatus === "OUT_OF_STOCK";
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
-      {/* IMAGE full-bleed */}
-      <View style={styles.media}>
-        <Image source={{ uri: img }} style={styles.image} />
 
-        {!!item?.discountPct && (
+      <View style={styles.media}>
+        <Image source={{ uri: img }} style={[styles.image, isOutOfStock && styles.imageDisabled]} />
+
+        {isOutOfStock ? (
+          <View style={styles.outOfStockOverlay} pointerEvents="none">
+            <Text style={styles.outOfStockText}>Hết hàng</Text>
+          </View>
+        ) : !!item?.discountPct ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>-{item.discountPct}%</Text>
           </View>
-        )}
+        ) : null}
 
         <TouchableOpacity style={styles.favBtn} activeOpacity={0.85} onPress={handleFavPress}>
           <Ionicons
@@ -67,7 +71,7 @@ export default function ProductCard({ item, onPress }) {
           />
         </TouchableOpacity>
 
-        {!!item?.status && (
+        {!!item?.status && !isOutOfStock && (
           <View style={styles.statusPill}>
             <Text style={styles.statusText} numberOfLines={1}>
               {item.status}
@@ -76,8 +80,7 @@ export default function ProductCard({ item, onPress }) {
         )}
       </View>
 
-      {/* INFO area (có padding riêng) */}
-      <View style={styles.info}>
+      <View style={[styles.info, isOutOfStock && styles.infoDisabled]}>
         {!!brand && (
           <Text style={styles.brand} numberOfLines={1}>
             {brand}
@@ -89,7 +92,7 @@ export default function ProductCard({ item, onPress }) {
         </Text>
 
         <View style={styles.row}>
-          <Text style={styles.price} numberOfLines={1}>
+          <Text style={[styles.price, isOutOfStock && styles.priceDisabled]} numberOfLines={1}>
             {formatVND(item?.price || 0)}
           </Text>
 
@@ -97,7 +100,7 @@ export default function ProductCard({ item, onPress }) {
             {(item?.color || []).slice(0, 3).map((c, idx) => (
               <View
                 key={`${c}-${idx}`}
-                style={[styles.dot, { backgroundColor: String(c).toLowerCase() }]}
+                style={[styles.dot, { backgroundColor: String(c).toLowerCase(), opacity: isOutOfStock ? 0.4 : 1 }]}
               />
             ))}
           </View>
@@ -113,7 +116,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    overflow: "hidden", // ✅ để ảnh “dính” bo góc như Shopee
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
@@ -122,9 +125,30 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // media full-bleed
   media: { position: "relative" },
   image: { width: "100%", height: IMAGE_H },
+
+  imageDisabled: { opacity: 0.5 },
+
+  outOfStockOverlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 4,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  outOfStockText: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
 
   badge: {
     position: "absolute",
@@ -164,8 +188,8 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 11, fontWeight: "700", color: "#111827" },
 
-  // info area
   info: { padding: 10, paddingTop: 8 },
+  infoDisabled: { opacity: 0.6 },
 
   brand: {
     fontSize: 11,
@@ -181,7 +205,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     lineHeight: 16,
-    minHeight: 32, // 2 lines
+    minHeight: 32,
   },
 
   row: {
@@ -199,6 +223,8 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+
+  priceDisabled: { color: "#9CA3AF" },
 
   dots: { flexDirection: "row", gap: 4 },
   dot: { width: 8, height: 8, borderRadius: 4 },

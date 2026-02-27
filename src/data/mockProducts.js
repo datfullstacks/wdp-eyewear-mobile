@@ -1,11 +1,11 @@
 // src/data/mockProducts.js
 
 export const MOCK_PRODUCTS = [
-  // ===== LENS (tròng kính) - giống UI bạn gửi
   {
     id: "lens_01",
     type: "LENS",
     name: "Tròng kính trong suốt",
+    brand: "Essilor",
     price: 1162000,
     originalPrice: 1550000,
     discountPct: 25,
@@ -14,7 +14,6 @@ export const MOCK_PRODUCTS = [
       "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80",
     color: [],
 
-    // detail
     ratingAvg: 4.7,
     ratingCount: 124,
     soldCount: 124,
@@ -47,11 +46,11 @@ export const MOCK_PRODUCTS = [
     relatedIds: ["frame_01", "frame_02", "frame_03"],
   },
 
-  // ===== FRAME (gọng kính) - giống UI bạn gửi
   {
     id: "frame_01",
     type: "FRAME",
     name: "Kính mắt gọng tròn Aviator Titanium siêu nhẹ",
+    brand: "Ray-Ban",
     price: 1290000,
     originalPrice: 1509000,
     discountPct: 10,
@@ -104,6 +103,7 @@ export const MOCK_PRODUCTS = [
     id: "frame_02",
     type: "FRAME",
     name: "Kính mắt vuông nhựa",
+    brand: "Warby Parker",
     price: 890000,
     discountPct: 0,
     status: "Đặt trước",
@@ -150,6 +150,7 @@ export const MOCK_PRODUCTS = [
     id: "frame_03",
     type: "FRAME",
     name: "Kính mắt Clubmaster",
+    brand: "Oakley",
     price: 1190000,
     status: "Có sẵn",
     image:

@@ -236,6 +236,8 @@ export function mapApiProductToUi(product) {
     status: STATUS_LABEL[stockStatus] || STATUS_LABEL.IN_STOCK,
     stockStatus,
     stockLabel: STOCK_LABEL[stockStatus] || STOCK_LABEL.IN_STOCK,
+    totalStock: totalStock,
+    variants: variants,
     image: pickHeroImage(assets),
     color: colorDots,
 
@@ -295,4 +297,9 @@ export function getRelatedProducts(products, product, limit = 8) {
     return p.type === product.type;
   });
   return related.slice(0, limit);
+}
+
+export async function fetchProductById(id) {
+  const res = await api.get(`/api/products/${id}`);
+  return mapApiProductToUi(res?.data?.data);
 }

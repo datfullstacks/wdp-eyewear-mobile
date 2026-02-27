@@ -36,7 +36,7 @@ export const useAuthStore = create((set, get) => ({
     }
 
     try {
-      const user = await meApi(); // dùng interceptor token
+      const user = await meApi(); 
       const userKey = makeUserKey({ user, email: user?.email });
 
       if (userKey) await AsyncStorage.setItem(USER_KEY_STORAGE, String(userKey));
@@ -44,7 +44,6 @@ export const useAuthStore = create((set, get) => ({
       set({ user, userKey, error: null });
       return user;
     } catch (e) {
-      // token hỏng/expired -> logout cho sạch state
       await get().logout();
       return null;
     }
@@ -59,8 +58,6 @@ export const useAuthStore = create((set, get) => ({
       userKey: userKey || null,
       isHydrating: false,
     });
-
-    // ✅ nếu có token thì hydrate user luôn
     if (token) {
       await get().fetchMe();
     }
@@ -73,9 +70,7 @@ export const useAuthStore = create((set, get) => ({
     if (!token) throw new Error("Login response missing a string token");
 
     await saveToken(token);
-    set({ token, error: null }); // set token trước để interceptor dùng được
-
-    // ưu tiên user từ response, nếu không có thì gọi /me
+    set({ token, error: null });
     const userFromLogin = getUserFromResponse(data);
     if (userFromLogin) {
       const userKey = makeUserKey({ user: userFromLogin, email });
@@ -105,7 +100,6 @@ export const useAuthStore = create((set, get) => ({
       return;
     }
 
-    // nếu register không trả token -> login lại
     await get().login({ email, password });
   },
 
