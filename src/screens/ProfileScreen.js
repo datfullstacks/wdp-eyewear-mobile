@@ -259,11 +259,6 @@ export default function ProfileScreen({ navigation }) {
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{displayName}</Text>
               <Text style={styles.email}>{displayEmail}</Text>
-
-              {/* <View style={styles.pillRow}>
-                <Pill icon="sparkles-outline" label={stats.tier} />
-                <Pill icon="trophy-outline" label={`${stats.points} pts`} />
-              </View> */}
             </View>
           </View>
 
@@ -287,7 +282,7 @@ export default function ProfileScreen({ navigation }) {
             </Pressable>
 
             <Pressable
-              onPress={() => navigation.navigate("Favorites")}
+              onPress={() => navigation.navigate("FavTab")}
               style={({ pressed }) => [
                 styles.statItem,
                 {
@@ -345,7 +340,7 @@ export default function ProfileScreen({ navigation }) {
         <Card style={{ paddingVertical: 6 }}>
           <RowItem
             icon="receipt-outline"
-            title="My Orders"
+            title="Đơn hàng"
             subtitle="Track shipping and returns"
             rightText={`${stats.pendingOrders} pending`}
             onPress={() => navigation.navigate("Orders")}
@@ -354,16 +349,16 @@ export default function ProfileScreen({ navigation }) {
           <Divider />
           <RowItem
             icon="heart-outline"
-            title="Favorites"
+            title="Yêu thích"
             subtitle="Saved frames and lenses"
             rightText={`${stats.favorites} items`}
-            onPress={() => navigation.navigate("Favorites")}
+            onPress={() => navigation.navigate("FavTab")}
             accent={{ bg: "#FCE7F3", fg: "#DB2777" }}
           />
           <Divider />
           <RowItem
             icon="reader-outline"
-            title="My Prescription"
+            title="Kê đơn"
             subtitle="PD, Rx, lens preferences"
             rightText="View"
             onPress={() => navigation.navigate("Prescription")}
@@ -372,7 +367,7 @@ export default function ProfileScreen({ navigation }) {
           <Divider />
           <RowItem
             icon="location-outline"
-            title="Address Book"
+            title="Địa chỉ mặc định"
             subtitle="Default shipping address"
             rightText={`${stats.addresses}`}
             onPress={() => navigation.navigate("AddressBook")}

@@ -13,13 +13,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { getMyOrdersApi } from "../services/orderService";
 
 const STATUS_META = {
-  pending: { label: "Cho xac nhan", color: "#B45309", bg: "#FFF7ED" },
-  confirmed: { label: "Da xac nhan", color: "#1D4ED8", bg: "#EFF6FF" },
-  processing: { label: "Dang xu ly", color: "#1D4ED8", bg: "#EFF6FF" },
-  shipped: { label: "Dang giao", color: "#0F766E", bg: "#ECFEFF" },
-  delivered: { label: "Da giao", color: "#15803D", bg: "#ECFDF5" },
-  cancelled: { label: "Da huy", color: "#991B1B", bg: "#FEE2E2" },
-  returned: { label: "Da tra", color: "#6B7280", bg: "#F3F4F6" },
+  pending: { label: "Chờ xác nhận", color: "#B45309", bg: "#FFF7ED" },
+  confirmed: { label: "Đã xác nhận", color: "#1D4ED8", bg: "#EFF6FF" },
+  processing: { label: "Đang xử lý", color: "#1D4ED8", bg: "#EFF6FF" },
+  shipped: { label: "Đang giao", color: "#0F766E", bg: "#ECFEFF" },
+  delivered: { label: "Đã giao", color: "#15803D", bg: "#ECFDF5" },
+  cancelled: { label: "Đã hủy", color: "#991B1B", bg: "#FEE2E2" },
+  returned: { label: "Đã trả", color: "#6B7280", bg: "#F3F4F6" },
 };
 
 const formatVND = (value) =>
@@ -66,11 +66,11 @@ function OrderCard({ item, navigation }) {
       </View>
 
       <View style={styles.cardRow}>
-        <Text style={styles.metaLabel}>So san pham</Text>
+        <Text style={styles.metaLabel}>Số sản phẩm</Text>
         <Text style={styles.metaValue}>{itemsCount}</Text>
       </View>
       <View style={styles.cardRow}>
-        <Text style={styles.metaLabel}>Tong cong</Text>
+        <Text style={styles.metaLabel}>Tổng cộng</Text>
         <Text style={styles.totalValue}>{formatVND(item?.total)}</Text>
       </View>
     </TouchableOpacity>
@@ -92,7 +92,7 @@ export default function OrdersScreen({ navigation }) {
       setOrders(Array.isArray(result?.items) ? result.items : []);
     } catch (err) {
       const data = err?.response?.data || {};
-      setError(data.message || data.error || err?.message || "Khong tai duoc don hang");
+      setError(data.message || data.error || err?.message || "Không tải được đơn hàng");
     } finally {
       if (!silent) setLoading(false);
       setRefreshing(false);
@@ -108,7 +108,7 @@ export default function OrdersScreen({ navigation }) {
       return (
         <View style={styles.emptyWrap}>
           <ActivityIndicator size="small" color="#2563EB" />
-          <Text style={styles.emptySub}>Dang tai danh sach don hang...</Text>
+          <Text style={styles.emptySub}>Đang tải danh sách đơn hàng...</Text>
         </View>
       );
     }
@@ -116,9 +116,9 @@ export default function OrdersScreen({ navigation }) {
     return (
       <View style={styles.emptyWrap}>
         <Ionicons name="receipt-outline" size={44} color="#9CA3AF" />
-        <Text style={styles.emptyTitle}>Chua co don hang</Text>
+        <Text style={styles.emptyTitle}>Chưa có đơn hàng</Text>
         <Text style={styles.emptySub}>
-          Khi ban thanh toan thanh cong, don hang se hien thi o day.
+          Khi bạn thanh toán thành công, đơn hàng sẽ hiển thị ở đây.
         </Text>
       </View>
     );
@@ -135,7 +135,7 @@ export default function OrdersScreen({ navigation }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Don hang</Text>
+          <Text style={styles.headerTitle}>Đơn hàng</Text>
         </View>
       </View>
 
@@ -143,7 +143,7 @@ export default function OrdersScreen({ navigation }) {
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity activeOpacity={0.85} onPress={() => loadOrders()}>
-            <Text style={styles.retryText}>Thu lai</Text>
+            <Text style={styles.retryText}>Thử lại</Text>
           </TouchableOpacity>
         </View>
       ) : null}

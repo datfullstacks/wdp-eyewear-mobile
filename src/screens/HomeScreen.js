@@ -211,7 +211,7 @@ export default function HomeScreen({ navigation }) {
           onPressItem={(item) => navigation.navigate("ProductDetail", { item })}
         />
 
-        <HomeFooter onChatPress={() => {}} onCallPress={() => {}} />
+        <HomeFooter onChatPress={() => { }} onCallPress={() => { }} />
       </ScrollView>
     </SafeAreaView>
   );

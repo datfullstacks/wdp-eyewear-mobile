@@ -160,7 +160,13 @@ export default function CartScreen({ navigation }) {
             <TouchableOpacity
               activeOpacity={0.9}
               style={styles.goShopBtn}
-              onPress={() => navigation?.navigate?.("ProductsTab")}
+              onPress={() =>
+                navigation.navigate("Tabs", {
+                  screen: "ProductsTab",
+                  params: { screen: "Products" },
+                })
+              }
+
             >
               <Text style={styles.goShopText}>Đi mua sắm</Text>
             </TouchableOpacity>
