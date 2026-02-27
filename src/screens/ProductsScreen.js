@@ -87,21 +87,20 @@ export default function ProductsScreen({ navigation }) {
     if (typeof q === "string") setQuery(q);
   }, [route?.params?.q]);
 
-  // Filters
-  const [onlyInStock, setOnlyInStock] = useState(false); // stockStatus === IN_STOCK
-  const [onlyPreorder, setOnlyPreorder] = useState(false); // stockStatus === PREORDER
-  const [typeFrame, setTypeFrame] = useState(false); // type === FRAME
-  const [typeLens, setTypeLens] = useState(false); // type === LENS
+  const [onlyInStock, setOnlyInStock] = useState(false);
+  const [onlyPreorder, setOnlyPreorder] = useState(false);
+  const [typeFrame, setTypeFrame] = useState(false);
+  const [typeLens, setTypeLens] = useState(false);
   const [priceKey, setPriceKey] = useState("all");
+  const [brandFilter, setBrandFilter] = useState(null); // null or brand name
+  const [colorFilters, setColorFilters] = useState([]); // array of color IDs
+  const [sizeFilters, setSizeFilters] = useState([]); // array of size strings
 
-  // Sort
   const [sortKey, setSortKey] = useState("default");
 
-  // UI sheets
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
 
-  // ===== Applied chips derived from state =====
   const appliedChips = useMemo(() => {
     const out = [];
 
@@ -115,12 +114,28 @@ export default function ProductsScreen({ navigation }) {
     if (pr && pr.key !== "all")
       out.push({ key: `price_${pr.key}`, label: pr.label });
 
+    if (brandFilter) {
+      out.push({ key: `brand_${brandFilter}`, label: `Thương hiệu: ${brandFilter}` });
+    }
+
+    if (colorFilters.length > 0) {
+      colorFilters.forEach((c) => {
+        out.push({ key: `color_${c}`, label: `Màu: ${c}` });
+      });
+    }
+
+    if (sizeFilters.length > 0) {
+      sizeFilters.forEach((s) => {
+        out.push({ key: `size_${s}`, label: `Size: ${s}` });
+      });
+    }
+
     const s = SORT_OPTIONS.find((x) => x.key === sortKey);
     if (s && s.key !== "default")
       out.push({ key: `sort_${s.key}`, label: `Sắp xếp: ${s.label}` });
 
     return out;
-  }, [typeFrame, typeLens, onlyInStock, onlyPreorder, priceKey, sortKey]);
+  }, [typeFrame, typeLens, onlyInStock, onlyPreorder, priceKey, sortKey, brandFilter, colorFilters, sizeFilters]);
 
   const removeChip = (chipKey) => {
     switch (chipKey) {
@@ -145,6 +160,20 @@ export default function ProductsScreen({ navigation }) {
           setSortKey("default");
           return;
         }
+        if (chipKey.startsWith("brand_")) {
+          setBrandFilter(null);
+          return;
+        }
+        if (chipKey.startsWith("color_")) {
+          const colorId = chipKey.replace("color_", "");
+          setColorFilters((prev) => prev.filter((c) => c !== colorId));
+          return;
+        }
+        if (chipKey.startsWith("size_")) {
+          const size = chipKey.replace("size_", "");
+          setSizeFilters((prev) => prev.filter((s) => s !== size));
+          return;
+        }
     }
   };
 
@@ -155,35 +184,52 @@ export default function ProductsScreen({ navigation }) {
     setTypeLens(false);
     setPriceKey("all");
     setSortKey("default");
+    setBrandFilter(null);
+    setColorFilters([]);
+    setSizeFilters([]);
   };
 
-  // ===== Filter + Search + Sort pipeline =====
   const data = useMemo(() => {
     const q = query.trim().toLowerCase();
 
-    // 1) search
     let arr = products.filter((p) => {
       if (!q) return true;
       return (p.name || "").toLowerCase().includes(q);
     });
 
-    // 2) filters
-    // type
     if (typeFrame && !typeLens) arr = arr.filter((p) => p.type === "FRAME");
     if (typeLens && !typeFrame) arr = arr.filter((p) => p.type === "LENS");
 
-    // stock
     if (onlyInStock && !onlyPreorder)
       arr = arr.filter((p) => p.stockStatus === "IN_STOCK");
     if (onlyPreorder && !onlyInStock)
       arr = arr.filter((p) => p.stockStatus === "PREORDER");
 
-    // price
     const pr = PRICE_RANGES.find((x) => x.key === priceKey) || PRICE_RANGES[0];
     if (pr.min != null) arr = arr.filter((p) => (p.price ?? 0) >= pr.min);
     if (pr.max != null) arr = arr.filter((p) => (p.price ?? 0) <= pr.max);
 
-    // 3) sort
+    // Brand filter
+    if (brandFilter) {
+      arr = arr.filter((p) => p.brand === brandFilter);
+    }
+
+    // Color filter
+    if (colorFilters.length > 0) {
+      arr = arr.filter((p) => {
+        if (!p.colors || p.colors.length === 0) return false;
+        return colorFilters.some((cf) => p.colors.some((c) => c.id === cf));
+      });
+    }
+
+    // Size filter
+    if (sizeFilters.length > 0) {
+      arr = arr.filter((p) => {
+        if (!p.sizes || p.sizes.length === 0) return false;
+        return sizeFilters.some((sf) => p.sizes.includes(sf));
+      });
+    }
+
     const sorted = [...arr];
     switch (sortKey) {
       case "best":
@@ -215,6 +261,9 @@ export default function ProductsScreen({ navigation }) {
     onlyPreorder,
     priceKey,
     sortKey,
+    brandFilter,
+    colorFilters,
+    sizeFilters,
   ]);
 
   const sortLabel = useMemo(() => {
@@ -223,27 +272,12 @@ export default function ProductsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      {/* Header */}
-      {/* <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() =>
-              navigation?.canGoBack?.() ? navigation.goBack() : null
-            }
-            activeOpacity={0.8}
-          >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
-          </TouchableOpacity>
-
-          <Text style={styles.headerTitle}>Sản phẩm</Text>
-        </View>
-      </View> */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
             onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
             activeOpacity={0.85}
-            style={styles.iconBtn} // ✅ giống Fav
+            style={styles.iconBtn} 
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
@@ -251,11 +285,9 @@ export default function ProductsScreen({ navigation }) {
           <Text style={styles.headerTitle}>Sản phẩm</Text>
         </View>
 
-        {/* bên phải để trống như Fav (hoặc để placeholder nếu bạn muốn cân tuyệt đối) */}
         <View style={styles.iconBtn} />
       </View>
 
-      {/* Search + Fav + Cart */}
       <View style={styles.searchWrap}>
         <HeaderSearchActions
           value={query}
@@ -266,7 +298,6 @@ export default function ProductsScreen({ navigation }) {
         />
       </View>
 
-      {/* ✅ FlatList là scroll chính: TopBar + Chips nằm trong header của list */}
       <FlatList
         style={{ flex: 1 }}
         data={data}
@@ -342,7 +373,7 @@ export default function ProductsScreen({ navigation }) {
           <View style={{ width: CARD_W }}>
             <ProductCard
               item={item}
-              onPress={() => navigation.navigate("ProductDetail", { item })}
+              onPress={() => navigation.navigate("ProductDetail", { item, id: item.apiId })}
             />
           </View>
         )}
@@ -483,6 +514,112 @@ export default function ProductsScreen({ navigation }) {
             </View>
           </View>
 
+          {/* BRAND */}
+          <View style={{ gap: 8 }}>
+            <Text style={styles.groupTitle}>Thương hiệu</Text>
+            <View style={{ gap: 8 }}>
+              {["Ray-Ban", "Essilor", "Warby Parker", "Oakley"].map((brand) => {
+                const active = brandFilter === brand;
+                return (
+                  <TouchableOpacity
+                    key={brand}
+                    style={[styles.optionRow, active && styles.optionRowActive]}
+                    activeOpacity={0.85}
+                    onPress={() => setBrandFilter(active ? null : brand)}
+                  >
+                    <Text style={[styles.optionText, active && styles.optionTextActive]}>
+                      {brand}
+                    </Text>
+                    {active && (
+                      <Ionicons name="checkmark" size={18} color="#111827" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* COLOR */}
+          <View style={{ gap: 8 }}>
+            <Text style={styles.groupTitle}>Màu sắc</Text>
+            <View style={styles.colorFilterRow}>
+              {[
+                { id: "black", name: "Đen", hex: "#111111" },
+                { id: "navy", name: "Xanh", hex: "#374151" },
+                { id: "beige", name: "Be", hex: "#D6C9B4" },
+                { id: "gold", name: "Vàng", hex: "#C9A227" },
+                { id: "silver", name: "Bạc", hex: "#9CA3AF" },
+              ].map((color) => {
+                const active = colorFilters.includes(color.id);
+                return (
+                  <TouchableOpacity
+                    key={color.id}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setColorFilters((prev) =>
+                        active
+                          ? prev.filter((c) => c !== color.id)
+                          : [...prev, color.id]
+                      );
+                    }}
+                    style={[
+                      styles.colorFilterDot,
+                      active && styles.colorFilterDotActive,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.colorFilterInner,
+                        { backgroundColor: color.hex },
+                      ]}
+                    />
+                    {active && (
+                      <Ionicons
+                        name="checkmark"
+                        size={12}
+                        color="#111827"
+                        style={styles.colorFilterCheck}
+                      />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* SIZE */}
+          <View style={{ gap: 8 }}>
+            <Text style={styles.groupTitle}>Kích thước</Text>
+            <View style={styles.rowWrap}>
+              {["S", "M", "L", "XL"].map((size) => {
+                const active = sizeFilters.includes(size);
+                return (
+                  <TouchableOpacity
+                    key={size}
+                    style={[styles.togglePill, active && styles.togglePillActive]}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setSizeFilters((prev) =>
+                        active
+                          ? prev.filter((s) => s !== size)
+                          : [...prev, size]
+                      );
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.toggleText,
+                        active && styles.toggleTextActive,
+                      ]}
+                    >
+                      {size}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           {/* ACTIONS */}
           <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
             <TouchableOpacity
@@ -513,17 +650,6 @@ export default function ProductsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F7FB" },
-
-  // header: {
-  //   paddingHorizontal: 12,
-  //   paddingTop: 6,
-  //   paddingBottom: 10,
-  //   flexDirection: "row",
-  //   alignItems: "center",
-  //   justifyContent: "space-between",
-  // },
-  // headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  // headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
   header: {
     paddingHorizontal: 12,
     paddingTop: 6,
@@ -547,7 +673,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  // ✅ nằm trong ListHeaderComponent
   topBar: {
     paddingHorizontal: PAGE_PADDING,
     flexDirection: "row",
@@ -593,7 +718,6 @@ const styles = StyleSheet.create({
   clearAllBtn: { paddingHorizontal: 6, height: 34, justifyContent: "center" },
   clearAllText: { fontSize: 12, fontWeight: "800", color: "#EF4444" },
 
-  // ✅ list padding
   listContent: {
     paddingHorizontal: PAGE_PADDING,
     paddingBottom: 8,
@@ -651,6 +775,41 @@ const styles = StyleSheet.create({
   optionTextActive: { color: "#111827" },
 
   rowWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+
+  colorFilterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    alignItems: "center",
+  },
+  colorFilterDot: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  colorFilterDotActive: {
+    borderWidth: 2,
+    borderColor: "#111827",
+  },
+  colorFilterInner: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  colorFilterCheck: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    padding: 2,
+  },
 
   togglePill: {
     backgroundColor: "#FFFFFF",

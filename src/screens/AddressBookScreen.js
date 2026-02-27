@@ -39,11 +39,11 @@ function AddressCard({ item, onSetDefault, onDelete }) {
         <Text style={styles.cardName}>{item?.fullName || "--"}</Text>
         {item?.isDefault ? (
           <View style={styles.defaultBadge}>
-            <Text style={styles.defaultBadgeText}>Default</Text>
+            <Text style={styles.defaultBadgeText}>Mặt định</Text>
           </View>
         ) : (
           <TouchableOpacity activeOpacity={0.85} onPress={() => onSetDefault(item?._id)}>
-            <Text style={styles.linkText}>Set default</Text>
+            <Text style={styles.linkText}>Thiết lập mặt định</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -58,7 +58,7 @@ function AddressCard({ item, onSetDefault, onDelete }) {
 
       <View style={styles.actions}>
         <TouchableOpacity activeOpacity={0.85} onPress={() => onDelete(item?._id)}>
-          <Text style={styles.deleteText}>Delete</Text>
+          <Text style={styles.deleteText}>Xóa</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -76,7 +76,7 @@ export default function AddressBookScreen({ navigation }) {
       const data = await getMyAddressesApi();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong tai duoc dia chi";
+      const message = err?.response?.data?.message || err?.message || "Không tải được địa chỉ";
       Alert.alert("Address", message);
     } finally {
       setLoading(false);
@@ -90,7 +90,7 @@ export default function AddressBookScreen({ navigation }) {
   const submit = async () => {
     if (submitting) return;
     if (!form.fullName.trim() || !form.phone.trim() || !form.line1.trim() || !form.district.trim() || !form.province.trim()) {
-      Alert.alert("Address", "Vui long nhap day du fullName, phone, line1, district, province.");
+      Alert.alert("Address", "Vui lòng nhập đủ thông tin: fullName, phone, line1, district, province.");
       return;
     }
 
@@ -100,7 +100,7 @@ export default function AddressBookScreen({ navigation }) {
       setItems(Array.isArray(data) ? data : []);
       setForm(EMPTY_FORM);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong tao duoc dia chi";
+      const message = err?.response?.data?.message || err?.message || "Không tạo được địa chỉ";
       Alert.alert("Address", message);
     } finally {
       setSubmitting(false);
@@ -112,23 +112,23 @@ export default function AddressBookScreen({ navigation }) {
       const data = await setDefaultMyAddressApi(addressId);
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong set duoc default";
+      const message = err?.response?.data?.message || err?.message || "Không thiết lập lại mặt định được";
       Alert.alert("Address", message);
     }
   };
 
   const onDelete = async (addressId) => {
-    Alert.alert("Address", "Xoa dia chi nay?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert("Address", "Xóa địa chỉ này?", [
+      { text: "Hủy", style: "cancel" },
       {
-        text: "Delete",
+        text: "Xóa",
         style: "destructive",
         onPress: async () => {
           try {
             const data = await deleteMyAddressApi(addressId);
             setItems(Array.isArray(data) ? data : []);
           } catch (err) {
-            const message = err?.response?.data?.message || err?.message || "Khong xoa duoc dia chi";
+            const message = err?.response?.data?.message || err?.message || "Không xóa được địa chỉ";
             Alert.alert("Address", message);
           }
         },
@@ -147,12 +147,12 @@ export default function AddressBookScreen({ navigation }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Address Book</Text>
+          <Text style={styles.headerTitle}>Đặt địa chỉ</Text>
         </View>
       </View>
 
       <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Add new address</Text>
+        <Text style={styles.formTitle}>Thêm địa chỉ mới</Text>
         <TextInput
           style={styles.input}
           placeholder="Full name *"
@@ -212,7 +212,7 @@ export default function AddressBookScreen({ navigation }) {
           onPress={submit}
           disabled={submitting}
         >
-          <Text style={styles.submitText}>{submitting ? "Saving..." : "Save address"}</Text>
+          <Text style={styles.submitText}>{submitting ? "Đang lưu..." : "Lưu địa chỉ"}</Text>
         </TouchableOpacity>
       </View>
 
@@ -230,7 +230,7 @@ export default function AddressBookScreen({ navigation }) {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No address yet</Text>
+              <Text style={styles.emptyText}>Chưa có địa chỉ</Text>
             </View>
           }
         />

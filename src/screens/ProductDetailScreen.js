@@ -9,6 +9,7 @@ import {
   Image,
   FlatList,
   TextInput,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,11 +17,10 @@ import Toast from "react-native-toast-message";
 
 import { useFavoriteStore } from "../store/favoriteStore";
 import { useProducts } from "../hooks/useProducts";
-import { getRelatedProducts } from "../services/productService";
+import { getRelatedProducts, fetchProductById } from "../services/productService";
 import { useCartStore } from "../store/cartStore";
 import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
-import { Alert } from "react-native";
 import { useAuthStore } from "../store/authStore";
 
 /* -------------------- helpers -------------------- */
@@ -44,6 +44,7 @@ export default function ProductDetailScreen({ navigation, route }) {
   const token = useAuthStore((s) => s.token);
   const passedItem = route?.params?.item;
   const passedId = route?.params?.id || route?.params?.productId;
+
   const { products } = useProducts();
   const [specsOpen, setSpecsOpen] = useState(true);
 
@@ -54,13 +55,45 @@ export default function ProductDetailScreen({ navigation, route }) {
     ]);
   };
 
-  const product = useMemo(() => {
-    if (passedItem) return passedItem;
-    if (passedId) return products.find((p) => p.id === passedId) || null;
-    return products?.[0] || null;
-  }, [passedItem, passedId, products]);
+  // ✅ fallback product lấy từ list nếu chỉ có passedId
+  const fallbackFromList = useMemo(() => {
+    if (!passedId) return null;
+    return products.find((p) => p.id === passedId) || null;
+  }, [passedId, products]);
 
-  // hydrate cart 1 lần
+  // ✅ product state: render nhanh bằng passedItem/fallback, rồi refresh bằng API by id
+  const [product, setProduct] = useState(passedItem ?? fallbackFromList ?? null);
+  const [isRefreshing, setIsRefreshing] = useState(false); // optional
+
+  // ✅ apiId để gọi /api/products/:id
+  // ưu tiên apiId/_id (Mongo) nếu có, sau đó mới fallback passedId
+  const apiId = useMemo(() => {
+    return passedItem?.apiId || passedItem?._id || passedId || null;
+  }, [passedItem, passedId]);
+
+  // ✅ GỌI API by id để lấy dữ liệu đầy đủ/chuẩn nhất
+  useEffect(() => {
+    let mounted = true;
+    if (!apiId) return;
+
+    (async () => {
+      try {
+        setIsRefreshing(true);
+        const fresh = await fetchProductById(apiId);
+        if (mounted && fresh) setProduct(fresh);
+      } catch (e) {
+        // fail => giữ product hiện tại (passedItem/fallback)
+      } finally {
+        if (mounted) setIsRefreshing(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [apiId]);
+
+  // hydrate cart once
   useEffect(() => {
     const st = useCartStore.getState();
     if (st && st.isHydrating) st.hydrate();
@@ -68,7 +101,6 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const addItem = useCartStore((s) => s.addItem);
 
-  // ✅ favorites: subscribe trực tiếp để icon đổi ngay
   const toggleFav = useFavoriteStore((s) => s.toggle);
   const fav = useFavoriteStore((s) => s.ids.includes(product?.id));
 
@@ -81,21 +113,20 @@ export default function ProductDetailScreen({ navigation, route }) {
     product?.type === "LENS"
       ? "Chi tiết tròng kính"
       : product?.type === "FRAME"
-        ? "Chi tiết gọng kính"
-        : "Chi tiết sản phẩm";
+      ? "Chi tiết gọng kính"
+      : "Chi tiết sản phẩm";
 
-  // Order type
   const [orderType, setOrderType] = useState(
     product?.defaultOrderType || product?.orderTypes?.[0] || "READY"
   );
 
-  // FRAME options
   const [colorId, setColorId] = useState(product?.type === "FRAME" ? product?.colors?.[0]?.id : null);
   const [size, setSize] = useState(product?.type === "FRAME" ? product?.sizes?.[0] : "M");
   const [qty, setQty] = useState(1);
 
   useEffect(() => {
     if (!product) return;
+
     setOrderType(product.defaultOrderType || product.orderTypes?.[0] || "READY");
 
     if (product.type === "FRAME") {
@@ -194,7 +225,6 @@ export default function ProductDetailScreen({ navigation, route }) {
     );
   }
 
-  // data-driven accordion
   const ACCORDIONS = [
     { key: "desc", title: "Mô tả sản phẩm", content: product.sections?.description || "—" },
     { key: "sizeGuide", title: "Hướng dẫn chọn size", content: product.sections?.sizeGuide || "—" },
@@ -207,6 +237,13 @@ export default function ProductDetailScreen({ navigation, route }) {
       <HeaderBar navigation={navigation} title={headerTitle} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        {/* optional: hiển thị trạng thái đang refresh */}
+        {isRefreshing ? (
+          <Text style={{ marginTop: 10, fontWeight: "700", color: "#6B7280" }}>
+            Đang cập nhật dữ liệu mới nhất...
+          </Text>
+        ) : null}
+
         <Hero
           product={product}
           image={mainImage}
@@ -317,16 +354,22 @@ function HeaderBar({ navigation, title }) {
 }
 
 function Hero({ product, image, discountPct, fav, onToggleFav }) {
+  const isOutOfStock = product?.stockStatus === "OUT_OF_STOCK";
+
   return (
     <Card style={styles.heroCard}>
       <View style={styles.heroImageWrap}>
-        {discountPct > 0 ? (
+        {discountPct > 0 && !isOutOfStock ? (
           <View style={styles.discountBadge}>
             <Text style={styles.discountBadgeText}>-{discountPct}%</Text>
           </View>
         ) : null}
 
-        {product.status ? (
+        {isOutOfStock ? (
+          <View style={styles.outOfStockOverlay}>
+            <Text style={styles.outOfStockText}>Hết hàng</Text>
+          </View>
+        ) : product.status ? (
           <View style={styles.statusPill}>
             <Text style={styles.statusText}>{product.status}</Text>
           </View>
@@ -336,9 +379,15 @@ function Hero({ product, image, discountPct, fav, onToggleFav }) {
           <Ionicons name={fav ? "heart" : "heart-outline"} size={20} color="#EF4444" />
         </TouchableOpacity>
 
-        {image ? <Image source={{ uri: image }} style={styles.heroImage} resizeMode="contain" /> : null}
+        {image ? (
+          <Image
+            source={{ uri: image }}
+            style={[styles.heroImage, isOutOfStock && styles.heroImageDisabled]}
+            resizeMode="contain"
+          />
+        ) : null}
 
-        {product.type === "FRAME" && product.model3D?.enabled ? (
+        {product.type === "FRAME" && product.model3D?.enabled && !isOutOfStock ? (
           <View style={styles.modeSwitchWrap}>
             <TouchableOpacity activeOpacity={0.9} style={[styles.modeSwitchItem, styles.modeSwitchItemActive]}>
               <Text style={[styles.modeSwitchText, styles.modeSwitchTextActive]}>2D</Text>
@@ -354,6 +403,8 @@ function Hero({ product, image, discountPct, fav, onToggleFav }) {
 }
 
 function InfoCard({ product, discountPct }) {
+  const isOutOfStock = product?.stockStatus === "OUT_OF_STOCK";
+
   return (
     <Card>
       <Text style={styles.name}>{product.name}</Text>
@@ -370,7 +421,11 @@ function InfoCard({ product, discountPct }) {
           <Text style={styles.metaText}>Đã bán {product.soldCount ?? 0}</Text>
         </View>
 
-        {product.stockLabel ? (
+        {isOutOfStock ? (
+          <View style={styles.outOfStockBadge}>
+            <Text style={styles.outOfStockBadgeText}>Hết hàng</Text>
+          </View>
+        ) : product.stockLabel ? (
           <View style={styles.stockBadge}>
             <Text style={styles.stockBadgeText}>{product.stockLabel}</Text>
           </View>
@@ -378,14 +433,18 @@ function InfoCard({ product, discountPct }) {
       </View>
 
       <View style={styles.priceRow}>
-        <Text style={styles.price}>{formatVND(product.price)}</Text>
+        <Text style={[styles.price, isOutOfStock && styles.priceDisabled]}>{formatVND(product.price)}</Text>
         {product.originalPrice ? <Text style={styles.originalPrice}>{formatVND(product.originalPrice)}</Text> : null}
-        {discountPct > 0 ? (
+        {discountPct > 0 && !isOutOfStock ? (
           <View style={styles.offBadge}>
             <Text style={styles.offBadgeText}>-{discountPct}%</Text>
           </View>
         ) : null}
       </View>
+
+      {product.totalStock > 0 && !isOutOfStock && (
+        <Text style={styles.stockInfo}>Còn {product.totalStock} sản phẩm</Text>
+      )}
     </Card>
   );
 }
@@ -415,9 +474,17 @@ function LensOptions({ rxOD, rxOS, setRxOD, setRxOS, canBuy, onAdd, onBuyNow }) 
 function FrameOptions({ product, colorId, setColorId, size, setSize, qty, incQty, decQty, canBuy, onAdd, onBuyNow }) {
   const hasColors = Array.isArray(product?.colors) && product.colors.length > 0;
   const hasSizes = Array.isArray(product?.sizes) && product.sizes.length > 0;
+  const isOutOfStock = product?.stockStatus === "OUT_OF_STOCK";
 
   return (
     <Card>
+      {isOutOfStock && (
+        <View style={styles.outOfStockInfoBox}>
+          <Ionicons name="alert-circle" size={16} color="#EF4444" />
+          <Text style={styles.outOfStockInfoText}>Sản phẩm này hiện đang hết hàng</Text>
+        </View>
+      )}
+
       {hasColors && (
         <>
           <Text style={styles.sectionTitle}>Màu sắc</Text>
@@ -428,10 +495,11 @@ function FrameOptions({ product, colorId, setColorId, size, setSize, qty, incQty
                 <TouchableOpacity
                   key={c.id}
                   activeOpacity={0.85}
-                  onPress={() => setColorId(c.id)}
-                  style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
+                  onPress={() => !isOutOfStock && setColorId(c.id)}
+                  disabled={isOutOfStock}
+                  style={[styles.colorDotWrap, active && styles.colorDotWrapActive, isOutOfStock && styles.colorDotWrapDisabled]}
                 >
-                  <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
+                  <View style={[styles.colorDot, { backgroundColor: c.hex, opacity: isOutOfStock ? 0.5 : 1 }]} />
                 </TouchableOpacity>
               );
             })}
@@ -449,10 +517,11 @@ function FrameOptions({ product, colorId, setColorId, size, setSize, qty, incQty
                 <TouchableOpacity
                   key={s}
                   activeOpacity={0.85}
-                  onPress={() => setSize(s)}
-                  style={[styles.sizePill, active && styles.sizePillActive]}
+                  onPress={() => !isOutOfStock && setSize(s)}
+                  disabled={isOutOfStock}
+                  style={[styles.sizePill, active && styles.sizePillActive, isOutOfStock && styles.sizePillDisabled]}
                 >
-                  <Text style={[styles.sizeText, active && styles.sizeTextActive]}>{s}</Text>
+                  <Text style={[styles.sizeText, active && styles.sizeTextActive, isOutOfStock && styles.sizeTextDisabled]}>{s}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -460,16 +529,20 @@ function FrameOptions({ product, colorId, setColorId, size, setSize, qty, incQty
         </>
       )}
 
-      <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Số lượng</Text>
-      <View style={styles.qtyRow}>
-        <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={decQty}>
-          <Text style={styles.qtyBtnText}>-</Text>
-        </TouchableOpacity>
-        <Text style={styles.qtyValue}>{qty}</Text>
-        <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={incQty}>
-          <Text style={styles.qtyBtnText}>+</Text>
-        </TouchableOpacity>
-      </View>
+      {!isOutOfStock && (
+        <>
+          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Số lượng</Text>
+          <View style={styles.qtyRow}>
+            <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={decQty}>
+              <Text style={styles.qtyBtnText}>-</Text>
+            </TouchableOpacity>
+            <Text style={styles.qtyValue}>{qty}</Text>
+            <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={incQty}>
+              <Text style={styles.qtyBtnText}>+</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
 
       <CTAButtons canBuy={canBuy} onAdd={onAdd} onBuyNow={onBuyNow} />
     </Card>
@@ -538,7 +611,7 @@ function RelatedList({ navigation, related }) {
           <View style={{ width: 150 }}>
             <ProductCard
               item={item}
-              onPress={() => navigation.navigate("ProductDetail", { item })}
+              onPress={() => navigation.navigate("ProductDetail", { item, id: item.apiId })}
             />
           </View>
         )}
@@ -546,7 +619,6 @@ function RelatedList({ navigation, related }) {
     </Card>
   );
 }
-
 
 /* -------------------- Small UI -------------------- */
 
@@ -603,7 +675,7 @@ function RxInput({ label, placeholder, value, onChangeText }) {
 }
 
 /* -------------------- Styles -------------------- */
-
+/* ✅ giữ nguyên styles của bạn */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F7FB" },
   content: { paddingHorizontal: 16, paddingBottom: 16 },
@@ -669,6 +741,31 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 12, fontWeight: "800", color: "#111827" },
 
+  outOfStockOverlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 5,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+  },
+  outOfStockText: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+
+  heroImageDisabled: {
+    opacity: 0.6,
+  },
+
   favBtnOnImage: {
     position: "absolute",
     right: 10,
@@ -711,8 +808,14 @@ const styles = StyleSheet.create({
   stockBadge: { backgroundColor: "#E7F8EF", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   stockBadgeText: { color: "#159947", fontWeight: "900", fontSize: 12 },
 
+  outOfStockBadge: { backgroundColor: "#FFECEC", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  outOfStockBadgeText: { color: "#EF4444", fontWeight: "900", fontSize: 12 },
+
+  stockInfo: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#159947" },
+
   priceRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 10 },
   price: { fontSize: 18, fontWeight: "900", color: "green" },
+  priceDisabled: { color: "#9CA3AF" },
   originalPrice: { fontSize: 12, fontWeight: "800", color: "#9CA3AF", textDecorationLine: "line-through" },
   offBadge: { backgroundColor: "#FFECEC", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
   offBadgeText: { color: "#D33A2C", fontWeight: "900", fontSize: 12 },
@@ -732,13 +835,30 @@ const styles = StyleSheet.create({
   colorRow: { marginTop: 10, flexDirection: "row", gap: 10, alignItems: "center" },
   colorDotWrap: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
   colorDotWrapActive: { borderColor: "#111827", borderWidth: 2 },
+  colorDotWrapDisabled: { opacity: 0.5 },
   colorDot: { width: 18, height: 18, borderRadius: 9 },
 
   sizeRow: { marginTop: 10, flexDirection: "row", gap: 10 },
   sizePill: { width: 46, height: 38, borderRadius: 12, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
   sizePillActive: { backgroundColor: "#111827" },
+  sizePillDisabled: { opacity: 0.5 },
   sizeText: { fontWeight: "900", color: "#111827" },
   sizeTextActive: { color: "#fff" },
+  sizeTextDisabled: { color: "#9CA3AF" },
+
+  outOfStockInfoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#FFECEC",
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: "#EF4444",
+  },
+  outOfStockInfoText: { flex: 1, fontSize: 12, fontWeight: "700", color: "#D33A2C" },
 
   qtyRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 14 },
   qtyBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },

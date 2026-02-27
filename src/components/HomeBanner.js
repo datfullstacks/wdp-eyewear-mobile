@@ -10,7 +10,7 @@ import {
 } from "react-native";
 
 const { width } = Dimensions.get("window");
-const SLIDE_W = width - 32; // paddingHorizontal 16*2
+const SLIDE_W = width - 32;
 
 export default function HomeBanner({
   banners = [],
@@ -27,13 +27,11 @@ export default function HomeBanner({
     setActiveIndex(i);
   };
 
-  // Auto slide
   React.useEffect(() => {
     if (!autoPlay) return;
     if (!banners?.length) return;
     if (banners.length === 1) return;
 
-    // clear trước khi set mới
     if (timerRef.current) clearInterval(timerRef.current);
 
     timerRef.current = setInterval(() => {
@@ -49,7 +47,6 @@ export default function HomeBanner({
     };
   }, [autoPlay, intervalMs, banners?.length]);
 
-  // Nếu user swipe tay -> reset timer để cảm giác mượt hơn
   const resetTimer = React.useCallback(() => {
     if (!autoPlay) return;
     if (timerRef.current) clearInterval(timerRef.current);

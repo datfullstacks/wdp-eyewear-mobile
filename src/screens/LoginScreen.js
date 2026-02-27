@@ -35,7 +35,6 @@ export default function LoginScreen({ navigation }) {
   const [apiError, setApiError] = useState("");
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Helper: đọc access_token/refresh_token từ URL callback
   const createSessionFromUrl = useCallback(async (url) => {
     const { params, errorCode } = QueryParams.getQueryParams(url);
     if (errorCode) throw new Error(errorCode);
@@ -51,8 +50,7 @@ export default function LoginScreen({ navigation }) {
     if (error) throw error;
     return { session: data.session, access_token };
   }, []);
-
-  // Google Sign-In qua browser (Expo Go compatible)
+  
   const handleGoogleSignIn = useCallback(async () => {
     try {
       setApiError("");
@@ -69,7 +67,6 @@ export default function LoginScreen({ navigation }) {
       });
       if (error) throw error;
 
-      // Mở browser để user đăng nhập Google
       const res = await WebBrowser.openAuthSessionAsync(
         data.url ?? "",
         redirectTo
@@ -80,8 +77,6 @@ export default function LoginScreen({ navigation }) {
         if (!result?.access_token) {
           throw new Error("Không lấy được access_token từ Supabase");
         }
-
-        // Gửi accessToken lên BE để lấy JWT + user MongoDB
         await loginWithGoogle({ accessToken: result.access_token });
 
         Toast.show({
@@ -91,7 +86,6 @@ export default function LoginScreen({ navigation }) {
         });
         navigation.replace("Tabs");
       }
-      // res.type === "cancel" -> user đóng browser, không làm gì
     } catch (e) {
       setApiError(
         e?.response?.data?.message || e?.message || "Đăng nhập Google thất bại"
@@ -122,8 +116,6 @@ export default function LoginScreen({ navigation }) {
         text2: "Đã lưu dữ liệu",
       });
 
-      // ✅ LOGIN XONG -> VỀ HOME
-      // replace để tránh back quay lại Login
       navigation.replace("Tabs");
     } catch (e) {
       setApiError(e?.response?.data?.message || "Đăng nhập thất bại");

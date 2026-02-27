@@ -11,7 +11,6 @@ export default function App() {
   useEffect(() => {
     setupAuthInterceptor();
 
-    // ✅ hydrate favorites 1 lần khi app mở
     const fav = useFavoriteStore.getState();
     if (fav?.isHydrating) fav.hydrate();
   }, []);

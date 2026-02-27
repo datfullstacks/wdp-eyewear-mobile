@@ -77,7 +77,7 @@ export default function SupportScreen({ navigation }) {
       const result = await getSupportTicketsApi({ page: 1, limit: 50 });
       setItems(Array.isArray(result?.items) ? result.items : []);
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || "Khong tai duoc support tickets";
+      const msg = err?.response?.data?.message || err?.message || "Không tải được phiếu hỗ trợ";
       Alert.alert("Support", msg);
     } finally {
       setLoading(false);
@@ -91,7 +91,7 @@ export default function SupportScreen({ navigation }) {
   const onCreate = async () => {
     if (submitting) return;
     if (!subject.trim() || !message.trim()) {
-      Alert.alert("Support", "Subject va message la bat buoc.");
+      Alert.alert("Support", "Subject và message là bắt buộc.");
       return;
     }
 
@@ -102,7 +102,7 @@ export default function SupportScreen({ navigation }) {
       setMessage("");
       await loadData();
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || "Khong tao duoc support ticket";
+      const msg = err?.response?.data?.message || err?.message || "Không tải được phiếu hỗ trợ";
       Alert.alert("Support", msg);
     } finally {
       setSubmitting(false);
@@ -114,7 +114,7 @@ export default function SupportScreen({ navigation }) {
       await replySupportTicketApi(ticketId, { message: text });
       await loadData();
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || "Khong gui reply duoc";
+      const msg = err?.response?.data?.message || err?.message || "Không gửi reply được";
       Alert.alert("Support", msg);
     }
   };
@@ -130,12 +130,12 @@ export default function SupportScreen({ navigation }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Support</Text>
+          <Text style={styles.headerTitle}>Hỗ trợ</Text>
         </View>
       </View>
 
       <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Create support ticket</Text>
+        <Text style={styles.formTitle}>Tạo phiếu hỗ trợ</Text>
         <TextInput
           style={styles.input}
           placeholder="Subject"
@@ -172,7 +172,7 @@ export default function SupportScreen({ navigation }) {
           renderItem={({ item }) => <TicketCard item={item} onReply={onReply} />}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No support ticket yet</Text>
+              <Text style={styles.emptyText}>Không có phiếu hỗ trợ</Text>
             </View>
           }
         />

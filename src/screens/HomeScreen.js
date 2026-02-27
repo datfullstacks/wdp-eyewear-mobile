@@ -1,15 +1,19 @@
 // screens/HomeScreen.js
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Dimensions,
   FlatList,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -18,6 +22,7 @@ import HomeBanner from "../components/HomeBanner";
 import HomeFooter from "../components/HomeFooter";
 import ProductCard from "../components/ProductCard";
 import { useProducts } from "../hooks/useProducts";
+import { getMyAddressesApi, setDefaultMyAddressApi } from "../services/userService";
 import { useAuthStore } from "../store/authStore";
 
 const { width } = Dimensions.get("window");
@@ -103,7 +108,62 @@ export default function HomeScreen({ navigation }) {
   const logout = useAuthStore((s) => s.logout);
 
   const [query, setQuery] = useState("");
+  const [locationLabel, setLocationLabel] = useState("Quận 1, TP.HCM");
+  const [addresses, setAddresses] = useState([]);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressModalVisible, setAddressModalVisible] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
   const { products } = useProducts();
+
+  const [settingDefaultId, setSettingDefaultId] = useState(null);
+
+  // wrapped callback so it can be reused by focus effect and other actions
+  const loadAddress = useCallback(async () => {
+    setAddressLoading(true);
+    if (!token) {
+      setLocationLabel("Quận 1, TP.HCM");
+      setAddresses([]);
+      setAddressLoading(false);
+      return;
+    }
+
+    try {
+      const addresses = await getMyAddressesApi();
+      const list = Array.isArray(addresses) ? addresses : [];
+      setAddresses(list);
+      // note: actual selection/label update occurs in effect watching addresses
+    } catch {
+      setLocationLabel("Quận 1, TP.HCM");
+    } finally {
+      setAddressLoading(false);
+    }
+  }, [token]);
+
+  // reload every time screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      loadAddress();
+    }, [loadAddress])
+  );
+
+  // keep label synced when addresses change (for background updates)
+  useEffect(() => {
+    if (!addresses.length) return;
+    // retain current selection if still valid, otherwise fall back to default
+    let preferred = null;
+    if (selectedAddressId) {
+      preferred = addresses.find((a) => a._id === selectedAddressId);
+    }
+    if (!preferred) {
+      preferred = addresses.find((a) => a.isDefault) || addresses[0];
+    }
+    if (preferred) {
+      const parts = [preferred?.ward, preferred?.district, preferred?.province].filter(Boolean);
+      setLocationLabel(parts.join(", ") || preferred?.line1 || "");
+      setSelectedAddressId(preferred._id);
+    }
+  }, [addresses, selectedAddressId]);
+
 
   const submitSearch = () => {
     const q = query.trim();
@@ -112,6 +172,56 @@ export default function HomeScreen({ navigation }) {
       params: { q },
     });
   };
+
+  const handlePressLocation = () => {
+    if (token) {
+      // refresh before showing so new post-add changes appear immediately
+      loadAddress();
+      setAddressModalVisible(true);
+    } else {
+      navigation.navigate("Login");
+    }
+  };
+
+  const onSetDefaultAddress = useCallback(
+    async (address) => {
+      if (!token || !address?._id) return;
+
+      const addressId = address._id;
+      if (settingDefaultId) return;
+
+      try {
+        setSettingDefaultId(addressId);
+
+        // giống AddressBook: backend trả về danh sách addresses mới
+        const data = await setDefaultMyAddressApi(addressId);
+        const list = Array.isArray(data) ? data : [];
+
+        setAddresses(list);
+
+        // sync label + selected theo address default mới (hoặc theo address vừa chọn)
+        const preferred =
+          list.find((a) => a?._id === addressId) ||
+          list.find((a) => a?.isDefault) ||
+          list[0];
+
+        if (preferred) {
+          const parts = [preferred?.ward, preferred?.district, preferred?.province].filter(Boolean);
+          setLocationLabel(parts.join(", ") || preferred?.line1 || "");
+          setSelectedAddressId(preferred._id);
+        }
+
+        setAddressModalVisible(false);
+      } catch (err) {
+        const message =
+          err?.response?.data?.message || err?.message || "Không thiết lập lại mặt định được";
+        Alert.alert("Address", message);
+      } finally {
+        setSettingDefaultId(null);
+      }
+    },
+    [token, settingDefaultId]
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -125,13 +235,13 @@ export default function HomeScreen({ navigation }) {
           {/* Row 1: location + login/logout (không title) */}
           <View style={styles.headerRow1}>
             <Pressable
-              onPress={() => navigation.navigate?.("AddressBook")}
+              onPress={handlePressLocation}
               style={styles.locationRow}
               android_ripple={{ color: "rgba(0,0,0,0.06)" }}
             >
               <Ionicons name="location-outline" size={16} color="#111827" />
               <Text style={styles.locationText} numberOfLines={1}>
-                Giao đến: Quận 1, TP.HCM
+                Giao đến: {locationLabel}
               </Text>
               <Ionicons name="chevron-down" size={14} color="#6B7280" />
             </Pressable>
@@ -139,7 +249,7 @@ export default function HomeScreen({ navigation }) {
             {token ? (
               <Pressable onPress={logout} style={styles.authBtn}>
                 <Ionicons name="log-out-outline" size={14} color="#fff" />
-                <Text style={styles.authText}>Logout</Text>
+                <Text style={styles.authText}>Đăng xuất</Text>
               </Pressable>
             ) : (
               <Pressable
@@ -147,7 +257,7 @@ export default function HomeScreen({ navigation }) {
                 style={[styles.authBtn, { backgroundColor: "#4F46E5" }]}
               >
                 <Ionicons name="log-in-outline" size={14} color="#fff" />
-                <Text style={styles.authText}>Login</Text>
+                <Text style={styles.authText}>Đăng nhập</Text>
               </Pressable>
             )}
           </View>
@@ -178,7 +288,7 @@ export default function HomeScreen({ navigation }) {
 
         <ProductPager
           products={products}
-          onPressItem={(item) => navigation.navigate("ProductDetail", { item })}
+          onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
         />
 
         {/* SECTION: Mới về */}
@@ -193,7 +303,7 @@ export default function HomeScreen({ navigation }) {
 
         <ProductPager
           products={products}
-          onPressItem={(item) => navigation.navigate("ProductDetail", { item })}
+          onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
         />
 
         {/* SECTION: Combo */}
@@ -208,11 +318,71 @@ export default function HomeScreen({ navigation }) {
 
         <ProductPager
           products={products}
-          onPressItem={(item) => navigation.navigate("ProductDetail", { item })}
+          onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
         />
 
         <HomeFooter onChatPress={() => { }} onCallPress={() => { }} />
       </ScrollView>
+
+      {/* address modal */}
+      <Modal
+        visible={addressModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddressModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Địa chỉ của bạn</Text>
+              <TouchableOpacity onPress={() => setAddressModalVisible(false)}>
+                <Ionicons name="close" size={20} color="#111827" />
+              </TouchableOpacity>
+            </View>
+            {addressLoading ? (
+              <ActivityIndicator style={{ marginTop: 20 }} />
+            ) : addresses.length === 0 ? (
+              <Text style={{ marginTop: 20, textAlign: "center" }}>
+                Chưa có địa chỉ
+              </Text>
+            ) : (
+              <ScrollView contentContainerStyle={styles.addressList}>
+                {addresses.map((a) => {
+                  const label =
+                    [a?.line1, a?.ward, a?.district, a?.province]
+                      .filter(Boolean)
+                      .join(", ");
+                  const selected = a._id === selectedAddressId;
+                  const isSetting = settingDefaultId === a._id;
+                  return (
+                    <TouchableOpacity
+                      key={a._id || label}
+                      style={[styles.addressItem]}
+                      activeOpacity={0.8}
+                      disabled={!!settingDefaultId}
+                      onPress={() => onSetDefaultAddress(a)}
+                    >
+                      {isSetting ? (
+                        <ActivityIndicator size="small" style={{ marginRight: 10 }} />
+                      ) : (
+                        <Ionicons
+                          name={selected ? "radio-button-on" : "radio-button-off"}
+                          size={18}
+                          color={selected ? "#2563EB" : "#6B7280"}
+                          style={{ marginRight: 10 }}
+                        />
+                      )}
+
+                      <Text style={styles.addressText}>{label}</Text>
+                      {a.isDefault && <Text style={styles.defaultBadge}>Mặt định</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -288,5 +458,59 @@ const styles = StyleSheet.create({
     width: 18,
     borderRadius: 6,
     backgroundColor: "rgba(17,24,39,0.8)",
+  },
+
+  /* modal styles */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    width: "90%",
+    maxHeight: "80%",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  addressList: {
+    paddingVertical: 10,
+  },
+  addressItem: {
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "#ccc",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  addressText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#111827",
+  },
+  defaultBadge: {
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    color: "#fff",
+  },
+  defaultBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
 });

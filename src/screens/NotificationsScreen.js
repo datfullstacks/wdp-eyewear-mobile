@@ -50,7 +50,7 @@ export default function NotificationsScreen({ navigation }) {
       const data = await getMyNotificationsApi();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong tai duoc notifications";
+      const message = err?.response?.data?.message || err?.message || "Không tải được thông báo";
       Alert.alert("Notifications", message);
     } finally {
       setLoading(false);
@@ -66,7 +66,7 @@ export default function NotificationsScreen({ navigation }) {
       const data = await markMyNotificationAsReadApi(id);
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong danh dau da doc duoc";
+      const message = err?.response?.data?.message || err?.message || "Không đánh dấu đã đọc được";
       Alert.alert("Notifications", message);
     }
   };
@@ -76,7 +76,7 @@ export default function NotificationsScreen({ navigation }) {
       const data = await markAllMyNotificationsAsReadApi();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong danh dau tat ca duoc";
+      const message = err?.response?.data?.message || err?.message || "Không đánh dấu tất cả được";
       Alert.alert("Notifications", message);
     }
   };
@@ -92,10 +92,10 @@ export default function NotificationsScreen({ navigation }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
+          <Text style={styles.headerTitle}>Thông báo</Text>
         </View>
         <TouchableOpacity activeOpacity={0.85} onPress={onMarkAll}>
-          <Text style={styles.markAll}>Mark all read</Text>
+          <Text style={styles.markAll}>Đánh dấu đọc tất cả</Text>
         </TouchableOpacity>
       </View>
 
@@ -113,7 +113,7 @@ export default function NotificationsScreen({ navigation }) {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No notifications</Text>
+              <Text style={styles.emptyText}>Không có thông báo</Text>
             </View>
           }
         />

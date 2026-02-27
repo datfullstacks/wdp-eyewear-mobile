@@ -43,7 +43,6 @@ export const useFavoriteStore = create((set, get) => ({
       set({ ids: [], isHydrating: false });
     }
 
-    // Sync from backend when logged in, fallback to local storage on errors.
     try {
       const remoteIds = await getMyFavoriteIdsApi();
       await get().applyIds(remoteIds);

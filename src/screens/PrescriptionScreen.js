@@ -33,11 +33,11 @@ function PrescriptionCard({ item, onSetDefault, onDelete }) {
         <Text style={styles.cardName}>{item?.name || "--"}</Text>
         {item?.isDefault ? (
           <View style={styles.defaultBadge}>
-            <Text style={styles.defaultBadgeText}>Default</Text>
+            <Text style={styles.defaultBadgeText}>Mặt định</Text>
           </View>
         ) : (
           <TouchableOpacity activeOpacity={0.85} onPress={() => onSetDefault(item?._id)}>
-            <Text style={styles.linkText}>Set default</Text>
+            <Text style={styles.linkText}>Thiết lập mặt định</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -45,11 +45,11 @@ function PrescriptionCard({ item, onSetDefault, onDelete }) {
       <Text style={styles.meta}>OD: SPH {item?.rightEye?.sphere || "--"} / CYL {item?.rightEye?.cyl || "--"} / AXIS {item?.rightEye?.axis || "--"}</Text>
       <Text style={styles.meta}>OS: SPH {item?.leftEye?.sphere || "--"} / CYL {item?.leftEye?.cyl || "--"} / AXIS {item?.leftEye?.axis || "--"}</Text>
       <Text style={styles.meta}>PD: {item?.pd || "--"}</Text>
-      {!!item?.note ? <Text style={styles.meta}>Note: {item.note}</Text> : null}
+      {!!item?.note ? <Text style={styles.meta}>Ghi chú: {item.note}</Text> : null}
 
       <View style={styles.actions}>
         <TouchableOpacity activeOpacity={0.85} onPress={() => onDelete(item?._id)}>
-          <Text style={styles.deleteText}>Delete</Text>
+          <Text style={styles.deleteText}>Xóa</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -67,7 +67,7 @@ export default function PrescriptionScreen({ navigation }) {
       const data = await getMyPrescriptionsApi();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong tai duoc prescription";
+      const message = err?.response?.data?.message || err?.message || "Không tải được prescription";
       Alert.alert("Prescription", message);
     } finally {
       setLoading(false);
@@ -91,7 +91,7 @@ export default function PrescriptionScreen({ navigation }) {
       setItems(Array.isArray(data) ? data : []);
       setForm(EMPTY_FORM);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong tao duoc prescription";
+      const message = err?.response?.data?.message || err?.message || "Không tạo được prescription";
       Alert.alert("Prescription", message);
     } finally {
       setSubmitting(false);
@@ -103,16 +103,16 @@ export default function PrescriptionScreen({ navigation }) {
       const data = await setDefaultMyPrescriptionApi(id);
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong set duoc default";
+      const message = err?.response?.data?.message || err?.message || "Không thiết lập mặt định được";
       Alert.alert("Prescription", message);
     }
   };
 
   const onDelete = async (id) => {
-    Alert.alert("Prescription", "Xoa prescription nay?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert("Prescription", "Xóa prescription này?", [
+      { text: "Hủy", style: "cancel" },
       {
-        text: "Delete",
+        text: "Xóa",
         style: "destructive",
         onPress: async () => {
           try {
@@ -138,12 +138,12 @@ export default function PrescriptionScreen({ navigation }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Prescription</Text>
+          <Text style={styles.headerTitle}>Prescription của tôi</Text>
         </View>
       </View>
 
       <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Add prescription</Text>
+        <Text style={styles.formTitle}>Thêm prescription</Text>
         <TextInput
           style={styles.input}
           placeholder="Name *"
@@ -220,7 +220,7 @@ export default function PrescriptionScreen({ navigation }) {
           onPress={submit}
           disabled={submitting}
         >
-          <Text style={styles.submitText}>{submitting ? "Saving..." : "Save prescription"}</Text>
+          <Text style={styles.submitText}>{submitting ? "Đang lưu..." : "Lưu prescription"}</Text>
         </TouchableOpacity>
       </View>
 
@@ -238,7 +238,7 @@ export default function PrescriptionScreen({ navigation }) {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No prescription yet</Text>
+              <Text style={styles.emptyText}>Không có prescription</Text>
             </View>
           }
         />

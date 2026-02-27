@@ -35,11 +35,11 @@ function PaymentCard({ item, onSetDefault, onDelete }) {
         <Text style={styles.cardName}>{item?.label || "--"}</Text>
         {item?.isDefault ? (
           <View style={styles.defaultBadge}>
-            <Text style={styles.defaultBadgeText}>Default</Text>
+            <Text style={styles.defaultBadgeText}>Mặt định</Text>
           </View>
         ) : (
           <TouchableOpacity activeOpacity={0.85} onPress={() => onSetDefault(item?._id)}>
-            <Text style={styles.linkText}>Set default</Text>
+            <Text style={styles.linkText}>Thiết lập mặt định</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -52,7 +52,7 @@ function PaymentCard({ item, onSetDefault, onDelete }) {
 
       <View style={styles.actions}>
         <TouchableOpacity activeOpacity={0.85} onPress={() => onDelete(item?._id)}>
-          <Text style={styles.deleteText}>Delete</Text>
+          <Text style={styles.deleteText}>Xóa</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -70,7 +70,7 @@ export default function PaymentsScreen({ navigation }) {
       const data = await getMyPaymentMethodsApi();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong tai duoc payment methods";
+      const message = err?.response?.data?.message || err?.message || "Không tải được phương thức thanh toán";
       Alert.alert("Payments", message);
     } finally {
       setLoading(false);
@@ -84,7 +84,7 @@ export default function PaymentsScreen({ navigation }) {
   const submit = async () => {
     if (submitting) return;
     if (!form.label.trim() || !form.maskedNumber.trim()) {
-      Alert.alert("Payments", "Vui long nhap label va maskedNumber.");
+      Alert.alert("Payments", "Vui lòng nhập label va maskedNumber.");
       return;
     }
     try {
@@ -98,7 +98,7 @@ export default function PaymentsScreen({ navigation }) {
       setItems(Array.isArray(data) ? data : []);
       setForm(EMPTY_FORM);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong tao duoc payment method";
+      const message = err?.response?.data?.message || err?.message || "Không tạo được phương thức thanh toán";
       Alert.alert("Payments", message);
     } finally {
       setSubmitting(false);
@@ -110,23 +110,23 @@ export default function PaymentsScreen({ navigation }) {
       const data = await setDefaultMyPaymentMethodApi(id);
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Khong set duoc default";
+      const message = err?.response?.data?.message || err?.message || "Không thiết lập mặt định được";
       Alert.alert("Payments", message);
     }
   };
 
   const onDelete = async (id) => {
-    Alert.alert("Payments", "Xoa payment method nay?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert("Payments", "Xóa phương thức thanh toán này?", [
+      { text: "Hủy", style: "cancel" },
       {
-        text: "Delete",
+        text: "Xóa",
         style: "destructive",
         onPress: async () => {
           try {
             const data = await deleteMyPaymentMethodApi(id);
             setItems(Array.isArray(data) ? data : []);
           } catch (err) {
-            const message = err?.response?.data?.message || err?.message || "Khong xoa duoc payment method";
+            const message = err?.response?.data?.message || err?.message || "Không xóa được phương thức thanh toán";
             Alert.alert("Payments", message);
           }
         },
@@ -145,12 +145,12 @@ export default function PaymentsScreen({ navigation }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Payments</Text>
+          <Text style={styles.headerTitle}>Thanh toán</Text>
         </View>
       </View>
 
       <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Add payment method</Text>
+        <Text style={styles.formTitle}>Thêm phương thức thanh toán</Text>
         <TextInput
           style={styles.input}
           placeholder="Label *"
@@ -197,7 +197,7 @@ export default function PaymentsScreen({ navigation }) {
           onPress={submit}
           disabled={submitting}
         >
-          <Text style={styles.submitText}>{submitting ? "Saving..." : "Save payment method"}</Text>
+          <Text style={styles.submitText}>{submitting ? "Đang lưu..." : "Lưu phương thức thanh toán"}</Text>
         </TouchableOpacity>
       </View>
 
@@ -215,7 +215,7 @@ export default function PaymentsScreen({ navigation }) {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No payment method yet</Text>
+              <Text style={styles.emptyText}>Không có phương thức thanh toán</Text>
             </View>
           }
         />

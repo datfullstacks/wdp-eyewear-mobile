@@ -11,7 +11,6 @@ export default function CartIconButton({ onPress }) {
   const items = useCartStore((s) => s.items);
   const isHydrating = useCartStore((s) => s.isHydrating);
 
-  // Nếu chưa login => không hiển thị badge (tránh “dính” data user khác)
   const qty = token ? items.reduce((sum, it) => sum + (it.qty || 0), 0) : 0;
 
   return (

@@ -23,7 +23,6 @@ const ORDER_TYPE_LABEL = {
 };
 
 function isCartItemComplete(ci) {
-  // Theo UI bạn gửi: cần nhập đơn kính + chọn tròng trước khi thanh toán
   return Boolean(ci.prescriptionFilled) && Boolean(ci.lensSelected);
 }
 
@@ -54,7 +53,6 @@ export default function CartScreen({ navigation }) {
 
   const subtotal = useMemo(() => items.reduce((s, ci) => s + calcLineTotal(ci), 0), [items]);
 
-  // Demo giảm giá + ship như ảnh
   const discount = useMemo(() => Math.round(subtotal * 0.2), [subtotal]);
   const shipping = items.length > 0 ? 30000 : 0;
   const total = Math.max(0, subtotal - discount + shipping);
@@ -252,7 +250,7 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onToggleRx, onToggleLens }) 
 
   return (
     <View style={styles.itemCard}>
-      {/* top row */}
+
       <View style={styles.itemTopRow}>
         <Image source={{ uri: p.image }} style={styles.itemImage} />
         <View style={{ flex: 1, marginLeft: 10 }}>
@@ -275,7 +273,6 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onToggleRx, onToggleLens }) 
         </View>
       </View>
 
-      {/* config block */}
       <View style={styles.configBox}>
         <View style={styles.configRow}>
           <Text style={styles.configLabel}>Đơn kính:</Text>
@@ -297,7 +294,6 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onToggleRx, onToggleLens }) 
           </View>
         </View>
 
-        {/* Quick actions để test flow (sau này thay bằng screen chọn RX / chọn tròng) */}
         <View style={styles.quickRow}>
           <TouchableOpacity style={styles.quickBtn} activeOpacity={0.85} onPress={onToggleRx}>
             <Text style={styles.quickText}>
