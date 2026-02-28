@@ -244,7 +244,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const canBuy = useMemo(() => {
     if (!product) return false;
-    
+
     return true;
   }, [product]);
 
@@ -296,9 +296,9 @@ export default function ProductDetailScreen({ navigation, route }) {
 
       addItem({
         product,
-        orderType,                 // READY | CUSTOM
-        isPreorder: isVariantOut,  // ✅ NEW
-        qty: 1,
+        orderType,   
+        isPreorder: isVariantOut, 
+        qty,
         rxOD: orderType === "READY" ? rxOD : null,
         rxOS: orderType === "READY" ? rxOS : null,
         rxPhoto: orderType === "CUSTOM" ? rxPhoto : null,
@@ -314,7 +314,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
     // FRAME / other types
     const c = product.colors?.find((x) => x.id === colorId);
-    
+
     addItem({
       product,
       orderType,
@@ -439,6 +439,9 @@ export default function ProductDetailScreen({ navigation, route }) {
             onAdd={onAddToCart}
             onBuyNow={onBuyNow}
             isPreorder={isVariantOut}
+            qty={qty}
+            incQty={incQty}
+            decQty={decQty}
           />
         ) : (
           <FrameOptions
@@ -637,6 +640,9 @@ function LensOptions({
   onAdd,
   onBuyNow,
   isPreorder,
+  qty,
+  incQty,
+  decQty,
 }) {
   return (
     <Card>
@@ -678,11 +684,6 @@ function LensOptions({
         </>
       ) : (
         <View style={{ marginTop: 12 }}>
-          {/* <Text style={styles.mutedText}>
-            {orderType === "PREORDER"
-              ? "Đặt trước: Vui lòng tải ảnh đơn kính để shop làm theo đơn."
-              : "Làm theo đơn: Vui lòng tải ảnh đơn kính do bác sĩ cung cấp."}
-          </Text> */}
           <Text style={styles.mutedText}>
             {isPreorder
               ? "Sản phẩm hết hàng. Bạn đang đặt trước — vui lòng cung cấp thông tin theo lựa chọn dưới đây."
@@ -696,12 +697,26 @@ function LensOptions({
             style={[styles.outlineBtn, { width: "100%", marginTop: 10 }]}
             onPress={pickRxPhoto}
           >
-            <Text style={styles.outlineBtnText}>{rxPhoto?.uri ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}</Text>
+            <Text style={styles.outlineBtnText}>
+              {rxPhoto?.uri ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}
+            </Text>
           </TouchableOpacity>
 
           {rxPhoto?.uri ? <Text style={styles.mutedText}>Đã chọn ảnh</Text> : null}
         </View>
       )}
+
+      {/* ✅ Số lượng (kể cả khi đặt trước) */}
+      <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Số lượng</Text>
+      <View style={styles.qtyRow}>
+        <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={decQty}>
+          <Text style={styles.qtyBtnText}>-</Text>
+        </TouchableOpacity>
+        <Text style={styles.qtyValue}>{qty}</Text>
+        <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={incQty}>
+          <Text style={styles.qtyBtnText}>+</Text>
+        </TouchableOpacity>
+      </View>
 
       <CTAButtons
         canBuy={canBuy}
@@ -740,7 +755,7 @@ function FrameOptions({
         <View style={styles.outOfStockInfoBox}>
           <Ionicons name="alert-circle" size={16} color="#EF4444" />
           <Text style={styles.outOfStockInfoText}>
-            Biến thể bạn chọn hiện đang hết hàng — bạn có thể chọn “Đặt trước”.
+            Sản phẩm bạn chọn hiện đang hết hàng — bạn vẫn có thể nhập số lượng và bấm “Đặt trước”.
           </Text>
         </View>
       )}
@@ -787,20 +802,18 @@ function FrameOptions({
         </>
       )}
 
-      {!isOutOfStock && orderType !== "PREORDER" ? (
-        <>
-          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Số lượng</Text>
-          <View style={styles.qtyRow}>
-            <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={decQty}>
-              <Text style={styles.qtyBtnText}>-</Text>
-            </TouchableOpacity>
-            <Text style={styles.qtyValue}>{qty}</Text>
-            <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={incQty}>
-              <Text style={styles.qtyBtnText}>+</Text>
-            </TouchableOpacity>
-          </View>
-        </>
-      ) : null}
+      <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Số lượng</Text>
+      <View style={styles.qtyRow}>
+        <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={decQty}>
+          <Text style={styles.qtyBtnText}>-</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.qtyValue}>{qty}</Text>
+
+        <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={incQty}>
+          <Text style={styles.qtyBtnText}>+</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* READY note for all non-lens */}
       {orderType === "READY" ? (

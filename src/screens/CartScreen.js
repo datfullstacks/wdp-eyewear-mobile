@@ -12,7 +12,11 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useCartStore } from "../store/cartStore";
-import { buildCheckoutPayload, buildCheckoutItems, fetchCheckoutQuote } from "../services/checkoutService";
+import {
+  buildCheckoutPayload,
+  buildCheckoutItems,
+  fetchCheckoutQuote,
+} from "../services/checkoutService";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v || 0) + "đ";
 
@@ -21,6 +25,13 @@ const ORDER_TYPE_LABEL = {
   PREORDER: "Đặt trước",
   CUSTOM: "Làm theo đơn",
 };
+
+// ✅ Cọc 50% cho hàng đặt trước
+const PREORDER_PAY_RATE = 0.5;
+
+function getPayRate(ci) {
+  return ci?.isPreorder ? PREORDER_PAY_RATE : 1;
+}
 
 function isRxFilled(rxOD, rxOS) {
   const okOD = Boolean(rxOD?.CYL) && Boolean(rxOD?.AXIS);
@@ -41,8 +52,24 @@ function isCartItemComplete(ci) {
 
   return false;
 }
+
+// ✅ Tiền phải trả (mua ngay 100%, đặt trước 50%)
 function calcLineTotal(ci) {
-  const unitPrice = ci.product?.price ?? ci.product?.pricing?.salePrice ?? ci.product?.pricing?.basePrice ?? 0;
+  const unitPrice =
+    ci.product?.price ??
+    ci.product?.pricing?.salePrice ??
+    ci.product?.pricing?.basePrice ??
+    0;
+  return unitPrice * (ci.qty || 0) * getPayRate(ci);
+}
+
+// (optional) Tổng tiền gốc 100% để hiển thị
+function calcLineTotalFull(ci) {
+  const unitPrice =
+    ci.product?.price ??
+    ci.product?.pricing?.salePrice ??
+    ci.product?.pricing?.basePrice ??
+    0;
   return unitPrice * (ci.qty || 0);
 }
 
@@ -66,13 +93,35 @@ export default function CartScreen({ navigation }) {
     return items.every(isCartItemComplete);
   }, [items]);
 
-  const subtotal = useMemo(() => items.reduce((s, ci) => s + calcLineTotal(ci), 0), [items]);
+  // ✅ subtotal = tổng tiền phải trả (đã tính cọc 50% cho preorder)
+  const subtotal = useMemo(
+    () => items.reduce((s, ci) => s + calcLineTotal(ci), 0),
+    [items]
+  );
 
-  const discount = useMemo(() => Math.round(subtotal * 0.2), [subtotal]);
+  // ⚠️ bạn đang giảm giá 20% trên số tiền phải trả hiện tại (đã gồm cọc).
+  // Nếu muốn giảm giá trên tổng giá gốc 100%, nói mình chỉnh lại.
+  // const discount = useMemo(() => Math.round(subtotal * 0.2), [subtotal]);
+  const discount = 0;
   const shipping = items.length > 0 ? 30000 : 0;
   const total = Math.max(0, subtotal - discount + shipping);
 
-  const checkoutItems = useMemo(() => buildCheckoutItems(items), [items]);
+  // ✅ gắn preorder info vào checkoutItems để backend tính đúng (nếu backend hỗ trợ)
+  const checkoutItems = useMemo(() => {
+    const built = buildCheckoutItems(items);
+
+    // giả định built và items cùng thứ tự như store
+    return built.map((it, idx) => {
+      const ci = items[idx];
+      const payRate = ci?.isPreorder ? PREORDER_PAY_RATE : 1;
+      return {
+        ...it,
+        isPreorder: Boolean(ci?.isPreorder),
+        payRate, // backend có thể dùng field này để tính tiền phải trả
+      };
+    });
+  }, [items]);
+
   const shippingMethod = "standard";
 
   const setQty = (key, nextQty) => {
@@ -213,7 +262,7 @@ export default function CartScreen({ navigation }) {
               ) : null}
 
               <View style={styles.sumRow}>
-                <Text style={styles.sumLabel}>Tạm tính</Text>
+                <Text style={styles.sumLabel}>Tạm tính (cần thanh toán)</Text>
                 <Text style={styles.sumValue}>{formatVND(subtotal)}</Text>
               </View>
 
@@ -230,7 +279,7 @@ export default function CartScreen({ navigation }) {
               <View style={styles.sumDivider} />
 
               <View style={styles.sumRow}>
-                <Text style={styles.sumTotalLabel}>Tổng cộng</Text>
+                <Text style={styles.sumTotalLabel}>Tổng cần thanh toán</Text>
                 <Text style={styles.sumTotalValue}>{formatVND(total)}</Text>
               </View>
             </View>
@@ -246,7 +295,15 @@ export default function CartScreen({ navigation }) {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity activeOpacity={0.8} onPress={() => navigation?.navigate?.("ProductsTab")}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() =>
+                navigation.navigate("Tabs", {
+                  screen: "ProductsTab",
+                  params: { screen: "Products" },
+                })
+              }
+            >
               <Text style={styles.continueText}>Tiếp tục mua sắm</Text>
             </TouchableOpacity>
           </>
@@ -273,6 +330,9 @@ function CartItemCard({ ci, onDec, onInc, onRemove }) {
           ? "Đã tải ảnh đơn kính"
           : "Chưa tải ảnh đơn kính";
 
+  const payNow = calcLineTotal(ci);
+  const full = calcLineTotalFull(ci);
+
   return (
     <View style={styles.itemCard}>
       <View style={styles.itemTopRow}>
@@ -288,13 +348,19 @@ function CartItemCard({ ci, onDec, onInc, onRemove }) {
             <View style={styles.pill}>
               <Text style={styles.pillText}>{ORDER_TYPE_LABEL[ci.orderType] || "—"}</Text>
             </View>
-            {/* ✅ NEW: show preorder tag */}
+
+            {/* ✅ preorder tag => Cọc 50% */}
             {ci.isPreorder ? (
-              <View style={[styles.pill, { backgroundColor: "#FFF7ED" }]}>
-                <Text style={[styles.pillText, { color: "#B45309" }]}>Đặt trước</Text>
+              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                <View style={[styles.pill, { backgroundColor: "#FFF7ED" }]}>
+                  <Text style={[styles.pillText, { color: "#B45309" }]}>Cọc 50%</Text>
+                </View>
+                <View style={[styles.pill, { backgroundColor: "#E8F5E9" }]}>
+                  <Text style={[styles.pillText, { color: "green" }]}>Đặt trước</Text>
+                </View>
               </View>
             ) : null}
-            
+
             {p?.type === "LENS" && ci?.lensMeta?.buyingLensOnly ? (
               <View style={[styles.pill, { backgroundColor: "#FFF7ED" }]}>
                 <Text style={[styles.pillText, { color: "#B45309" }]}>Mua tròng riêng</Text>
@@ -306,6 +372,13 @@ function CartItemCard({ ci, onDec, onInc, onRemove }) {
             <Text style={styles.priceRed}>{formatVND(unitPrice)}</Text>
             {p.originalPrice ? <Text style={styles.priceOld}>{formatVND(p.originalPrice)}</Text> : null}
           </View>
+
+          {/* ✅ show pay-now for preorder */}
+          {ci.isPreorder ? (
+            <Text style={[styles.variantText, { marginTop: 6, color: "#B45309" }]}>
+              Thanh toán hôm nay: {formatVND(payNow)} • Tổng: {formatVND(full)}
+            </Text>
+          ) : null}
 
           {p?.type === "LENS" ? (
             <Text style={[styles.variantText, { marginTop: 8, color: complete ? "#159947" : "#EF4444" }]}>
