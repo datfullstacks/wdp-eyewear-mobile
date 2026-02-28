@@ -1,0 +1,47 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    classpath('com.android.tools.build:gradle')
+    classpath('com.facebook.react:react-native-gradle-plugin')
+    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+  }
+}
+
+allprojects {
+  repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://www.jitpack.io' }
+
+    def propOrEnv = { String key, String fallback = "" ->
+      def fromProperty = findProperty(key)
+      if (fromProperty != null && fromProperty.toString().trim()) return fromProperty.toString().trim()
+      def fromEnv = System.getenv(key)
+      if (fromEnv != null && fromEnv.toString().trim()) return fromEnv.toString().trim()
+      return fallback
+    }
+
+    def banubaMavenUrl = propOrEnv("BANUBA_MAVEN_URL", "https://nexus.banuba.net/repository/maven-releases")
+    def banubaMavenUser = propOrEnv("BANUBA_MAVEN_USER")
+    def banubaMavenPassword = propOrEnv("BANUBA_MAVEN_PASSWORD")
+
+    maven {
+      name = "banuba-nexus"
+      url = uri(banubaMavenUrl)
+      if (banubaMavenUser && banubaMavenPassword) {
+        credentials {
+          username = banubaMavenUser
+          password = banubaMavenPassword
+        }
+      }
+    }
+  }
+}
+
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"

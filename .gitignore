@@ -41,7 +41,6 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
 
 # local docs and data
 product.md

@@ -38,6 +38,15 @@ const ORDER_TYPES = {
   CUSTOM: "Làm theo đơn",
 };
 
+const TRY_ON_STATUS_LABEL = {
+  draft: "Try-on is not published yet",
+  pending_review: "Try-on is under review",
+  approved: "Try-on approved, waiting publish",
+  published: "Try-on available",
+  rejected: "Try-on needs update",
+  archived: "Try-on is archived",
+};
+
 /* -------------------- Screen -------------------- */
 
 export default function ProductDetailScreen({ navigation, route }) {
@@ -214,6 +223,23 @@ export default function ProductDetailScreen({ navigation, route }) {
     });
   };
 
+  const onOpenTryOn = useCallback(() => {
+    const tryOn = product?.tryOn;
+    if (!tryOn?.ready) {
+      Alert.alert("Try-on", "Try-on is not ready for this product.");
+      return;
+    }
+
+    navigation.navigate("TryOnAR", {
+      product: {
+        id: product.id,
+        apiId: product.apiId,
+        name: product.name,
+      },
+      tryOn,
+    });
+  }, [navigation, product]);
+
   if (!product) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -253,6 +279,10 @@ export default function ProductDetailScreen({ navigation, route }) {
         />
 
         <InfoCard product={product} discountPct={discountPct} />
+
+        {product.type === "FRAME" && product?.tryOn?.enabled ? (
+          <TryOnCard tryOn={product.tryOn} onOpenTryOn={onOpenTryOn} />
+        ) : null}
 
         <Card>
           <Text style={styles.sectionTitle}>Loại đơn hàng</Text>
@@ -445,6 +475,42 @@ function InfoCard({ product, discountPct }) {
       {product.totalStock > 0 && !isOutOfStock && (
         <Text style={styles.stockInfo}>Còn {product.totalStock} sản phẩm</Text>
       )}
+    </Card>
+  );
+}
+
+function TryOnCard({ tryOn, onOpenTryOn }) {
+  const status = String(tryOn?.status || "").trim().toLowerCase();
+  const statusLabel = TRY_ON_STATUS_LABEL[status] || "Try-on status unavailable";
+  const canOpen = Boolean(tryOn?.ready);
+
+  return (
+    <Card>
+      <View style={styles.tryOnHeader}>
+        <View style={styles.tryOnTitleWrap}>
+          <Ionicons name="glasses-outline" size={18} color="#111827" />
+          <Text style={styles.sectionTitle}>Virtual Try-On</Text>
+        </View>
+        <View style={[styles.tryOnStatusPill, canOpen ? styles.tryOnStatusPillReady : styles.tryOnStatusPillPending]}>
+          <Text style={[styles.tryOnStatusText, canOpen ? styles.tryOnStatusTextReady : styles.tryOnStatusTextPending]}>
+            {canOpen ? "Ready" : "Unavailable"}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.tryOnHint}>{statusLabel}</Text>
+
+      <TouchableOpacity
+        activeOpacity={0.9}
+        disabled={!canOpen}
+        onPress={onOpenTryOn}
+        style={[styles.tryOnButton, !canOpen && styles.btnDisabled]}
+      >
+        <Ionicons name="camera-outline" size={18} color="#fff" />
+        <Text style={[styles.tryOnButtonText, !canOpen && styles.btnDisabledText]}>
+          {canOpen ? "Open Try-On" : "Try-On Not Available"}
+        </Text>
+      </TouchableOpacity>
     </Card>
   );
 }
@@ -798,6 +864,30 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: "900", color: "#111827" },
   sectionTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
   mutedText: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  tryOnHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  tryOnTitleWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
+  tryOnStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  tryOnStatusPillReady: { backgroundColor: "#E7F8EF" },
+  tryOnStatusPillPending: { backgroundColor: "#FFECEC" },
+  tryOnStatusText: { fontSize: 11, fontWeight: "900" },
+  tryOnStatusTextReady: { color: "#159947" },
+  tryOnStatusTextPending: { color: "#D33A2C" },
+  tryOnHint: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  tryOnButton: {
+    marginTop: 12,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  tryOnButtonText: { color: "#fff", fontSize: 13, fontWeight: "900" },
 
   metaRow: { marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
