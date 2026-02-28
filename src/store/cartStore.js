@@ -72,33 +72,50 @@ export const useCartStore = create((set, get) => ({
     if (!key) return;
     try {
       await AsyncStorage.setItem(key, JSON.stringify(items));
-    } catch {}
+    } catch { }
   },
 
   clear: () => {
     const key = makeCartKey(get().userKey);
     set({ items: [] });
-    if (key) AsyncStorage.removeItem(key).catch(() => {});
+    if (key) AsyncStorage.removeItem(key).catch(() => { });
   },
 
   getTotalQty: () => get().items.reduce((sum, it) => sum + (it.qty || 0), 0),
 
-  addItem: ({ product, orderType, qty, variant, rxOD, rxOS }) => {
+  addItem: ({ product, orderType, qty, variant, rxOD, rxOS, rxPhoto, isPreorder }) => {
     const pSnap = pickProductSnapshot(product);
+    const ot = orderType || "READY";
 
     const variantKey =
       product.type === "FRAME"
         ? `c:${variant?.colorId || "-"}|s:${variant?.size || "-"}`
         : "-";
 
-    const rxKey =
-      product.type === "LENS"
-        ? `od:${rxOD?.CYL || ""},${rxOD?.AXIS || ""}|os:${rxOS?.CYL || ""},${rxOS?.AXIS || ""}`
-        : "-";
+    let rxKey = "-";
+    if (product.type === "LENS") {
+      const hasRx = isRxFilled(rxOD, rxOS);
+      const hasPhoto = Boolean(rxPhoto?.uri);
+
+      if (ot === "READY") {
+        rxKey = `od:${rxOD?.CYL || ""},${rxOD?.AXIS || ""}|os:${rxOS?.CYL || ""},${rxOS?.AXIS || ""}`;
+      } else if (ot === "CUSTOM") {
+        rxKey = `photo:${rxPhoto?.uri || "-"}`;
+      } else if (ot === "PREORDER") {
+        rxKey = hasRx
+          ? `od:${rxOD?.CYL || ""},${rxOD?.AXIS || ""}|os:${rxOS?.CYL || ""},${rxOS?.AXIS || ""}`
+          : `photo:${rxPhoto?.uri || "-"}`;
+      } else {
+        // fallback
+        rxKey = hasRx
+          ? `od:${rxOD?.CYL || ""},${rxOD?.AXIS || ""}|os:${rxOS?.CYL || ""},${rxOS?.AXIS || ""}`
+          : `photo:${rxPhoto?.uri || "-"}`;
+      }
+    }
 
     const lineKey = makeLineKey({
       productId: product.id,
-      orderType,
+      orderType: ot,
       variantKey,
       rxKey,
     });
@@ -108,7 +125,19 @@ export const useCartStore = create((set, get) => ({
         ? `Màu: ${variant?.colorName || "—"}, Size: ${variant?.size || "—"}`
         : null;
 
-    const prescriptionFilled = product.type === "LENS" ? isRxFilled(rxOD, rxOS) : false;
+    // ✅ flags mới cho LENS:
+    // READY: prescriptionFilled theo Rx
+    // CUSTOM: prescriptionFilled theo photo
+    // PREORDER: Rx OR photo
+    const hasRx = product.type === "LENS" ? isRxFilled(rxOD, rxOS) : false;
+    const hasPhoto = product.type === "LENS" ? Boolean(rxPhoto?.uri) : false;
+
+    const prescriptionFilled =
+
+      product.type === "LENS"
+        ? (orderType === "READY" ? isRxFilled(rxOD, rxOS) : Boolean(rxPhoto?.uri))
+        : false;
+
     const lensSelected = product.type === "LENS" ? true : false;
 
     set((state) => {
@@ -118,8 +147,18 @@ export const useCartStore = create((set, get) => ({
       let nextItems = [];
 
       if (idx >= 0) {
+        // ✅ nếu đã có line, tăng qty, đồng thời update rx/photo nếu cần
         nextItems = state.items.map((x, i) =>
-          i === idx ? { ...x, qty: Math.min(99, (x.qty || 0) + nextQty) } : x
+          i === idx
+            ? {
+              ...x,
+              qty: Math.min(99, (x.qty || 0) + nextQty),
+              rxOD: product.type === "LENS" ? (rxOD || x.rxOD || null) : x.rxOD,
+              rxOS: product.type === "LENS" ? (rxOS || x.rxOS || null) : x.rxOS,
+              rxPhoto: product.type === "LENS" ? (rxPhoto || x.rxPhoto || null) : x.rxPhoto,
+              prescriptionFilled,
+            }
+            : x
         );
       } else {
         nextItems = [
@@ -127,12 +166,14 @@ export const useCartStore = create((set, get) => ({
           {
             key: lineKey,
             product: pSnap,
-            orderType: orderType || "READY",
+            orderType: ot,
             qty: nextQty,
             variantText,
             variant: variant || null,
             rxOD: rxOD || null,
             rxOS: rxOS || null,
+            isPreorder: Boolean(isPreorder), // ✅ NEW
+            rxPhoto: rxPhoto || null,
             prescriptionFilled,
             lensSelected,
           },

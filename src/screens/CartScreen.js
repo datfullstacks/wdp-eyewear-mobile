@@ -22,12 +22,28 @@ const ORDER_TYPE_LABEL = {
   CUSTOM: "Làm theo đơn",
 };
 
-function isCartItemComplete(ci) {
-  return Boolean(ci.prescriptionFilled) && Boolean(ci.lensSelected);
+function isRxFilled(rxOD, rxOS) {
+  const okOD = Boolean(rxOD?.CYL) && Boolean(rxOD?.AXIS);
+  const okOS = Boolean(rxOS?.CYL) && Boolean(rxOS?.AXIS);
+  return okOD && okOS;
 }
 
+function isCartItemComplete(ci) {
+  const type = ci.product?.type;
+  if (type !== "LENS") return true;
+
+  const hasRx = isRxFilled(ci.rxOD, ci.rxOS);
+  const hasPhoto = Boolean(ci.rxPhotoAssetId || ci.rxPhoto?.uri);
+
+  if (ci.orderType === "READY") return hasRx;
+  if (ci.orderType === "CUSTOM") return hasPhoto;
+  if (ci.orderType === "PREORDER") return hasRx || hasPhoto;
+
+  return false;
+}
 function calcLineTotal(ci) {
-  return (ci.product?.price || 0) * (ci.qty || 0);
+  const unitPrice = ci.product?.price ?? ci.product?.pricing?.salePrice ?? ci.product?.pricing?.basePrice ?? 0;
+  return unitPrice * (ci.qty || 0);
 }
 
 export default function CartScreen({ navigation }) {
@@ -38,7 +54,6 @@ export default function CartScreen({ navigation }) {
   const hydrate = useCartStore((s) => s.hydrate);
   const setQtyStore = useCartStore((s) => s.setQty);
   const removeItemStore = useCartStore((s) => s.removeItem);
-  const setFlags = useCartStore((s) => s.setFlags);
   const clear = useCartStore((s) => s.clear);
   const [isQuoting, setIsQuoting] = useState(false);
 
@@ -56,6 +71,7 @@ export default function CartScreen({ navigation }) {
   const discount = useMemo(() => Math.round(subtotal * 0.2), [subtotal]);
   const shipping = items.length > 0 ? 30000 : 0;
   const total = Math.max(0, subtotal - discount + shipping);
+
   const checkoutItems = useMemo(() => buildCheckoutItems(items), [items]);
   const shippingMethod = "standard";
 
@@ -90,6 +106,7 @@ export default function CartScreen({ navigation }) {
 
       console.log("checkout quote payload", payload);
       const quote = await fetchCheckoutQuote(payload);
+
       navigation.navigate("Checkout", {
         quote,
         quoteMeta: {
@@ -164,7 +181,6 @@ export default function CartScreen({ navigation }) {
                   params: { screen: "Products" },
                 })
               }
-
             >
               <Text style={styles.goShopText}>Đi mua sắm</Text>
             </TouchableOpacity>
@@ -177,10 +193,6 @@ export default function CartScreen({ navigation }) {
               onDec={() => setQty(ci.key, (ci.qty || 1) - 1)}
               onInc={() => setQty(ci.key, (ci.qty || 1) + 1)}
               onRemove={() => removeItem(ci.key)}
-              onToggleRx={() =>
-                setFlags(ci.key, { prescriptionFilled: !ci.prescriptionFilled })
-              }
-              onToggleLens={() => setFlags(ci.key, { lensSelected: !ci.lensSelected })}
             />
           ))
         )}
@@ -195,7 +207,7 @@ export default function CartScreen({ navigation }) {
                     <Ionicons name="warning" size={16} color="#B45309" />
                   </View>
                   <Text style={styles.warnText}>
-                    Vui lòng hoàn thành thông tin đơn kính trước khi thanh toán
+                    Vui lòng hoàn thành thông tin tròng (nhập Rx hoặc tải ảnh đơn kính) trước khi thanh toán
                   </Text>
                 </View>
               ) : null}
@@ -229,7 +241,7 @@ export default function CartScreen({ navigation }) {
               style={[styles.checkoutBtn, (!canCheckout || isQuoting) && styles.checkoutBtnDisabled]}
               onPress={proceedCheckout}
             >
-              <Text style={[styles.checkoutText, !canCheckout && styles.checkoutTextDisabled]}>
+              <Text style={[styles.checkoutText, (!canCheckout || isQuoting) && styles.checkoutTextDisabled]}>
                 Tiến hành thanh toán
               </Text>
             </TouchableOpacity>
@@ -244,13 +256,25 @@ export default function CartScreen({ navigation }) {
   );
 }
 
-function CartItemCard({ ci, onDec, onInc, onRemove, onToggleRx, onToggleLens }) {
+function CartItemCard({ ci, onDec, onInc, onRemove }) {
   const p = ci.product;
+  const unitPrice = p?.price ?? p?.pricing?.salePrice ?? p?.pricing?.basePrice ?? 0;
+
   const complete = isCartItemComplete(ci);
+
+  const lensStatus =
+    p?.type !== "LENS"
+      ? null
+      : ci.orderType === "READY"
+        ? isRxFilled(ci.rxOD, ci.rxOS)
+          ? "Đã nhập Rx"
+          : "Chưa nhập Rx"
+        : Boolean(ci.rxPhotoAssetId || ci.rxPhoto?.uri)
+          ? "Đã tải ảnh đơn kính"
+          : "Chưa tải ảnh đơn kính";
 
   return (
     <View style={styles.itemCard}>
-
       <View style={styles.itemTopRow}>
         <Image source={{ uri: p.image }} style={styles.itemImage} />
         <View style={{ flex: 1, marginLeft: 10 }}>
@@ -262,80 +286,56 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onToggleRx, onToggleLens }) 
 
           <View style={styles.pillRow}>
             <View style={styles.pill}>
-              <Text style={styles.pillText}>{ORDER_TYPE_LABEL[ci.orderType] || "Làm theo đơn"}</Text>
+              <Text style={styles.pillText}>{ORDER_TYPE_LABEL[ci.orderType] || "—"}</Text>
             </View>
+            {/* ✅ NEW: show preorder tag */}
+            {ci.isPreorder ? (
+              <View style={[styles.pill, { backgroundColor: "#FFF7ED" }]}>
+                <Text style={[styles.pillText, { color: "#B45309" }]}>Đặt trước</Text>
+              </View>
+            ) : null}
+            
+            {p?.type === "LENS" && ci?.lensMeta?.buyingLensOnly ? (
+              <View style={[styles.pill, { backgroundColor: "#FFF7ED" }]}>
+                <Text style={[styles.pillText, { color: "#B45309" }]}>Mua tròng riêng</Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.priceRow}>
-            <Text style={styles.priceRed}>{formatVND(p.price)}</Text>
+            <Text style={styles.priceRed}>{formatVND(unitPrice)}</Text>
             {p.originalPrice ? <Text style={styles.priceOld}>{formatVND(p.originalPrice)}</Text> : null}
           </View>
+
+          {p?.type === "LENS" ? (
+            <Text style={[styles.variantText, { marginTop: 8, color: complete ? "#159947" : "#EF4444" }]}>
+              {lensStatus}
+            </Text>
+          ) : null}
+
+          {ci.orderType === "READY" && ci.readyNote ? (
+            <Text style={[styles.variantText, { marginTop: 6 }]}>Ghi chú: {ci.readyNote}</Text>
+          ) : null}
         </View>
       </View>
 
-      <View style={styles.configBox}>
-        <View style={styles.configRow}>
-          <Text style={styles.configLabel}>Đơn kính:</Text>
-          <View style={styles.configStatus}>
-            <View style={styles.orangeDot} />
-            <Text style={styles.configStatusText}>
-              {ci.prescriptionFilled ? "Đã nhập" : "Chưa nhập"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.configRow}>
-          <Text style={styles.configLabel}>Tròng:</Text>
-          <View style={styles.configStatus}>
-            <View style={styles.orangeDot} />
-            <Text style={styles.configStatusText}>
-              {ci.lensSelected ? "Đã chọn" : "Chưa chọn"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.quickRow}>
-          <TouchableOpacity style={styles.quickBtn} activeOpacity={0.85} onPress={onToggleRx}>
-            <Text style={styles.quickText}>
-              {ci.prescriptionFilled ? "Bỏ đơn kính" : "Nhập đơn kính"}
-            </Text>
+      <View style={styles.configActionsRow}>
+        <View style={styles.qtyWrap}>
+          <TouchableOpacity style={styles.qtyBtn} onPress={onDec} activeOpacity={0.85}>
+            <Text style={styles.qtyBtnText}>-</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickBtn} activeOpacity={0.85} onPress={onToggleLens}>
-            <Text style={styles.quickText}>
-              {ci.lensSelected ? "Bỏ chọn tròng" : "Chọn tròng"}
-            </Text>
+          <Text style={styles.qtyValue}>{ci.qty || 1}</Text>
+
+          <TouchableOpacity style={styles.qtyBtn} onPress={onInc} activeOpacity={0.85}>
+            <Text style={styles.qtyBtnText}>+</Text>
           </TouchableOpacity>
         </View>
 
-        {!complete ? (
-          <View style={styles.inlineWarn}>
-            <View style={styles.inlineWarnBar} />
-            <Text style={styles.inlineWarnText}>
-              Cần nhập đơn kính và chọn tròng trước khi thanh toán
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={styles.configActionsRow}>
-          {/* qty */}
-          <View style={styles.qtyWrap}>
-            <TouchableOpacity style={styles.qtyBtn} onPress={onDec} activeOpacity={0.85}>
-              <Text style={styles.qtyBtnText}>-</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.qtyValue}>{ci.qty || 1}</Text>
-
-            <TouchableOpacity style={styles.qtyBtn} onPress={onInc} activeOpacity={0.85}>
-              <Text style={styles.qtyBtnText}>+</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.rightBtns}>
-            <TouchableOpacity style={styles.removeBtn} activeOpacity={0.85} onPress={onRemove}>
-              <Text style={styles.removeText}>Xóa</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.rightBtns}>
+          <TouchableOpacity style={styles.removeBtn} activeOpacity={0.85} onPress={onRemove}>
+            <Text style={styles.removeText}>Xóa</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 14, fontWeight: "900", color: "#111827" },
   variantText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
 
-  pillRow: { marginTop: 8, flexDirection: "row" },
+  pillRow: { marginTop: 8, flexDirection: "row", gap: 8, flexWrap: "wrap" },
   pill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -418,47 +418,6 @@ const styles = StyleSheet.create({
     textDecorationLine: "line-through",
   },
 
-  configBox: {
-    marginTop: 12,
-    backgroundColor: "#F4F8FF",
-    borderRadius: 14,
-    padding: 12,
-  },
-  configRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 6,
-  },
-  configLabel: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  configStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
-  orangeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#F59E0B" },
-  configStatusText: { fontSize: 12.5, fontWeight: "800", color: "#6B7280" },
-
-  quickRow: { flexDirection: "row", gap: 10, marginTop: 10 },
-  quickBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
-  },
-  quickText: { fontSize: 12.5, fontWeight: "900", color: "#2563EB" },
-
-  inlineWarn: {
-    marginTop: 10,
-    flexDirection: "row",
-    gap: 10,
-    backgroundColor: "#FFF7ED",
-    borderRadius: 12,
-    padding: 10,
-    alignItems: "center",
-  },
-  inlineWarnBar: { width: 3, height: "100%", borderRadius: 2, backgroundColor: "#F59E0B" },
-  inlineWarnText: { flex: 1, color: "#6B7280", fontSize: 12.5, fontWeight: "700" },
-
   configActionsRow: {
     marginTop: 12,
     flexDirection: "row",
@@ -475,6 +434,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   qtyBtn: {
     width: 28,
