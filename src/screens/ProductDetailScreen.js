@@ -1,4 +1,4 @@
-// screens/ProductDetailScreen.js
+﻿// screens/ProductDetailScreen.js
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -19,7 +19,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useFavoriteStore } from "../store/favoriteStore";
 import { useProducts } from "../hooks/useProducts";
 import { getRelatedProducts, fetchProductById } from "../services/productService";
-import { useCartStore } from "../store/cartStore";
+import { CART_TYPES, useCartStore } from "../store/cartStore";
 import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
 import { useAuthStore } from "../store/authStore";
@@ -43,13 +43,11 @@ function normalizeStr(s) {
   return String(s ?? "").trim().toLowerCase();
 }
 
-// chọn variant theo options color/size (match mềm)
 function getSelectedVariant(product, { colorId, size }) {
   if (!product?.variants?.length) return null;
 
   const colorObj = product.colors?.find((c) => c.id === colorId);
-  const colorKey =
-    colorObj?.name || colorObj?.label || colorObj?.id || null;
+  const colorKey = colorObj?.name || colorObj?.label || colorObj?.id || null;
 
   return (
     product.variants.find((v) => {
@@ -60,10 +58,7 @@ function getSelectedVariant(product, { colorId, size }) {
       const vColor = opts.color ?? null;
       const vSize = opts.size ?? null;
 
-      const okColor = colorKey
-        ? normalizeStr(vColor) === normalizeStr(colorKey)
-        : true;
-
+      const okColor = colorKey ? normalizeStr(vColor) === normalizeStr(colorKey) : true;
       const okSize = size ? normalizeStr(vSize) === normalizeStr(size) : true;
 
       return (hasColor ? okColor : true) && (hasSize ? okSize : true);
@@ -94,22 +89,18 @@ export default function ProductDetailScreen({ navigation, route }) {
     ]);
   };
 
-  // ✅ fallback product lấy từ list nếu chỉ có passedId
   const fallbackFromList = useMemo(() => {
     if (!passedId) return null;
     return products.find((p) => p.id === passedId) || null;
   }, [passedId, products]);
 
-  // ✅ product state: render nhanh bằng passedItem/fallback, rồi refresh bằng API by id
   const [product, setProduct] = useState(passedItem ?? fallbackFromList ?? null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ✅ apiId ưu tiên Mongo _id/apiId
   const apiId = useMemo(() => {
     return passedItem?.apiId || passedItem?._id || passedId || null;
   }, [passedItem, passedId]);
 
-  // ✅ fetch fresh by id
   useEffect(() => {
     let mounted = true;
     if (!apiId) return;
@@ -118,6 +109,7 @@ export default function ProductDetailScreen({ navigation, route }) {
       try {
         setIsRefreshing(true);
         const fresh = await fetchProductById(apiId);
+        console.log("Fetched fresh product by id", apiId, fresh);
         if (mounted && fresh) setProduct(fresh);
       } catch (e) {
         // ignore
@@ -131,7 +123,6 @@ export default function ProductDetailScreen({ navigation, route }) {
     };
   }, [apiId]);
 
-  // hydrate cart once
   useEffect(() => {
     const st = useCartStore.getState();
     if (st && st.isHydrating) st.hydrate();
@@ -151,53 +142,33 @@ export default function ProductDetailScreen({ navigation, route }) {
     product?.type === "LENS"
       ? "Chi tiết tròng kính"
       : product?.type === "FRAME"
-        ? "Chi tiết gọng kính"
-        : "Chi tiết sản phẩm";
+      ? "Chi tiết gọng kính"
+      : "Chi tiết sản phẩm";
 
-  // UI state
   const [orderType, setOrderType] = useState("READY");
-
-  const [colorId, setColorId] = useState(
-    product?.type === "FRAME" ? product?.colors?.[0]?.id : null
-  );
-
-  const [size, setSize] = useState(
-    product?.type === "FRAME"
-      ? product?.sizes?.[0]
-      : product?.variants?.[0]?.options?.size || "STD"
-  );
-
+  const [colorId, setColorId] = useState(product?.colors?.[0]?.id ?? null);
+  const [size, setSize] = useState(product?.type === "FRAME" ? product?.sizes?.[0] ?? "M" : "STD");
   const [qty, setQty] = useState(1);
-
-  // READY data for all types (note)
   const [readyNote, setReadyNote] = useState("");
 
   useEffect(() => {
     if (!product) return;
 
-    // reset when product changes
     setQty(1);
     setReadyNote("");
+    setColorId(product.colors?.[0]?.id ?? null);
 
     if (product.type === "FRAME") {
-      setColorId(product.colors?.[0]?.id || null);
       setSize(product.sizes?.[0] || "M");
     } else {
-      setColorId(null);
-      // size fallback from variant
-      const vSize = product.variants?.[0]?.options?.size;
-      setSize(vSize || "STD");
+      setSize("STD");
     }
   }, [product]);
 
-  // LENS Rx
   const [rxOD, setRxOD] = useState({ CYL: "", AXIS: "" });
   const [rxOS, setRxOS] = useState({ CYL: "", AXIS: "" });
-
-  // Rx photo for CUSTOM/PREORDER (LENS)
   const [rxPhoto, setRxPhoto] = useState(null);
 
-  // accordion state
   const [open, setOpen] = useState({
     desc: false,
     sizeGuide: false,
@@ -225,38 +196,41 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const onToggleAccordion = (key) => setOpen((p) => ({ ...p, [key]: !p[key] }));
 
-  // ✅ selected variant + stock
   const selectedVariant = useMemo(() => {
     if (!product) return null;
+
     if (product.type === "FRAME") return getSelectedVariant(product, { colorId, size });
-    return getSelectedVariant(product, { colorId: null, size });
+    return getSelectedVariant(product, { colorId, size: null });
   }, [product, colorId, size]);
 
   const variantStock = selectedVariant?.stock ?? product?.totalStock ?? 0;
   const isVariantOut = variantStock <= 0;
 
-  const showPreorder = isVariantOut;
+  const preorderEnabled = product?.preOrder?.enabled === true;
+  const isPreorderMode = isVariantOut && preorderEnabled;
+  const showPreorder = isPreorderMode;
 
-  const orderTypeItems = useMemo(() => ([
-    { key: "READY", label: ORDER_TYPES.READY },
-    { key: "CUSTOM", label: ORDER_TYPES.CUSTOM },
-  ]), []);
+  const orderTypeItems = useMemo(
+    () => [
+      { key: "READY", label: ORDER_TYPES.READY },
+      { key: "CUSTOM", label: ORDER_TYPES.CUSTOM },
+    ],
+    []
+  );
 
   const canBuy = useMemo(() => {
     if (!product) return false;
-
+    if (isVariantOut && !preorderEnabled) return false;
     return true;
-  }, [product]);
+  }, [product, isVariantOut, preorderEnabled]);
 
   useEffect(() => {
     if (!product) return;
-    // không set PREORDER nữa
     if (!orderType || (orderType !== "READY" && orderType !== "CUSTOM")) {
       setOrderType("READY");
     }
   }, [product?.id]);
 
-  // ✅ pick rx photo
   const pickRxPhoto = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -275,7 +249,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const hasFrameInCart = () => {
     const st = useCartStore.getState();
-    return (st.items || []).some((x) => x.product?.type === "FRAME");
+    return [...(st.items || []), ...(st.preorderItems || [])].some((x) => x.product?.type === "FRAME");
   };
 
   const doAddToCart = useCallback(() => {
@@ -294,11 +268,18 @@ export default function ProductDetailScreen({ navigation, route }) {
         return;
       }
 
+      const c = product.colors?.find((x) => x.id === colorId);
+
       addItem({
         product,
-        orderType,   
-        isPreorder: isVariantOut, 
+        orderType: isPreorderMode ? "PREORDER" : orderType,
+        isPreorder: isPreorderMode,
         qty,
+
+        variantId: selectedVariant?._id || null,
+        variant: c ? { colorId, colorName: c?.name || c?.label || "—" } : null,
+        variantText: c ? `${c?.name || c?.label || "—"}` : null,
+
         rxOD: orderType === "READY" ? rxOD : null,
         rxOS: orderType === "READY" ? rxOS : null,
         rxPhoto: orderType === "CUSTOM" ? rxPhoto : null,
@@ -306,46 +287,60 @@ export default function ProductDetailScreen({ navigation, route }) {
 
       Toast.show({
         type: "success",
-        text1: isVariantOut ? "Đã đặt trước" : "Đã thêm vào giỏ",
+        text1: isPreorderMode ? "Đã đặt trước" : "Đã thêm vào giỏ",
         text2: product.name,
       });
       return;
     }
 
-    // FRAME / other types
     const c = product.colors?.find((x) => x.id === colorId);
 
     addItem({
       product,
-      orderType,
-      isPreorder: isVariantOut,   // ✅ NEW
+      orderType: isPreorderMode ? "PREORDER" : orderType,
+      isPreorder: isPreorderMode,
       qty,
       variantId: selectedVariant?._id || null,
-      variant: product.type === "FRAME"
-        ? { colorId, colorName: c?.name || c?.label || "—", size }
-        : { size },
-      variantText: product.type === "FRAME" ? `${c?.name || "—"} • ${size}` : size ? `Size ${size}` : null,
+      variant:
+        product.type === "FRAME"
+          ? { colorId, colorName: c?.name || c?.label || "—", size }
+          : { size },
+      variantText:
+        product.type === "FRAME" ? `${c?.name || "—"} • ${size}` : size ? `Size ${size}` : null,
       readyNote: orderType === "READY" ? readyNote : null,
     });
 
     Toast.show({
       type: "success",
-      text1: isVariantOut ? "Đã đặt trước" : "Đã thêm vào giỏ",
+      text1: isPreorderMode ? "Đã đặt trước" : "Đã thêm vào giỏ",
       text2: product.name,
     });
-  }, [product, orderType, qty, addItem, colorId, size, readyNote, selectedVariant, rxOD, rxOS, rxPhoto]);
+  }, [
+    product,
+    orderType,
+    qty,
+    addItem,
+    colorId,
+    size,
+    readyNote,
+    selectedVariant,
+    rxOD,
+    rxOS,
+    rxPhoto,
+    isVariantOut,
+    isPreorderMode,
+  ]);
 
   const onAddToCart = useCallback(() => {
     if (!token) return requireLogin();
     if (!product || !canBuy) return;
 
-    // soft warning: lens without frame is allowed
     if (product.type === "LENS" && !hasFrameInCart()) {
       Alert.alert(
         "Bạn đang mua tròng riêng",
         "Nếu bạn chưa có gọng phù hợp, bạn có thể thêm gọng để shop hỗ trợ lắp và căn chỉnh tốt hơn.",
         [
-          { text: "Thêm vào giỏ (tròng)", onPress: doAddToCart },
+          { text: isPreorderMode ? "Đặt trước (tròng)" : "Thêm vào giỏ (tròng)", onPress: doAddToCart },
           { text: "Chọn thêm gọng", onPress: () => navigation.navigate("Tabs", { screen: "ProductsTab" }) },
           { text: "Hủy", style: "cancel" },
         ]
@@ -354,12 +349,15 @@ export default function ProductDetailScreen({ navigation, route }) {
     }
 
     doAddToCart();
-  }, [token, product, canBuy, doAddToCart, navigation]);
+  }, [token, product, canBuy, doAddToCart, navigation, isPreorderMode]);
 
   const onBuyNow = () => {
     if (!token) return requireLogin();
     onAddToCart();
-    navigation.navigate("Tabs", { screen: "CartTab" });
+    navigation.navigate("CartFlow", {
+      screen: "Cart",
+      params: { cartType: isPreorderMode ? CART_TYPES.PREORDER : CART_TYPES.ORDER },
+    });
   };
 
   const onToggleFav = () => {
@@ -388,13 +386,13 @@ export default function ProductDetailScreen({ navigation, route }) {
   const ACCORDIONS = [
     { key: "desc", title: "Mô tả sản phẩm", content: product.sections?.description || "—" },
     { key: "sizeGuide", title: "Hướng dẫn chọn size", content: product.sections?.sizeGuide || "—" },
-    { key: "reviews", title: `Đánh giá (${product.ratingCount ?? product.ratingsQuantity ?? 0})`, content: "Preview reviews…" },
-    { key: "qa", title: `Hỏi đáp (${product.qaCount ?? 0})`, content: "Preview Q&A…" },
+    { key: "reviews", title: `Đánh giá (${product.ratingCount ?? product.ratingsQuantity ?? 0})`, content: "Xem đánh giá..." },
+    { key: "qa", title: `Hỏi đáp (${product.qaCount ?? 0})`, content: "Xem Q&A..." },
   ];
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <HeaderBar navigation={navigation} title={headerTitle} />
+      <HeaderBar navigation={navigation} title={headerTitle} isPreorderMode={isPreorderMode} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {isRefreshing ? (
@@ -421,13 +419,16 @@ export default function ProductDetailScreen({ navigation, route }) {
 
           <Text style={styles.mutedText}>
             {showPreorder
-              ? "Biến thể bạn chọn hiện hết hàng — bạn có thể đặt trước."
+              ? "Sản phẩm bạn chọn hiện hết hàng — bạn có thể đặt trước."
               : product.shipping?.etaLabel || "Giao nhanh 1–3 ngày"}
           </Text>
         </Card>
 
         {product.type === "LENS" ? (
           <LensOptions
+            product={product}
+            colorId={colorId}
+            setColorId={setColorId}
             orderType={orderType}
             rxOD={rxOD}
             rxOS={rxOS}
@@ -438,7 +439,7 @@ export default function ProductDetailScreen({ navigation, route }) {
             canBuy={canBuy}
             onAdd={onAddToCart}
             onBuyNow={onBuyNow}
-            isPreorder={isVariantOut}
+            isPreorderMode={isPreorderMode}
             qty={qty}
             incQty={incQty}
             decQty={decQty}
@@ -460,6 +461,7 @@ export default function ProductDetailScreen({ navigation, route }) {
             onAdd={onAddToCart}
             onBuyNow={onBuyNow}
             isVariantOut={isVariantOut}
+            isPreorderMode={isPreorderMode}
           />
         )}
 
@@ -485,7 +487,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
 /* -------------------- Components -------------------- */
 
-function HeaderBar({ navigation, title }) {
+function HeaderBar({ navigation, title, isPreorderMode }) {
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
@@ -516,7 +518,14 @@ function HeaderBar({ navigation, title }) {
           <Ionicons name="heart" size={24} color="#EF4444" />
         </TouchableOpacity>
 
-        <CartIconButton onPress={() => navigation.navigate("CartFlow", { screen: "Cart" })} />
+        <CartIconButton
+          onPress={() =>
+            navigation.navigate("CartFlow", {
+              screen: "Cart",
+              params: { cartType: isPreorderMode ? CART_TYPES.PREORDER : CART_TYPES.ORDER },
+            })
+          }
+        />
       </View>
     </View>
   );
@@ -578,11 +587,10 @@ function InfoCard({ product, discountPct, isVariantOut, variantStock }) {
     typeof product.ratingAvg === "number"
       ? product.ratingAvg
       : typeof product.ratingsAverage === "number"
-        ? product.ratingsAverage
-        : null;
+      ? product.ratingsAverage
+      : null;
 
-  const ratingCount =
-    product.ratingCount ?? product.ratingsQuantity ?? 0;
+  const ratingCount = product.ratingCount ?? product.ratingsQuantity ?? 0;
 
   return (
     <Card>
@@ -621,14 +629,15 @@ function InfoCard({ product, discountPct, isVariantOut, variantStock }) {
         ) : null}
       </View>
 
-      {!isOutOfStock && variantStock > 0 ? (
-        <Text style={styles.stockInfo}>Còn {variantStock} sản phẩm</Text>
-      ) : null}
+      {!isOutOfStock && variantStock > 0 ? <Text style={styles.stockInfo}>Còn {variantStock} sản phẩm</Text> : null}
     </Card>
   );
 }
 
 function LensOptions({
+  product,
+  colorId,
+  setColorId,
   orderType,
   rxOD,
   rxOS,
@@ -639,14 +648,37 @@ function LensOptions({
   canBuy,
   onAdd,
   onBuyNow,
-  isPreorder,
+  isPreorderMode,
   qty,
   incQty,
   decQty,
 }) {
+  const hasColors = Array.isArray(product?.colors) && product.colors.length > 0;
+
   return (
     <Card>
-      <Text style={styles.sectionTitle}>Thông số</Text>
+      {hasColors ? (
+        <>
+          <Text style={styles.sectionTitle}>Màu sắc</Text>
+          <View style={styles.colorRow}>
+            {(product.colors || []).map((c) => {
+              const active = c.id === colorId;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  activeOpacity={0.85}
+                  onPress={() => setColorId(c.id)}
+                  style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
+                >
+                  <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
+      <Text style={[styles.sectionTitle, { marginTop: hasColors ? 14 : 0 }]}>Thông số</Text>
 
       {orderType === "READY" ? (
         <>
@@ -685,11 +717,11 @@ function LensOptions({
       ) : (
         <View style={{ marginTop: 12 }}>
           <Text style={styles.mutedText}>
-            {isPreorder
-              ? "Sản phẩm hết hàng. Bạn đang đặt trước — vui lòng cung cấp thông tin theo lựa chọn dưới đây."
+            {isPreorderMode
+              ? "Sản phẩm hết hàng. Bạn đang đặt trước — Vui lòng cung cấp thông tin theo lựa chọn dưới đây."
               : orderType === "CUSTOM"
-                ? "Làm theo đơn: Vui lòng tải ảnh đơn kính do bác sĩ cung cấp."
-                : ""}
+              ? "Làm theo đơn: Vui lòng tải ảnh đơn kính do bác sĩ cung cấp."
+              : ""}
           </Text>
 
           <TouchableOpacity
@@ -697,16 +729,13 @@ function LensOptions({
             style={[styles.outlineBtn, { width: "100%", marginTop: 10 }]}
             onPress={pickRxPhoto}
           >
-            <Text style={styles.outlineBtnText}>
-              {rxPhoto?.uri ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}
-            </Text>
+            <Text style={styles.outlineBtnText}>{rxPhoto?.uri ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}</Text>
           </TouchableOpacity>
 
           {rxPhoto?.uri ? <Text style={styles.mutedText}>Đã chọn ảnh</Text> : null}
         </View>
       )}
 
-      {/* ✅ Số lượng (kể cả khi đặt trước) */}
       <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Số lượng</Text>
       <View style={styles.qtyRow}>
         <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={decQty}>
@@ -718,12 +747,7 @@ function LensOptions({
         </TouchableOpacity>
       </View>
 
-      <CTAButtons
-        canBuy={canBuy}
-        onAdd={onAdd}
-        onBuyNow={onBuyNow}
-        isPreorder={isPreorder}
-      />
+      <CTAButtons canBuy={canBuy} onAdd={onAdd} onBuyNow={onBuyNow} isPreorder={isPreorderMode} />
     </Card>
   );
 }
@@ -744,18 +768,18 @@ function FrameOptions({
   onAdd,
   onBuyNow,
   isVariantOut,
+  isPreorderMode,
 }) {
   const hasColors = Array.isArray(product?.colors) && product.colors.length > 0;
   const hasSizes = Array.isArray(product?.sizes) && product.sizes.length > 0;
-  const isOutOfStock = isVariantOut;
 
   return (
     <Card>
-      {isOutOfStock && (
+      {isPreorderMode && (
         <View style={styles.outOfStockInfoBox}>
           <Ionicons name="alert-circle" size={16} color="#EF4444" />
           <Text style={styles.outOfStockInfoText}>
-            Sản phẩm bạn chọn hiện đang hết hàng — bạn vẫn có thể nhập số lượng và bấm “Đặt trước”.
+            Sản phẩm bạn chọn hiện đang hết hàng — bạn vẫn có thể nhập số lượng và bấm "Đặt trước".
           </Text>
         </View>
       )}
@@ -815,14 +839,13 @@ function FrameOptions({
         </TouchableOpacity>
       </View>
 
-      {/* READY note for all non-lens */}
       {orderType === "READY" ? (
         <View style={{ marginTop: 14 }}>
-          <Text style={styles.sectionTitle}>Thông số/Ghi chú</Text>
+          <Text style={styles.sectionTitle}>Thông số / Ghi chú</Text>
           <TextInput
             value={readyNote}
             onChangeText={setReadyNote}
-            placeholder="Nhập ghi chú hoặc thông số bạn muốn cung cấp…"
+            placeholder="Nhập ghi chú hoặc thông số bạn muốn cung cấp..."
             placeholderTextColor="#9AA4B2"
             style={styles.noteInput}
             multiline
@@ -830,12 +853,7 @@ function FrameOptions({
         </View>
       ) : null}
 
-      <CTAButtons
-        canBuy={canBuy}
-        onAdd={onAdd}
-        onBuyNow={onBuyNow}
-        isPreorder={isOutOfStock}   // ✅ gọng hết hàng => nút thành Đặt trước
-      />
+      <CTAButtons canBuy={canBuy} onAdd={onAdd} onBuyNow={onBuyNow} isPreorder={isPreorderMode} />
     </Card>
   );
 }
@@ -878,7 +896,7 @@ function SpecsCard({ specs, open, onToggle }) {
 
       {open ? (
         <View style={styles.accBody}>
-          {(specs || []).map((s, idx) => (
+          {(Array.isArray(specs) ? specs : []).map((s, idx) => (
             <View key={`${s.label}-${idx}`} style={styles.specRow}>
               <Text style={styles.specLabel}>{s.label}</Text>
               <Text style={styles.specValue}>{s.value}</Text>
@@ -969,7 +987,6 @@ function RxInput({ label, placeholder, value, onChangeText }) {
 }
 
 /* -------------------- Styles -------------------- */
-/* ✅ giữ nguyên styles của bạn + thêm noteInput */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F7FB" },
   content: { paddingHorizontal: 16, paddingBottom: 16 },
@@ -1056,9 +1073,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
 
-  heroImageDisabled: {
-    opacity: 0.6,
-  },
+  heroImageDisabled: { opacity: 0.6 },
 
   favBtnOnImage: {
     position: "absolute",
@@ -1084,7 +1099,14 @@ const styles = StyleSheet.create({
     padding: 4,
     elevation: 3,
   },
-  modeSwitchItem: { minWidth: 46, height: 30, borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
+  modeSwitchItem: {
+    minWidth: 46,
+    height: 30,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
   modeSwitchItemActive: { backgroundColor: "#111827" },
   modeSwitchText: { fontSize: 12, fontWeight: "900", color: "#111827" },
   modeSwitchTextActive: { color: "#fff" },
@@ -1124,10 +1146,28 @@ const styles = StyleSheet.create({
   rxRow: { flexDirection: "row", gap: 10, marginTop: 8 },
   rxCell: { flex: 1 },
   rxLabel: { fontSize: 12, fontWeight: "900", color: "#6B7280", marginBottom: 6 },
-  rxInput: { height: 44, borderRadius: 14, borderWidth: 1, borderColor: "#E5E7EB", paddingHorizontal: 12, fontSize: 13, fontWeight: "900", color: "#111827", backgroundColor: "#FFFFFF" },
+  rxInput: {
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#111827",
+    backgroundColor: "#FFFFFF",
+  },
 
   colorRow: { marginTop: 10, flexDirection: "row", gap: 10, alignItems: "center" },
-  colorDotWrap: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
+  colorDotWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   colorDotWrapActive: { borderColor: "#111827", borderWidth: 2 },
   colorDot: { width: 18, height: 18, borderRadius: 9 },
 

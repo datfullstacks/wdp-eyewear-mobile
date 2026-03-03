@@ -1,4 +1,4 @@
-// src/screens/FavoritesScreen.js
+﻿// src/screens/FavoritesScreen.js
 import React, { useMemo, useEffect } from "react";
 import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";

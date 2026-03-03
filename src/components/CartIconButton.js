@@ -1,4 +1,4 @@
-// components/CartIconButton.js
+﻿// components/CartIconButton.js
 import React from "react";
 import { TouchableOpacity, View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,9 +9,12 @@ export default function CartIconButton({ onPress }) {
   const token = useAuthStore((s) => s.token);
 
   const items = useCartStore((s) => s.items);
+  const preorderItems = useCartStore((s) => s.preorderItems);
   const isHydrating = useCartStore((s) => s.isHydrating);
 
-  const qty = token ? items.reduce((sum, it) => sum + (it.qty || 0), 0) : 0;
+  const qty = token
+    ? [...items, ...preorderItems].reduce((sum, it) => sum + (it.qty || 0), 0)
+    : 0;
 
   return (
     <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={onPress}>
@@ -47,3 +50,4 @@ const styles = StyleSheet.create({
   },
   cartDotText: { color: "white", fontSize: 11, fontWeight: "800" },
 });
+

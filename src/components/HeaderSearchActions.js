@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { View, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";

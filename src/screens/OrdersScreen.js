@@ -1,7 +1,9 @@
+﻿// screens/OrdersScreen.js
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   RefreshControl,
   StyleSheet,
   Text,
@@ -11,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { getMyOrdersApi } from "../services/orderService";
+import OrderItemEditModal from "../components/OrderItemEditModal";
 
 const STATUS_META = {
   pending: { label: "Chờ xác nhận", color: "#B45309", bg: "#FFF7ED" },
@@ -22,14 +25,24 @@ const STATUS_META = {
   returned: { label: "Đã trả", color: "#6B7280", bg: "#F3F4F6" },
 };
 
-const formatVND = (value) =>
-  new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + "d";
+const TYPE_META = {
+  lens: { icon: "eye-outline", color: "#2563EB", bg: "#EFF6FF" },
+  contact_lens: { icon: "eye-outline", color: "#2563EB", bg: "#EFF6FF" },
+  frame: { icon: "glasses-outline", color: "#6B7280", bg: "#F3F4F6" },
+  sunglasses: { icon: "glasses-outline", color: "#B45309", bg: "#FFF7ED" },
+  accessory: { icon: "grid-outline", color: "#6B7280", bg: "#F3F4F6" },
+  service: { icon: "build-outline", color: "#15803D", bg: "#ECFDF5" },
+};
 
-const formatDate = (value) => {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("vi-VN", { hour12: false });
+const formatVND = (v) =>
+  new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
+
+const formatDate = (v) => {
+  if (!v) return "--";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime())
+    ? String(v)
+    : d.toLocaleString("vi-VN", { hour12: false });
 };
 
 function StatusPill({ status }) {
@@ -42,38 +55,98 @@ function StatusPill({ status }) {
   );
 }
 
-function OrderCard({ item, navigation }) {
-  const orderId = item?._id || item?.id || "--";
-  const itemsCount = Array.isArray(item?.items) ? item.items.length : 0;
+function OrderItemRow({ orderItem, onEdit }) {
+  const typeKey = String(orderItem?.type || "").toLowerCase();
+  const typeMeta =
+    TYPE_META[typeKey] || { icon: "cube-outline", color: "#6B7280", bg: "#F3F4F6" };
+  const hasImage = Boolean(orderItem?.image);
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      style={styles.card}
-      onPress={() =>
-        navigation.navigate("CartFlow", {
-          screen: "CheckoutStatus",
-          params: { order: item },
-        })
-      }
-    >
-      <View style={styles.cardTopRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.orderId}>{orderId}</Text>
-          <Text style={styles.orderDate}>{formatDate(item?.createdAt)}</Text>
+    <View style={styles.orderItemRow}>
+      {hasImage ? (
+        <Image source={{ uri: orderItem.image }} style={styles.itemThumb} />
+      ) : (
+        <View style={[styles.itemThumbIcon, { backgroundColor: typeMeta.bg }]}>
+          <Ionicons name={typeMeta.icon} size={18} color={typeMeta.color} />
         </View>
-        <StatusPill status={item?.status} />
+      )}
+
+      <View style={styles.orderItemMid}>
+        <Text style={styles.orderItemName} numberOfLines={2}>
+          {orderItem?.name || "Sản phẩm"}
+        </Text>
+
+        <Text style={styles.orderItemMeta}>
+          x{orderItem?.qty ?? 1} · {formatVND(orderItem?.price)}{" "}
+          {orderItem?.preorder ? (
+            <Text style={styles.preorderBadge}>· Đặt trước</Text>
+          ) : null}
+        </Text>
+
+        {(orderItem?.payLater ?? 0) > 0 && (
+          <Text style={styles.payLaterNote}>
+            {"Còn thanh toán: " + formatVND(orderItem.payLater)}
+          </Text>
+        )}
       </View>
 
-      <View style={styles.cardRow}>
-        <Text style={styles.metaLabel}>Số sản phẩm</Text>
-        <Text style={styles.metaValue}>{itemsCount}</Text>
+      <TouchableOpacity style={styles.editItemBtn} activeOpacity={0.8} onPress={onEdit}>
+        <Ionicons name="pencil" size={12} color="#2563EB" />
+        <Text style={styles.editItemBtnText}>Sửa</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function OrderCard({ order, onEditItem }) {
+  const orderId = order?._id || order?.id || "--";
+  const orderItems = Array.isArray(order?.items) ? order.items : [];
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardTopRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.orderId} numberOfLines={1}>
+            {orderId}
+          </Text>
+          <Text style={styles.orderDate}>{formatDate(order?.createdAt)}</Text>
+        </View>
+        <StatusPill status={order?.status} />
       </View>
-      <View style={styles.cardRow}>
-        <Text style={styles.metaLabel}>Tổng cộng</Text>
-        <Text style={styles.totalValue}>{formatVND(item?.total)}</Text>
+
+      {orderItems.length > 0 && (
+        <View style={styles.itemsList}>
+          {orderItems.map((item, idx) => (
+            <OrderItemRow
+              key={orderId + "-" + idx}
+              orderItem={item}
+              onEdit={() => onEditItem(item, order)}
+            />
+          ))}
+        </View>
+      )}
+
+      <View style={styles.cardDivider} />
+
+      <View style={styles.cardFooter}>
+        {order?.paymentStatus === "paid" ? (
+          <View style={styles.paidTag}>
+            <Ionicons name="checkmark-circle" size={12} color="#15803D" />
+            <Text style={styles.paidTagText}>Đã thanh toán</Text>
+          </View>
+        ) : (
+          <View style={styles.unpaidTag}>
+            <Ionicons name="time-outline" size={12} color="#B45309" />
+            <Text style={styles.unpaidTagText}>Đang sử lý</Text>
+          </View>
+        )}
+
+        <View style={styles.footerRight}>
+          <Text style={styles.totalLabel}>Tổng</Text>
+          <Text style={styles.totalValue}>{formatVND(order?.total)}</Text>
+        </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -83,12 +156,14 @@ export default function OrdersScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
+  const [editingOrderItem, setEditingOrderItem] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
+
   const loadOrders = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     setError("");
-
     try {
-      const result = await getMyOrdersApi({ page: 1, limit: 50 });
+      const result = await getMyOrdersApi({ page: 1, limit: 50 }, true);
       setOrders(Array.isArray(result?.items) ? result.items : []);
     } catch (err) {
       const data = err?.response?.data || {};
@@ -103,23 +178,31 @@ export default function OrdersScreen({ navigation }) {
     loadOrders();
   }, [loadOrders]);
 
+  const handleEditItem = useCallback((orderItem, order) => {
+    setEditingOrderItem(orderItem);
+    setEditingOrder(order);
+  }, []);
+
+  const handleSavePatch = useCallback((_patch) => {
+    // TODO: nối API cập nhật item khi bạn muốn
+    setEditingOrderItem(null);
+    setEditingOrder(null);
+  }, []);
+
   const emptyComponent = useMemo(() => {
     if (loading) {
       return (
         <View style={styles.emptyWrap}>
           <ActivityIndicator size="small" color="#2563EB" />
-          <Text style={styles.emptySub}>Đang tải danh sách đơn hàng...</Text>
+          <Text style={styles.emptySub}>Đang tải đơn hàng...</Text>
         </View>
       );
     }
-
     return (
       <View style={styles.emptyWrap}>
         <Ionicons name="receipt-outline" size={44} color="#9CA3AF" />
         <Text style={styles.emptyTitle}>Chưa có đơn hàng</Text>
-        <Text style={styles.emptySub}>
-          Khi bạn thanh toán thành công, đơn hàng sẽ hiển thị ở đây.
-        </Text>
+        <Text style={styles.emptySub}>Đơn hàng sẽ hiển thị ở đây sau khi thanh toán.</Text>
       </View>
     );
   }, [loading]);
@@ -152,7 +235,7 @@ export default function OrdersScreen({ navigation }) {
         data={orders}
         keyExtractor={(item) => String(item?._id || item?.id)}
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => <OrderCard item={item} navigation={navigation} />}
+        renderItem={({ item }) => <OrderCard order={item} onEditItem={handleEditItem} />}
         ListEmptyComponent={emptyComponent}
         refreshControl={
           <RefreshControl
@@ -163,6 +246,17 @@ export default function OrdersScreen({ navigation }) {
             }}
           />
         }
+      />
+
+      <OrderItemEditModal
+        visible={Boolean(editingOrderItem)}
+        orderItem={editingOrderItem}
+        orderCreatedAt={editingOrder?.createdAt}
+        onClose={() => {
+          setEditingOrderItem(null);
+          setEditingOrder(null);
+        }}
+        onSave={handleSavePatch}
       />
     </SafeAreaView>
   );
@@ -177,7 +271,6 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
   headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
@@ -199,11 +292,11 @@ const styles = StyleSheet.create({
   errorText: { flex: 1, color: "#991B1B", fontWeight: "700", fontSize: 12.5 },
   retryText: { color: "#1D4ED8", fontWeight: "900", fontSize: 12.5 },
 
-  listContent: { paddingHorizontal: 16, paddingBottom: 16, flexGrow: 1 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 32, flexGrow: 1 },
 
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     marginBottom: 12,
     shadowColor: "#000",
@@ -212,27 +305,96 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-  cardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  orderId: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  orderDate: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  cardTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 12,
+  },
+  orderId: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  orderDate: { marginTop: 3, fontSize: 11.5, fontWeight: "700", color: "#9CA3AF" },
 
-  statusPill: {
+  statusPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
+  statusText: { fontSize: 11.5, fontWeight: "900" },
+
+  itemsList: { gap: 8, marginBottom: 4 },
+  orderItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: "#F6F7FB",
+    borderRadius: 12,
+  },
+  itemThumb: { width: 48, height: 40, borderRadius: 10, backgroundColor: "#E5E7EB", flexShrink: 0 },
+  itemThumbIcon: {
+    width: 48,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+
+  orderItemMid: { flex: 1 },
+  orderItemName: { fontSize: 12.5, fontWeight: "800", color: "#111827", lineHeight: 17 },
+  orderItemMeta: { fontSize: 11.5, fontWeight: "700", color: "#6B7280", marginTop: 2 },
+  payLaterNote: { fontSize: 11, fontWeight: "700", color: "#B45309", marginTop: 2 },
+
+  editItemBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "#EFF6FF",
+    flexShrink: 0,
+  },
+  editItemBtnText: { fontSize: 12, fontWeight: "800", color: "#2563EB" },
+
+  cardDivider: { height: 1, backgroundColor: "#F3F4F6", marginVertical: 10 },
+
+  cardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  footerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+  totalLabel: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
+  totalValue: { fontSize: 14, fontWeight: "900", color: "#EF4444" },
+
+  paidTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "#ECFDF5",
     borderRadius: 999,
   },
-  statusText: { fontSize: 12, fontWeight: "900" },
+  paidTagText: { fontSize: 11.5, fontWeight: "800", color: "#15803D" },
 
-  cardRow: { marginTop: 10, flexDirection: "row", justifyContent: "space-between" },
-  metaLabel: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
-  metaValue: { fontSize: 12.5, fontWeight: "900", color: "#111827" },
-  totalValue: { fontSize: 13.5, fontWeight: "900", color: "#EF4444" },
-
-  emptyWrap: {
-    paddingTop: 48,
+  unpaidTag: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "#FFF7ED",
+    borderRadius: 999,
   },
+  unpaidTagText: { fontSize: 11.5, fontWeight: "800", color: "#B45309" },
+
+  emptyWrap: { paddingTop: 48, alignItems: "center", gap: 8 },
   emptyTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
   emptySub: { fontSize: 12, fontWeight: "700", color: "#6B7280", textAlign: "center" },
+  preorderBadge: {
+    color: "#15803D",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    fontWeight: "900",
+    fontSize: 11.5,
+    overflow: "hidden",
+  },
 });

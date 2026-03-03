@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useCartStore } from "../store/cartStore";
+import { CART_TYPES, useCartStore } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
 import {
   buildCheckoutPayload,
@@ -70,6 +70,9 @@ export default function CheckoutScreen({ navigation, route }) {
   const [paymentId, setPaymentId] = useState("cod");
   const [note, setNote] = useState("");
   const items = useCartStore((s) => s.items);
+  const preorderItems = useCartStore((s) => s.preorderItems);
+  const cartType = route?.params?.quoteMeta?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
+  const cartItems = cartType === CART_TYPES.PREORDER ? preorderItems : items;
   const isHydrating = useCartStore((s) => s.isHydrating);
   const hydrate = useCartStore((s) => s.hydrate);
   const token = useAuthStore((s) => s.token);
@@ -94,11 +97,15 @@ export default function CheckoutScreen({ navigation, route }) {
   }, [quoteError]);
 
   const cartSubtotal = useMemo(
-    () => items.reduce((sum, it) => sum + (it.product?.price || 0) * (it.qty || 0), 0),
-    [items]
+    () =>
+      cartItems.reduce((sum, it) => {
+        const payRate = it?.isPreorder ? 0.3 : 1;
+        return sum + (it.product?.price || 0) * (it.qty || 0) * payRate;
+      }, 0),
+    [cartItems]
   );
 
-  const hasPreorder = useMemo(() => items.some((it) => it.orderType === "PREORDER"), [items]);
+  const hasPreorder = useMemo(() => cartItems.some((it) => Boolean(it?.isPreorder)), [cartItems]);
   const paymentMethods = PAYMENT_METHODS;
 
   const shippingMethodFee = useMemo(() => {
@@ -107,7 +114,17 @@ export default function CheckoutScreen({ navigation, route }) {
   }, [shippingId]);
   const cartDiscountAmount = initialQuoteMeta.discountAmount;
 
-  const checkoutItems = useMemo(() => buildCheckoutItems(items), [items]);
+  const checkoutItems = useMemo(() => {
+    const built = buildCheckoutItems(cartItems);
+    return built.map((it, idx) => {
+      const ci = cartItems[idx];
+      return {
+        ...it,
+        isPreorder: Boolean(ci?.isPreorder),
+        payRate: ci?.isPreorder ? 0.3 : 1,
+      };
+    });
+  }, [cartItems]);
 
   const subtotal = quote?.subtotal ?? cartSubtotal;
   const discount = quote?.discountAmount ?? 0;
@@ -222,8 +239,8 @@ export default function CheckoutScreen({ navigation, route }) {
       setIsEditingAddress(false);
     } catch (err) {
       const data = err?.response?.data || {};
-      const message = data.message || data.error || err?.message || "Khong luu duoc dia chi";
-      Alert.alert("Dia chi", message);
+      const message = data.message || data.error || err?.message || "Không lưu được địa chỉ";
+      Alert.alert("Địa chỉ", message);
     }
   };
 
@@ -338,14 +355,14 @@ export default function CheckoutScreen({ navigation, route }) {
         },
         shippingAddress: address,
         items: checkoutItems.map((it) => ({
-          name: items.find((x) => x.product?.id === it.productId)?.product?.name || "Sản phẩm",
+          name: cartItems.find((x) => x.product?.id === it.productId)?.product?.name || "Sản phẩm",
           qty: it.quantity,
-          price: items.find((x) => x.product?.id === it.productId)?.product?.price || 0,
-          preorder: it.orderType === "PREORDER",
+          price: cartItems.find((x) => x.product?.id === it.productId)?.product?.price || 0,
+          preorder: Boolean(it.isPreorder),
         })),
       };
 
-      navigation.navigate("CheckoutStatus", { order: orderPayload });
+      navigation.navigate("CheckoutStatus", { order: orderPayload, cartType });
     } catch (err) {
       const data = err?.response?.data || {};
       const errors = Array.isArray(data.errors)
@@ -360,13 +377,14 @@ export default function CheckoutScreen({ navigation, route }) {
       setIsSubmitting(false);
     }
   };
-    return (
+
+  return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.container}>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Thanh toán</Text>
-            <Text style={styles.headerStep}>1/2 Giao hàng</Text>
+            <Text style={styles.headerStep}>1/2 giao hàng</Text>
           </View>
 
           <View style={styles.card}>
@@ -382,7 +400,7 @@ export default function CheckoutScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
-            {addressLoading ? <Text style={styles.addressMeta}>Đang tải số địa chỉ...</Text> : null}
+            {addressLoading ? <Text style={styles.addressMeta}>Đang tải địa chỉ...</Text> : null}
 
             {isEditingAddress ? (
               <View style={styles.addressForm}>
@@ -447,7 +465,7 @@ export default function CheckoutScreen({ navigation, route }) {
                   <Text style={styles.fieldLabel}>Bổ sung (line 2)</Text>
                   <TextInput
                     style={styles.fieldInput}
-                    placeholder="Hẻm/tầng/phòng (tuỳ chọn)"
+                    placeholder="Hầm/tầng/phòng (tuỳ chọn)"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.line2}
                     onChangeText={(value) =>
@@ -567,12 +585,13 @@ export default function CheckoutScreen({ navigation, route }) {
                 );
               })}
             </View>
-
-            <View style={styles.noticeBox}>
-              <Text style={styles.noticeText}>
-                Đơn có sản phẩm đặt trước, thời gian giao dự kiến tính sau khi có hàng.
-              </Text>
-            </View>
+            {hasPreorder ? (
+              <View style={styles.noticeBox}>
+                <Text style={styles.noticeText}>
+                  Đơn có sản phẩm đặt trước, thời gian giao dự kiến tính sau khi có hàng.
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.card}>
@@ -651,7 +670,7 @@ export default function CheckoutScreen({ navigation, route }) {
                 </View>
               </>
             ) : null}
-            {quoteLoading ? <Text style={styles.quoteHint}>Đang cập nhật giá…</Text> : null}
+            {quoteLoading ? <Text style={styles.quoteHint}>Đang cập nhật giá...</Text> : null}
             {quoteError ? (
               <Text style={styles.quoteError}>
                 {quoteErrorMessage || "Không lấy được báo giá mới."}
