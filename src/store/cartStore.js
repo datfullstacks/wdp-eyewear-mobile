@@ -43,6 +43,7 @@ function pickProductSnapshot(p) {
     originalPrice: p.originalPrice || null,
     status: p.status || null,
     discountPct: p.discountPct || null,
+    // keep minimal fields only
   };
 }
 
@@ -96,6 +97,7 @@ export const useCartStore = create((set, get) => ({
       const raw = await AsyncStorage.getItem(key);
       const data = safeJsonParse(raw, []);
 
+      // legacy: array only
       if (Array.isArray(data)) {
         const { orderItems, preorderItems } = splitLegacyItems(data);
         set({ items: orderItems, preorderItems, isHydrating: false });
@@ -202,8 +204,8 @@ export const useCartStore = create((set, get) => ({
         ? ot === "READY"
           ? isRxFilled(rxOD, rxOS)
           : ot === "PREORDER"
-            ? isRxFilled(rxOD, rxOS) || Boolean(rxPhoto?.uri)
-            : Boolean(rxPhoto?.uri)
+          ? isRxFilled(rxOD, rxOS) || Boolean(rxPhoto?.uri)
+          : Boolean(rxPhoto?.uri)
         : false;
 
     const lensSelected = product.type === "LENS";
@@ -244,6 +246,10 @@ export const useCartStore = create((set, get) => ({
             rxPhoto: rxPhoto || null,
             prescriptionFilled,
             lensSelected,
+
+            // ✅ pairing fields (persist local)
+            pairWithKey: null,
+            pairWithName: null,
           },
         ];
       }
@@ -311,4 +317,3 @@ export const useCartStore = create((set, get) => ({
     });
   },
 }));
-

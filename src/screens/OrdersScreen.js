@@ -137,7 +137,7 @@ function OrderCard({ order, onEditItem }) {
         ) : (
           <View style={styles.unpaidTag}>
             <Ionicons name="time-outline" size={12} color="#B45309" />
-            <Text style={styles.unpaidTagText}>Đang sử lý</Text>
+            <Text style={styles.unpaidTagText}>Chưa thanh toán</Text>
           </View>
         )}
 

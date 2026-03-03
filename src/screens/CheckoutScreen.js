@@ -12,26 +12,12 @@ import {
 import { addMyAddressApi, getMyAddressesApi } from "../services/userService";
 
 const SHIPPING_METHODS = [
-  {
-    id: "standard",
-    label: "Giao tiêu chuẩn",
-    eta: "2-4 ngày làm việc",
-    price: 25000,
-  },
-  {
-    id: "express",
-    label: "Giao nhanh",
-    eta: "1-2 ngày làm việc",
-    price: 45000,
-  },
+  { id: "standard", label: "Giao tiêu chuẩn", eta: "2-4 ngày làm việc", price: 25000 },
+  { id: "express", label: "Giao nhanh", eta: "1-2 ngày làm việc", price: 45000 },
 ];
 
 const PAYMENT_METHODS = [
-  {
-    id: "sepay",
-    label: "SePay (QR)",
-    desc: "Quét QR SePay để thanh toán",
-  },
+  { id: "sepay", label: "SePay (QR)", desc: "Quét QR SePay để thanh toán" },
 ];
 
 const PREORDER_PAYMENT_METHODS = PAYMENT_METHODS;
@@ -54,9 +40,7 @@ const buildAddressLines = (addr) => {
   if (!addr) return [];
   const lines = [];
   if (addr.line1) lines.push(addr.line1);
-  const line2 = [addr.line2, addr.ward, addr.district, addr.province]
-    .filter(Boolean)
-    .join(", ");
+  const line2 = [addr.line2, addr.ward, addr.district, addr.province].filter(Boolean).join(", ");
   if (line2) lines.push(line2);
   const country = addr.country || "VN";
   if (country) lines.push(country === "VN" ? "Việt Nam" : country);
@@ -66,13 +50,22 @@ const buildAddressLines = (addr) => {
 export default function CheckoutScreen({ navigation, route }) {
   const initialQuote = route?.params?.quote || null;
   const initialQuoteMeta = route?.params?.quoteMeta || {};
+
+  // ✅ hidden note from cart pairing (NOT shown on UI)
+  const autoNote = String(initialQuoteMeta.autoNote || "").trim();
+
   const [shippingId, setShippingId] = useState(initialQuoteMeta.shippingMethod || "standard");
   const [paymentId, setPaymentId] = useState("cod");
-  const [note, setNote] = useState("");
+
+  // ✅ user note only (UI)
+  const [userNote, setUserNote] = useState("");
+
   const items = useCartStore((s) => s.items);
   const preorderItems = useCartStore((s) => s.preorderItems);
-  const cartType = route?.params?.quoteMeta?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
+  const cartType =
+    route?.params?.quoteMeta?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
   const cartItems = cartType === CART_TYPES.PREORDER ? preorderItems : items;
+
   const isHydrating = useCartStore((s) => s.isHydrating);
   const hydrate = useCartStore((s) => s.hydrate);
   const token = useAuthStore((s) => s.token);
@@ -112,6 +105,7 @@ export default function CheckoutScreen({ navigation, route }) {
     const found = SHIPPING_METHODS.find((m) => m.id === shippingId);
     return found ? found.price : 0;
   }, [shippingId]);
+
   const cartDiscountAmount = initialQuoteMeta.discountAmount;
 
   const checkoutItems = useMemo(() => {
@@ -203,12 +197,7 @@ export default function CheckoutScreen({ navigation, route }) {
       note: draftAddress.note.trim(),
     };
     const hasValue = Boolean(
-      cleaned.fullName ||
-        cleaned.phone ||
-        cleaned.line1 ||
-        cleaned.ward ||
-        cleaned.district ||
-        cleaned.province
+      cleaned.fullName || cleaned.phone || cleaned.line1 || cleaned.ward || cleaned.district || cleaned.province
     );
     if (!hasValue) {
       setAddress(null);
@@ -245,22 +234,13 @@ export default function CheckoutScreen({ navigation, route }) {
   };
 
   const hasAddress = Boolean(
-    address?.fullName ||
-      address?.phone ||
-      address?.line1 ||
-      address?.ward ||
-      address?.district ||
-      address?.province
+    address?.fullName || address?.phone || address?.line1 || address?.ward || address?.district || address?.province
   );
   const addressComplete = Boolean(
-    address?.fullName &&
-      address?.phone &&
-      address?.line1 &&
-      address?.ward &&
-      address?.district &&
-      address?.province
+    address?.fullName && address?.phone && address?.line1 && address?.ward && address?.district && address?.province
   );
 
+  // ✅ quote update (do NOT include autoNote / userNote in quote)
   useEffect(() => {
     let active = true;
     if (!checkoutItems.length) {
@@ -279,6 +259,7 @@ export default function CheckoutScreen({ navigation, route }) {
       shippingFee: shippingMethodFee,
       discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
       shippingAddress: addressComplete ? address : null,
+      // note intentionally omitted
     });
 
     setQuoteLoading(true);
@@ -312,13 +293,16 @@ export default function CheckoutScreen({ navigation, route }) {
       return;
     }
 
+    // ✅ merge hidden auto note + user note (user note appended)
+    const mergedNote = [autoNote, String(userNote || "").trim()].filter(Boolean).join("\n");
+
     try {
       setIsSubmitting(true);
       const payload = buildCheckoutPayload({
         items: checkoutItems,
         shippingMethod: shippingId,
         shippingAddress: addressComplete ? address : null,
-        note: note?.trim() || undefined,
+        note: mergedNote || undefined, // ✅ only send if any
         shippingFee: shippingMethodFee,
         discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
         paymentMethod: "sepay",
@@ -362,6 +346,7 @@ export default function CheckoutScreen({ navigation, route }) {
         })),
       };
 
+      console.log("Note:", mergedNote);
       navigation.navigate("CheckoutStatus", { order: orderPayload, cartType });
     } catch (err) {
       const data = err?.response?.data || {};
@@ -369,10 +354,7 @@ export default function CheckoutScreen({ navigation, route }) {
         ? data.errors.map((e) => e.msg).filter(Boolean).join("\n")
         : null;
       const message = errors || data.message || data.error || err?.message;
-      Alert.alert(
-        "Thanh toán thất bại",
-        message || "Không thể tạo đơn hàng. Vui lòng thử lại."
-      );
+      Alert.alert("Thanh toán thất bại", message || "Không thể tạo đơn hàng. Vui lòng thử lại.");
     } finally {
       setIsSubmitting(false);
     }
@@ -390,11 +372,7 @@ export default function CheckoutScreen({ navigation, route }) {
           <View style={styles.card}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={isEditingAddress}
-                onPress={() => startEditAddress(address)}
-              >
+              <TouchableOpacity activeOpacity={0.85} disabled={isEditingAddress} onPress={() => startEditAddress(address)}>
                 <Text style={[styles.linkText, isEditingAddress && styles.linkDisabled]}>
                   {isEditingAddress ? "Đang chỉnh sửa" : hasAddress ? "Thay đổi" : "Thêm"}
                 </Text>
@@ -411,9 +389,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Nhập họ và tên"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.fullName}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, fullName: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, fullName: value }))}
                   />
                 </View>
 
@@ -425,9 +401,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholderTextColor="#9CA3AF"
                     keyboardType="phone-pad"
                     value={draftAddress.phone}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, phone: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, phone: value }))}
                   />
                 </View>
 
@@ -440,9 +414,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     keyboardType="email-address"
                     autoCapitalize="none"
                     value={draftAddress.email}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, email: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, email: value }))}
                   />
                 </View>
 
@@ -455,9 +427,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     multiline
                     textAlignVertical="top"
                     value={draftAddress.line1}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, line1: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, line1: value }))}
                   />
                 </View>
 
@@ -468,9 +438,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Hầm/tầng/phòng (tuỳ chọn)"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.line2}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, line2: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, line2: value }))}
                   />
                 </View>
 
@@ -481,9 +449,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Nhập phường/xã"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.ward}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, ward: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, ward: value }))}
                   />
                 </View>
 
@@ -494,9 +460,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Nhập quận/huyện"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.district}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, district: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, district: value }))}
                   />
                 </View>
 
@@ -507,25 +471,15 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Nhập tỉnh/thành phố"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.province}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, province: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, province: value }))}
                   />
                 </View>
 
                 <View style={styles.addressActions}>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.actionBtnGhost]}
-                    activeOpacity={0.85}
-                    onPress={cancelEditAddress}
-                  >
+                  <TouchableOpacity style={[styles.actionBtn, styles.actionBtnGhost]} activeOpacity={0.85} onPress={cancelEditAddress}>
                     <Text style={[styles.actionText, styles.actionTextGhost]}>Hủy</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.actionBtnPrimary]}
-                    activeOpacity={0.85}
-                    onPress={saveEditAddress}
-                  >
+                  <TouchableOpacity style={[styles.actionBtn, styles.actionBtnPrimary]} activeOpacity={0.85} onPress={saveEditAddress}>
                     <Text style={[styles.actionText, styles.actionTextPrimary]}>Lưu</Text>
                   </TouchableOpacity>
                 </View>
@@ -547,11 +501,7 @@ export default function CheckoutScreen({ navigation, route }) {
                   <Text style={styles.addressEmpty}>Chưa có địa chỉ giao hàng</Text>
                 )}
 
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  style={styles.addAddressBtn}
-                  onPress={() => startEditAddress(EMPTY_ADDRESS)}
-                >
+                <TouchableOpacity activeOpacity={0.9} style={styles.addAddressBtn} onPress={() => startEditAddress(EMPTY_ADDRESS)}>
                   <Text style={styles.addAddressText}>+ Thêm địa chỉ</Text>
                 </TouchableOpacity>
               </>
@@ -599,8 +549,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
             <View style={styles.radioList}>
               {(() => {
-                const activeMethod =
-                  paymentMethods.find((m) => m.id === paymentId) || paymentMethods[0];
+                const activeMethod = paymentMethods.find((m) => m.id === paymentId) || paymentMethods[0];
                 if (!activeMethod) return null;
                 return (
                   <View style={[styles.radioItem, styles.radioItemActive]}>
@@ -627,15 +576,16 @@ export default function CheckoutScreen({ navigation, route }) {
             ) : null}
           </View>
 
+          {/* ✅ UI note: user only */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Ghi chú đơn hàng (không bắt buộc)</Text>
             <TextInput
               style={styles.noteInput}
               multiline
-              placeholder="Ghi chú cho cửa hàng"
+              placeholder="VD: Hãy cẩn thận khi giao hàng..."
               placeholderTextColor="#9CA3AF"
-              value={note}
-              onChangeText={setNote}
+              value={userNote}
+              onChangeText={setUserNote}
               textAlignVertical="top"
             />
           </View>
@@ -658,6 +608,7 @@ export default function CheckoutScreen({ navigation, route }) {
               <Text style={styles.summaryTotalLabel}>Tổng cộng</Text>
               <Text style={styles.summaryTotalValue}>{formatVND(total)}</Text>
             </View>
+
             {hasPreorder ? (
               <>
                 <View style={styles.summaryRow}>
@@ -670,26 +621,20 @@ export default function CheckoutScreen({ navigation, route }) {
                 </View>
               </>
             ) : null}
+
             {quoteLoading ? <Text style={styles.quoteHint}>Đang cập nhật giá...</Text> : null}
             {quoteError ? (
-              <Text style={styles.quoteError}>
-                {quoteErrorMessage || "Không lấy được báo giá mới."}
-              </Text>
+              <Text style={styles.quoteError}>{quoteErrorMessage || "Không lấy được báo giá mới."}</Text>
             ) : null}
           </View>
 
           <TouchableOpacity
             activeOpacity={0.9}
-            style={[
-              styles.continueBtn,
-              (isSubmitting || !addressComplete) && styles.continueBtnDisabled,
-            ]}
+            style={[styles.continueBtn, (isSubmitting || !addressComplete) && styles.continueBtnDisabled]}
             onPress={checkoutOrder}
             disabled={isSubmitting || !checkoutItems.length}
           >
-            <Text style={styles.continueText}>
-              {isSubmitting ? "Đang tạo đơn..." : "Tiếp tục"}
-            </Text>
+            <Text style={styles.continueText}>{isSubmitting ? "Đang tạo đơn..." : "Tiếp tục"}</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>

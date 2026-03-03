@@ -71,6 +71,26 @@ function TabBadge({ count }) {
   );
 }
 
+// ✅ build auto note from pairing (hidden)
+function buildAutoPairingNote(cartItems) {
+  const lines = [];
+  const keyToItem = new Map((cartItems || []).map((x) => [x.key, x]));
+
+  for (const ci of cartItems || []) {
+    if (ci?.product?.type !== "LENS") continue; // only output from lens to avoid duplicates
+    const pairKey = ci?.pairWithKey;
+    if (!pairKey) continue;
+
+    const frame = keyToItem.get(pairKey);
+    const lensName = ci?.product?.name || "Tròng";
+    const frameName = frame?.product?.name || ci?.pairWithName || "Gọng";
+
+    lines.push(`Tròng ${lensName} gắn với gọng ${frameName}.`);
+  }
+
+  return Array.from(new Set(lines)).join("\n");
+}
+
 export default function CartScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
 
@@ -80,14 +100,14 @@ export default function CartScreen({ navigation, route }) {
   const hydrate = useCartStore((s) => s.hydrate);
   const setQtyStore = useCartStore((s) => s.setQty);
   const removeItemStore = useCartStore((s) => s.removeItem);
-  const setFlags = useCartStore((s) => s.setFlags); // ✅ THÊM
+  const setFlags = useCartStore((s) => s.setFlags);
   const clear = useCartStore((s) => s.clear);
 
   const [isQuoting, setIsQuoting] = useState(false);
   const [activeCartType, setActiveCartType] = useState(
     route?.params?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER
   );
-  const [editingItem, setEditingItem] = useState(null); // ✅ THÊM
+  const [editingItem, setEditingItem] = useState(null);
 
   useEffect(() => {
     if (isHydrating) hydrate();
@@ -142,7 +162,6 @@ export default function CartScreen({ navigation, route }) {
     ]);
   };
 
-  // ✅ THÊM: mở modal edit
   const openEdit = (ci) => {
     const isOut = (ci.product?.totalStock ?? 1) <= 0 && !ci.product?.preOrder?.enabled;
     if (isOut) {
@@ -150,6 +169,70 @@ export default function CartScreen({ navigation, route }) {
       return;
     }
     setEditingItem(ci);
+  };
+
+  // ✅ combine logic (1-1 pairing, stored local)
+  const openCombine = (ci) => {
+    const t = ci?.product?.type;
+    if (t !== "LENS" && t !== "FRAME") return;
+
+    const targetType = t === "LENS" ? "FRAME" : "LENS";
+    const candidates = cartItems.filter((x) => x?.product?.type === targetType);
+
+    if (!candidates.length) {
+      Alert.alert(
+        "Chưa có sản phẩm để kết hợp",
+        targetType === "FRAME" ? "Bạn cần thêm gọng vào giỏ để kết hợp." : "Bạn cần thêm tròng vào giỏ để kết hợp."
+      );
+      return;
+    }
+
+    const buttons = [];
+
+    if (ci?.pairWithKey) {
+      buttons.push({
+        text: "Bỏ kết hợp",
+        style: "destructive",
+        onPress: () => {
+          // clear both sides if possible
+          const otherKey = ci.pairWithKey;
+          setFlags(ci.key, { pairWithKey: null, pairWithName: null }, activeCartType);
+          if (otherKey) setFlags(otherKey, { pairWithKey: null, pairWithName: null }, activeCartType);
+        },
+      });
+    }
+
+    candidates.forEach((x) => {
+      buttons.push({
+        text: x.product?.name || "Sản phẩm",
+        onPress: () => {
+          // (optional) clear existing links that point to these keys to keep pairing clean
+          // Here we do a simple 1-1: break previous links on both sides.
+          for (const it of cartItems) {
+            if (it?.pairWithKey === ci.key) {
+              setFlags(it.key, { pairWithKey: null, pairWithName: null }, activeCartType);
+            }
+            if (it?.pairWithKey === x.key) {
+              setFlags(it.key, { pairWithKey: null, pairWithName: null }, activeCartType);
+            }
+          }
+
+          setFlags(ci.key, { pairWithKey: x.key, pairWithName: x.product?.name || "" }, activeCartType);
+          setFlags(x.key, { pairWithKey: ci.key, pairWithName: ci.product?.name || "" }, activeCartType);
+
+          Alert.alert("Đã kết hợp", `${ci.product?.name || "Tròng/Gọng"} ↔ ${x.product?.name || "Tròng/Gọng"}`);
+          console.log(`${ci.product?.name || "Tròng/Gọng"} ↔ ${x.product?.name || "Tròng/Gọng"}`);
+        },
+      });
+    });
+
+    buttons.push({ text: "Hủy", style: "cancel" });
+
+    Alert.alert(
+      t === "LENS" ? "Chọn gọng để gắn" : "Chọn tròng để gắn",
+      "Kết hợp 1-1 để note rõ cho đơn.",
+      buttons
+    );
   };
 
   const proceedCheckout = async () => {
@@ -162,6 +245,9 @@ export default function CartScreen({ navigation, route }) {
       return;
     }
 
+    // ✅ hidden auto note built from pairing
+    const autoNote = buildAutoPairingNote(cartItems);
+
     try {
       setIsQuoting(true);
       const payload = buildCheckoutPayload({
@@ -173,7 +259,13 @@ export default function CartScreen({ navigation, route }) {
       const quote = await fetchCheckoutQuote(payload);
       navigation.navigate("Checkout", {
         quote,
-        quoteMeta: { shippingFee: shipping, discountAmount: discount, shippingMethod, cartType: activeCartType },
+        quoteMeta: {
+          shippingFee: shipping,
+          discountAmount: discount,
+          shippingMethod,
+          cartType: activeCartType,
+          autoNote, // ✅ pass hidden prefix to checkout
+        },
       });
     } catch (err) {
       const data = err?.response?.data || {};
@@ -275,7 +367,12 @@ export default function CartScreen({ navigation, route }) {
               onDec={() => setQty(ci.key, (ci.qty || 1) - 1)}
               onInc={() => setQty(ci.key, (ci.qty || 1) + 1)}
               onRemove={() => removeItem(ci.key)}
-              onEdit={() => openEdit(ci)} // ✅ THÊM
+              onEdit={() => openEdit(ci)}
+              onCombine={
+                ci.product?.type === "LENS" || ci.product?.type === "FRAME"
+                  ? () => openCombine(ci)
+                  : null
+              }
             />
           ))
         )}
@@ -339,7 +436,6 @@ export default function CartScreen({ navigation, route }) {
         ) : null}
       </ScrollView>
 
-      {/* ✅ THÊM: Modal edit dùng chung 1 cái cho cả màn hình */}
       <CartItemEditModal
         visible={Boolean(editingItem)}
         cartItem={editingItem}
@@ -354,8 +450,8 @@ export default function CartScreen({ navigation, route }) {
   );
 }
 
-// ✅ THÊM prop onEdit vào CartItemCard
-function CartItemCard({ ci, onDec, onInc, onRemove, onEdit }) {
+// ✅ THÊM prop onCombine vào CartItemCard
+function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
   const p = ci.product;
   const unitPrice = p?.price ?? p?.pricing?.salePrice ?? p?.pricing?.basePrice ?? 0;
   const complete = isCartItemComplete(ci);
@@ -371,15 +467,32 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit }) {
   const payNow = calcLineTotal(ci);
   const full = calcLineTotalFull(ci);
 
+  const pairedLabel =
+    (ci.product?.type === "LENS" || ci.product?.type === "FRAME") && ci.pairWithName
+      ? `Đã kết hợp: ${ci.pairWithName}`
+      : null;
+
   return (
     <View style={styles.itemCard}>
       <View style={styles.itemTopRow}>
         <Image source={{ uri: p.image }} style={styles.itemImage} />
         <View style={{ flex: 1, marginLeft: 10 }}>
-
-          {/* ✅ Tên + nút edit trên cùng 1 hàng */}
           <View style={styles.nameRow}>
-            <Text style={[styles.itemName, { flex: 1 }]} numberOfLines={2}>{p.name}</Text>
+            <Text style={[styles.itemName, { flex: 1 }]} numberOfLines={2}>
+              {p.name}
+            </Text>
+
+            {onCombine ? (
+              <TouchableOpacity
+                style={styles.combineBtn}
+                onPress={onCombine}
+                activeOpacity={0.8}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="link-outline" size={15} color="#2563EB" />
+              </TouchableOpacity>
+            ) : null}
+
             <TouchableOpacity
               style={[styles.editBtn, isOut && styles.editBtnDisabled]}
               onPress={onEdit}
@@ -391,6 +504,7 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit }) {
           </View>
 
           {ci.variantText ? <Text style={styles.variantText}>{ci.variantText}</Text> : null}
+          {pairedLabel ? <Text style={[styles.variantText, { marginTop: 6 }]}>{pairedLabel}</Text> : null}
 
           <View style={styles.pillRow}>
             <View style={styles.pill}>
@@ -436,7 +550,6 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit }) {
             <Text style={[styles.variantText, { marginTop: 6 }]}>Ghi chú: {ci.readyNote}</Text>
           ) : null}
 
-          {/* ✅ Báo hết hàng nếu có */}
           {isOut && (
             <View style={styles.outRow}>
               <Ionicons name="alert-circle" size={12} color="#EF4444" />
@@ -557,7 +670,6 @@ const styles = StyleSheet.create({
   itemTopRow: { flexDirection: "row", alignItems: "flex-start" },
   itemImage: { width: 74, height: 58, borderRadius: 12, backgroundColor: "#F3F4F6" },
 
-  // ✅ THÊM
   nameRow: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   editBtn: {
     width: 28,
@@ -569,6 +681,18 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   editBtnDisabled: { backgroundColor: "#F3F4F6" },
+
+  // ✅ combine btn
+  combineBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#E9F1FF",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+
   outRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
   outLabel: { fontSize: 12, fontWeight: "800", color: "#EF4444" },
 

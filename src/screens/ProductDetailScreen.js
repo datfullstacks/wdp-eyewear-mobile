@@ -72,6 +72,91 @@ function isRxFilled(rxOD, rxOS) {
   return okOD && okOS;
 }
 
+function normType(t) {
+  return String(t ?? "").trim().toUpperCase();
+}
+
+function getOppositeTypeList(products, product, limit = 10) {
+  if (!product) return [];
+  const t = normType(product.type);
+
+  if (t !== "FRAME" && t !== "LENS") return [];
+
+  const targetType = t === "FRAME" ? "LENS" : "FRAME";
+  const curId = String(product.apiId || product._id || product.id || "");
+
+  // Lấy list đối nghịch type, loại chính nó, giới hạn số lượng
+  return (products || [])
+    .filter((p) => normType(p.type) === targetType)
+    .filter((p) => String(p.apiId || p._id || p.id || "") !== curId)
+    .slice(0, limit);
+}
+
+function pickIds(maybe) {
+  // accept: ["id1","id2"] or [{_id:"..."}, ...]
+  if (!Array.isArray(maybe)) return [];
+  return maybe
+    .map((x) => (typeof x === "string" ? x : x?._id || x?.id || null))
+    .filter(Boolean);
+}
+
+function getCompatibilityIds(product) {
+  // Try multiple possible locations to be resilient
+  const p = product || {};
+  const specs = p.specs || {};
+
+  const lensIds =
+    pickIds(p.compatibleLensIds) ||
+    pickIds(p.compatibility?.lensIds) ||
+    pickIds(specs.compatibility?.lensIds) ||
+    pickIds(specs?.common?.compatibleLensIds) ||
+    [];
+
+  const frameIds =
+    pickIds(p.compatibleFrameIds) ||
+    pickIds(p.compatibility?.frameIds) ||
+    pickIds(specs.compatibility?.frameIds) ||
+    pickIds(specs?.common?.compatibleFrameIds) ||
+    [];
+
+  // Fallback: if you store a single array of ids
+  const withIds = pickIds(p.compatibleWithIds) || pickIds(specs?.common?.compatibleWithIds) || [];
+
+  return {
+    lensIds: lensIds.length ? lensIds : [],
+    frameIds: frameIds.length ? frameIds : [],
+    withIds: withIds.length ? withIds : [],
+  };
+}
+
+function getCompatibleProducts(products, product) {
+  if (!product) return [];
+  const type = normType(product.type);
+
+  if (type !== "FRAME" && type !== "LENS") return [];
+
+  const { lensIds, frameIds, withIds } = getCompatibilityIds(product);
+
+  // Determine target type and id list to use
+  const targetType = type === "FRAME" ? "LENS" : "FRAME";
+  const targetIds = type === "FRAME" ? lensIds : frameIds;
+
+  // If backend uses one common list, use it as a fallback
+  const idsToUse = targetIds.length ? targetIds : withIds;
+
+  // If still empty → nothing to show
+  if (!idsToUse.length) return [];
+
+  const idSet = new Set(idsToUse.map(String));
+
+  return (products || [])
+    .filter((p) => normType(p.type) === targetType)
+    .filter((p) => {
+      const pid = String(p.apiId || p._id || p.id || "");
+      return idSet.has(pid);
+    });
+}
+
 /* -------------------- Screen -------------------- */
 
 export default function ProductDetailScreen({ navigation, route }) {
@@ -142,8 +227,8 @@ export default function ProductDetailScreen({ navigation, route }) {
     product?.type === "LENS"
       ? "Chi tiết tròng kính"
       : product?.type === "FRAME"
-      ? "Chi tiết gọng kính"
-      : "Chi tiết sản phẩm";
+        ? "Chi tiết gọng kính"
+        : "Chi tiết sản phẩm";
 
   const [orderType, setOrderType] = useState("READY");
   const [colorId, setColorId] = useState(product?.colors?.[0]?.id ?? null);
@@ -187,6 +272,11 @@ export default function ProductDetailScreen({ navigation, route }) {
     if (!product) return [];
     return getRelatedProducts(products, product);
   }, [product, products]);
+
+  const compatibleItems = useMemo(() => {
+    if (!product) return [];
+    return getOppositeTypeList(products, product, 10);
+  }, [products, product]);
 
   const minQty = product?.qtyLimits?.min ?? 1;
   const maxQty = product?.qtyLimits?.max ?? 99;
@@ -477,6 +567,14 @@ export default function ProductDetailScreen({ navigation, route }) {
           />
         ))}
 
+        {(normType(product.type) === "FRAME" || normType(product.type) === "LENS") ? (
+          <CompatibleList
+            navigation={navigation}
+            items={compatibleItems}
+            title={normType(product.type) === "FRAME" ? "Tròng kính gợi ý" : "Gọng kính gợi ý"}
+          />
+        ) : null}
+
         <RelatedList navigation={navigation} related={related} />
 
         <View style={{ height: 18 }} />
@@ -587,8 +685,8 @@ function InfoCard({ product, discountPct, isVariantOut, variantStock }) {
     typeof product.ratingAvg === "number"
       ? product.ratingAvg
       : typeof product.ratingsAverage === "number"
-      ? product.ratingsAverage
-      : null;
+        ? product.ratingsAverage
+        : null;
 
   const ratingCount = product.ratingCount ?? product.ratingsQuantity ?? 0;
 
@@ -720,8 +818,8 @@ function LensOptions({
             {isPreorderMode
               ? "Sản phẩm hết hàng. Bạn đang đặt trước — Vui lòng cung cấp thông tin theo lựa chọn dưới đây."
               : orderType === "CUSTOM"
-              ? "Làm theo đơn: Vui lòng tải ảnh đơn kính do bác sĩ cung cấp."
-              : ""}
+                ? "Làm theo đơn: Vui lòng tải ảnh đơn kính do bác sĩ cung cấp."
+                : ""}
           </Text>
 
           <TouchableOpacity
@@ -924,6 +1022,37 @@ function RelatedList({ navigation, related }) {
             <ProductCard
               item={item}
               onPress={() => navigation.navigate("ProductDetail", { item, id: item.apiId || item._id || item.id })}
+            />
+          </View>
+        )}
+      />
+    </Card>
+  );
+}
+
+function CompatibleList({ navigation, items, title }) {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <Card>
+      <Text style={styles.sectionTitle}>{title}</Text>
+
+      <FlatList
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={items}
+        keyExtractor={(it) => String(it.apiId || it._id || it.id)}
+        contentContainerStyle={{ gap: 12, paddingTop: 10 }}
+        renderItem={({ item }) => (
+          <View style={{ width: 150 }}>
+            <ProductCard
+              item={item}
+              onPress={() =>
+                navigation.navigate("ProductDetail", {
+                  item,
+                  id: item.apiId || item._id || item.id,
+                })
+              }
             />
           </View>
         )}
