@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
-import { useCartStore } from "../store/cartStore";
+﻿import React, { useEffect, useMemo, useState, useRef } from "react";
+import { CART_TYPES, useCartStore } from "../store/cartStore";
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -43,7 +43,6 @@ const PAYMENT_STATUS_META = {
     bg: "#EFF6FF",
   },
 };
-
 
 const ORDER_STEPS = [
   { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
@@ -375,6 +374,10 @@ const normalizeOrder = (raw) => {
 
 export default function CheckoutStatusScreen({ navigation, route }) {
   const initialOrder = route?.params?.order || null;
+  const cartType =
+    route?.params?.cartType === CART_TYPES.PREORDER
+      ? CART_TYPES.PREORDER
+      : CART_TYPES.ORDER;
   const [serverOrder, setServerOrder] = useState(null);
   const clearCart = useCartStore((s) => s.clear);
   const clearedRef = useRef(false);
@@ -447,13 +450,12 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   useEffect(() => {
     if (paymentStatus === "PAID" && !clearedRef.current) {
       clearedRef.current = true;
-      clearCart();
+      clearCart(cartType);
     }
-  }, [paymentStatus, clearCart]);
+  }, [paymentStatus, clearCart, cartType]);
 
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
   const handleViewOrderDetail = () => navigateToTab("OrdersTab", "Orders");
-
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -552,7 +554,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Thanh toán thành công!</Text>
             <Text style={styles.mutedText}>
-              Đơn hàng đã đượcc ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết đơn.
+              Đơn hàng đã được ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết đơn.
             </Text>
             <View style={styles.actionRow}>
               <TouchableOpacity

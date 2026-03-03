@@ -1,4 +1,4 @@
-// src/data/mockProducts.js
+﻿// src/data/mockProducts.js
 
 export const MOCK_PRODUCTS = [
   {

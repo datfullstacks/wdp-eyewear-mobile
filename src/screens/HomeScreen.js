@@ -1,4 +1,4 @@
-// screens/HomeScreen.js
+﻿// screens/HomeScreen.js
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Dimensions,
@@ -308,7 +308,22 @@ export default function HomeScreen({ navigation }) {
 
         {/* SECTION: Combo */}
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Combo gọng + tròng</Text>
+          <Text style={styles.sectionTitle}>Sản phẩm ghép sẵn</Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
+          >
+            <Text style={styles.sectionLink}>Xem tất cả</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ProductPager
+          products={products}
+          onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
+        />
+
+        {/* SECTION: Combo */}
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Sản phẩm theo mùa</Text>
           <TouchableOpacity
             onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
           >

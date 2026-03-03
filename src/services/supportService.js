@@ -1,4 +1,4 @@
-import { api } from "./apiClient";
+﻿import { api } from "./apiClient";
 
 function pickData(res) {
   return res?.data?.data ?? [];

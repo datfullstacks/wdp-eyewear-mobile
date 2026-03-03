@@ -1,4 +1,4 @@
-// navigation/AppNavigation.js
+﻿// navigation/AppNavigation.js
 import React, { useEffect } from "react";
 import { NavigationContainer, CommonActions } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";

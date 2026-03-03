@@ -1,4 +1,4 @@
-import { api } from "./apiClient";
+﻿import { api } from "./apiClient";
 
 const DEFAULT_IMAGE =
   "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
@@ -104,15 +104,34 @@ function computePricing(pricing = {}) {
   };
 }
 
+// function computeStockStatus(product, totalStock) {
+//   const statusRaw = String(product?.status || "").toLowerCase();
+//   if (statusRaw === "out_of_stock") return "OUT_OF_STOCK";
+//   if (statusRaw === "inactive") return "OUT_OF_STOCK";
+//   if (statusRaw === "draft") return "PREORDER";
+
+//   if (product?.inventory?.track && typeof totalStock === "number") {
+//     if (totalStock <= 0) return "OUT_OF_STOCK";
+//     return "IN_STOCK";
+//   }
+
+//   return "IN_STOCK";
+// }
+
 function computeStockStatus(product, totalStock) {
   const statusRaw = String(product?.status || "").toLowerCase();
-  if (statusRaw === "out_of_stock") return "OUT_OF_STOCK";
-  if (statusRaw === "inactive") return "OUT_OF_STOCK";
-  if (statusRaw === "draft") return "PREORDER";
+
+  // ✅ nếu preOrder.enabled true và hết hàng => PREORDER
+  const preorderEnabled = product?.preOrder?.enabled === true;
 
   if (product?.inventory?.track && typeof totalStock === "number") {
-    if (totalStock <= 0) return "OUT_OF_STOCK";
+    if (totalStock <= 0) return preorderEnabled ? "PREORDER" : "OUT_OF_STOCK";
     return "IN_STOCK";
+  }
+
+  // fallback theo status cũ
+  if (statusRaw === "out_of_stock" || statusRaw === "inactive") {
+    return preorderEnabled ? "PREORDER" : "OUT_OF_STOCK";
   }
 
   return "IN_STOCK";
@@ -213,7 +232,15 @@ export function mapApiProductToUi(product) {
 
   const uiType = normalizeType(product?.type);
 
-  const orderTypes = uiType === "LENS" ? ["READY", "CUSTOM"] : ["READY", "PREORDER", "CUSTOM"];
+  const preorderEnabled = product?.preOrder?.enabled === true;
+
+  const orderTypes =
+    uiType === "LENS"
+      ? ["READY", "CUSTOM"]
+      : preorderEnabled
+        ? ["READY", "PREORDER", "CUSTOM"]
+        : ["READY", "CUSTOM"];
+
   const defaultOrderType = stockStatus === "PREORDER" ? "PREORDER" : "READY";
 
   const { colors, sizes, colorDots } = buildVariantsMeta(variants, assets);
@@ -263,6 +290,7 @@ export function mapApiProductToUi(product) {
 
     qaCount: 0,
     relatedIds: [],
+    preOrder: product?.preOrder ?? { enabled: false, allowCod: true },
   };
 }
 
