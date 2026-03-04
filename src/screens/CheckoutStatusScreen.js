@@ -8,7 +8,7 @@ import { api } from "../services/apiClient";
 const PAYMENT_STATUS_META = {
   PENDING_QR: {
     label: "Chờ thanh toán",
-    desc: "Vui lòng quét QR SePay để đặt cọc.",
+    desc: "Vui lòng quét mã QR để đặt cọc.",
     color: "#B45309",
     bg: "#FFF7ED",
   },
@@ -152,11 +152,13 @@ const buildAddressLines = (addr) => {
 
 const normalizePaymentMethod = (value, payNow = 0) => {
   const method = String(value || "").trim().toUpperCase();
-  if (method) return method;
-  return payNow > 0 ? "SEPAY" : "COD";
+  if (!method) return payNow > 0 ? "VNPAY" : "COD";
+  if (["VNPAY", "VNPAY_QR", "VNPAYQR", "VN_PAY"].includes(method)) return "VNPAY";
+  if (["SEPAY", "SE_PAY"].includes(method)) return "SEPAY";
+  return method;
 };
 
-const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) => {
+const normalizePaymentStatus = (status, { payNow = 0, method = "VNPAY" } = {}) => {
   if (typeof status === "string" && PAYMENT_STATUS_META[status]) return status;
 
   const normalized = String(status || "").trim().toLowerCase();
@@ -252,11 +254,11 @@ const DEMO_ORDER = {
     { name: "Tròng kính chống ánh xanh", qty: 1, price: 1200000, preorder: true },
   ],
   payment: {
-    method: "SEPAY",
+    method: "VNPAY",
     status: "PENDING_QR",
     amount: 735000,
-    paymentCode: "SEPAY-2025-123456",
-    content: "SEPAY-2025-123456",
+    paymentCode: "VNPAY-2025-123456",
+    content: "VNPAY-2025-123456",
     bankAccountId: "BANK-001",
     createdAt: new Date().toISOString(),
     paidAt: null,
@@ -292,6 +294,16 @@ const normalizeOrder = (raw) => {
   const paymentAmount = payment.amount ?? payNow;
   const paymentCreatedAt = payment.createdAt || raw?.createdAt || null;
   const paymentPaidAt = payment.paidAt || raw?.paidAt || null;
+  const paymentLink = firstTextValue(
+    payment.paymentUrl,
+    payment.payment_url,
+    payment.checkoutUrl,
+    payment.checkout_url,
+    payment.payUrl,
+    payment.pay_url,
+    payment.url,
+    payment.link
+  );
   const qrCandidate = firstQrImageUrl(
     payment.qrUrl,
     payment.qr_url,
@@ -304,7 +316,7 @@ const normalizeOrder = (raw) => {
     payment.qr_link
   );
 
-  const sepayDescription =
+  const paymentDescription =
     firstTextValue(
       payment.description,
       payment.note,
@@ -314,7 +326,7 @@ const normalizeOrder = (raw) => {
       payment.content,
       payment.payment_content
     ) || paymentContent || paymentCode;
-  const sepayAccountNumber = firstTextValue(
+  const paymentAccountNumber = firstTextValue(
     payment.bankAccountNumber,
     payment.accountNumber,
     payment.bank_account_number,
@@ -323,21 +335,21 @@ const normalizeOrder = (raw) => {
     payment.account_no,
     payment.account_number
   );
-  const sepayBankName = firstTextValue(
+  const paymentBankName = firstTextValue(
     payment.bankName,
     payment.bank,
     payment.bank_name,
     payment.bankCode,
     payment.bank_code
   );
-  const sepayQrUrl = buildSepayQrUrl({
-    accountNumber: sepayAccountNumber,
-    bankName: sepayBankName,
+  const providerQrUrl = paymentMethod === "SEPAY" ? buildSepayQrUrl({
+    accountNumber: paymentAccountNumber,
+    bankName: paymentBankName,
     amount: paymentAmount,
-    description: sepayDescription,
-  });
-  const fallbackQrUrl = payNow > 0 ? makeQrUrl(paymentContent || paymentCode) : null;
-  const qrUrl = firstQrImageUrl(qrCandidate, sepayQrUrl, fallbackQrUrl);
+    description: paymentDescription,
+  }) : null;
+  const fallbackQrUrl = payNow > 0 ? makeQrUrl(paymentContent || paymentCode || paymentLink) : null;
+  const qrUrl = firstQrImageUrl(qrCandidate, providerQrUrl, fallbackQrUrl);
   const bankAccountIdValue = firstTextValue(payment.bankAccountId, payment.bank_account_id);
 
   const rawAddress = raw?.shippingAddress || raw?.address || null;
@@ -376,10 +388,10 @@ const normalizeOrder = (raw) => {
       amount: paymentAmount,
       paymentCode,
       content: paymentContent,
-      description: sepayDescription,
+      description: paymentDescription,
       bankAccountId: bankAccountIdValue,
-      bankAccountNumber: sepayAccountNumber,
-      bankName: sepayBankName,
+      bankAccountNumber: paymentAccountNumber,
+      bankName: paymentBankName,
       createdAt: paymentCreatedAt,
       paidAt: paymentPaidAt,
       qrUrl,
@@ -454,6 +466,12 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   );
   const isPaymentSettled = paymentStatus === "PAID" || paymentStatus === "REFUNDED";
   const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled;
+  const paymentMethodLabel =
+    order.payment.method === "VNPAY"
+      ? "VNPay"
+      : order.payment.method === "SEPAY"
+        ? "SePay"
+        : order.payment.method || "QR";
 
   const navigateToTab = (tabName, screenName) => {
     navigation.navigate("Tabs", {
@@ -499,7 +517,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
         {shouldShowQr ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>QR thanh toán SePay</Text>
+            <Text style={styles.sectionTitle}>QR thanh toán {paymentMethodLabel}</Text>
             <Text style={styles.mutedText}>Quét mã để đặt cọc và hoàn tất đơn đặt trước.</Text>
             <View style={styles.qrWrap}>
               <Image source={{ uri: order.payment.qrUrl }} style={styles.qrImage} />
@@ -518,12 +536,14 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 {order.payment.content || order.payment.paymentCode || order.payment.description || "--"}
               </Text>
             </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Tài khoản nhận</Text>
-              <Text style={styles.metaValue}>
-                {order.payment.bankAccountNumber || order.payment.bankAccountId || "--"}
-              </Text>
-            </View>
+            {order.payment.bankAccountNumber || order.payment.bankAccountId ? (
+              <View style={styles.rowBetween}>
+                <Text style={styles.metaLabel}>Tài khoản nhận</Text>
+                <Text style={styles.metaValue}>
+                  {order.payment.bankAccountNumber || order.payment.bankAccountId || "--"}
+                </Text>
+              </View>
+            ) : null}
             {order.payment.bankName ? (
               <View style={styles.rowBetween}>
                 <Text style={styles.metaLabel}>Ngân hàng</Text>

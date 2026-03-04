@@ -18,7 +18,7 @@ const SHIPPING_METHODS = [
 ];
 
 const PAYMENT_METHODS = [
-  { id: "sepay", label: "SePay (QR)", desc: "Quét QR SePay để thanh toán" },
+  { id: "vnpay", label: "VNPay (QR)", desc: "Quét QR VNPay để thanh toán" },
 ];
 
 const PREORDER_PAYMENT_METHODS = PAYMENT_METHODS;
@@ -60,7 +60,7 @@ export default function CheckoutScreen({ navigation, route }) {
   const autoNote = String(initialQuoteMeta.autoNote || "").trim();
 
   const [shippingId, setShippingId] = useState(initialQuoteMeta.shippingMethod || "standard");
-  const [paymentId, setPaymentId] = useState("cod");
+  const [paymentId, setPaymentId] = useState(PAYMENT_METHODS[0]?.id || "vnpay");
 
   // ✅ user note only (UI)
   const [userNote, setUserNote] = useState("");
@@ -388,7 +388,7 @@ export default function CheckoutScreen({ navigation, route }) {
         discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
         voucherCode: appliedVoucherCode || undefined,
         cartType: API_CART_TYPE[cartType] || "ready_stock",
-        paymentMethod: "sepay",
+        paymentMethod: paymentId || "vnpay",
       });
 
       const data = await createCheckout(payload);
@@ -396,7 +396,7 @@ export default function CheckoutScreen({ navigation, route }) {
       const orderId = data?.orderId || data?.id || `OD${Date.now().toString().slice(-6)}`;
       const breakdown = data?.breakdown || data || {};
       const serverPayment = data?.payment || {};
-      const fallbackMethod = "SEPAY";
+      const fallbackMethod = "VNPAY";
       const fallbackStatus = "PENDING_QR";
       const orderPayment = {
         ...serverPayment,
@@ -654,7 +654,7 @@ export default function CheckoutScreen({ navigation, route }) {
             {hasPreorder ? (
               <View style={styles.noticeBox}>
                 <Text style={styles.noticeText}>
-                  Đơn đặt trước cần đặt cọc qua SePay, phần còn lại thanh toán khi nhận hàng.
+                  Đơn đặt trước cần đặt cọc qua VNPay, phần còn lại thanh toán khi nhận hàng.
                 </Text>
               </View>
             ) : null}
@@ -724,7 +724,7 @@ export default function CheckoutScreen({ navigation, route }) {
             {hasPreorder ? (
               <>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Trả trước (SePay)</Text>
+                  <Text style={styles.summaryLabel}>Trả trước (VNPay)</Text>
                   <Text style={styles.summaryValue}>{formatVND(payNow)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
