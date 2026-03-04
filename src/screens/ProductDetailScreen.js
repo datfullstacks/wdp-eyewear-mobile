@@ -43,6 +43,49 @@ function normalizeStr(s) {
   return String(s ?? "").trim().toLowerCase();
 }
 
+function toIdString(value) {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object") {
+    if (value._id != null) return toIdString(value._id);
+    if (value.id != null) return toIdString(value.id);
+    if (typeof value.toString === "function") {
+      const text = String(value.toString());
+      if (text && text !== "[object Object]") return text;
+    }
+  }
+  return "";
+}
+
+function pick2DAsset(assets = []) {
+  return (
+    assets.find((a) => a?.assetType === "2d" && a?.role === "hero") ||
+    assets.find((a) => a?.assetType === "2d" && a?.role === "gallery") ||
+    assets.find((a) => a?.assetType === "2d" && a?.role === "thumbnail") ||
+    assets.find((a) => a?.assetType === "2d" && a?.role === "lifestyle") ||
+    assets.find((a) => a?.assetType === "2d") ||
+    null
+  );
+}
+
+function pick3DAsset(assets = []) {
+  return (
+    assets.find((a) => a?.assetType === "3d" && a?.role === "viewer") ||
+    assets.find((a) => a?.assetType === "3d" && a?.role === "try_on") ||
+    assets.find((a) => a?.assetType === "3d") ||
+    null
+  );
+}
+
+function getVariantAssets(product, variant) {
+  const variantId = toIdString(variant?._id || variant?.id);
+  if (!variantId) return [];
+  const byVariant = product?.media?.byVariant;
+  const assets = byVariant?.[variantId];
+  return Array.isArray(assets) ? assets : [];
+}
+
+// chọn variant theo options color/size (match mềm)
 function getSelectedVariant(product, { colorId, size }) {
   if (!product?.variants?.length) return null;
 
@@ -235,6 +278,7 @@ export default function ProductDetailScreen({ navigation, route }) {
   const [size, setSize] = useState(product?.type === "FRAME" ? product?.sizes?.[0] ?? "M" : "STD");
   const [qty, setQty] = useState(1);
   const [readyNote, setReadyNote] = useState("");
+  const [mediaMode, setMediaMode] = useState("2d");
 
   useEffect(() => {
     if (!product) return;
@@ -242,6 +286,7 @@ export default function ProductDetailScreen({ navigation, route }) {
     setQty(1);
     setReadyNote("");
     setColorId(product.colors?.[0]?.id ?? null);
+    setMediaMode("2d");
 
     if (product.type === "FRAME") {
       setSize(product.sizes?.[0] || "M");
@@ -261,12 +306,59 @@ export default function ProductDetailScreen({ navigation, route }) {
     qa: false,
   });
 
+  // ✅ selected variant + stock
+  const selectedVariant = useMemo(() => {
+    if (!product) return null;
+    if (product.type === "FRAME") return getSelectedVariant(product, { colorId, size });
+    return getSelectedVariant(product, { colorId, size: null });
+  }, [product, colorId, size]);
+
+  const variantAssets = useMemo(
+    () => getVariantAssets(product, selectedVariant),
+    [product, selectedVariant]
+  );
+
+  const fallbackColorImage = useMemo(() => {
+    if (!product || product.type !== "FRAME") return null;
+    const c = product.colors?.find((x) => x.id === colorId);
+    return c?.imageOverride || null;
+  }, [product, colorId]);
+
+  const image2DAsset = useMemo(() => {
+    return pick2DAsset(variantAssets) || pick2DAsset(product?.media?.assets || []);
+  }, [variantAssets, product?.media?.assets]);
+
+  const image3DAsset = useMemo(() => {
+    return (
+      pick3DAsset(variantAssets) ||
+      pick3DAsset(product?.media?.tryOn?.assets || []) ||
+      pick3DAsset(product?.media?.assets || []) ||
+      product?.model3D?.defaultAsset ||
+      null
+    );
+  }, [variantAssets, product?.media?.tryOn?.assets, product?.media?.assets, product?.model3D?.defaultAsset]);
+
+  const has3DAsset = Boolean(image3DAsset);
+
+  useEffect(() => {
+    if (!has3DAsset && mediaMode !== "2d") {
+      setMediaMode("2d");
+    }
+  }, [has3DAsset, mediaMode]);
+
   const mainImage = useMemo(() => {
     if (!product) return null;
-    if (product.type !== "FRAME") return product.image;
-    const c = product.colors?.find((x) => x.id === colorId);
-    return c?.imageOverride || product.image;
-  }, [product, colorId]);
+    if (mediaMode === "3d" && has3DAsset) {
+      return (
+        image3DAsset?.posterUrl ||
+        image3DAsset?.url ||
+        image2DAsset?.url ||
+        fallbackColorImage ||
+        product.image
+      );
+    }
+    return image2DAsset?.url || fallbackColorImage || product.image;
+  }, [product, mediaMode, has3DAsset, image3DAsset, image2DAsset, fallbackColorImage]);
 
   const related = useMemo(() => {
     if (!product) return [];
@@ -285,13 +377,6 @@ export default function ProductDetailScreen({ navigation, route }) {
   const decQty = () => setQty((q) => Math.max(minQty, q - 1));
 
   const onToggleAccordion = (key) => setOpen((p) => ({ ...p, [key]: !p[key] }));
-
-  const selectedVariant = useMemo(() => {
-    if (!product) return null;
-
-    if (product.type === "FRAME") return getSelectedVariant(product, { colorId, size });
-    return getSelectedVariant(product, { colorId, size: null });
-  }, [product, colorId, size]);
 
   const variantStock = selectedVariant?.stock ?? product?.totalStock ?? 0;
   const isVariantOut = variantStock <= 0;
@@ -498,6 +583,9 @@ export default function ProductDetailScreen({ navigation, route }) {
           fav={fav}
           onToggleFav={onToggleFav}
           isVariantOut={isVariantOut}
+          mediaMode={mediaMode}
+          onChangeMediaMode={setMediaMode}
+          has3D={has3DAsset}
         />
 
         <InfoCard product={product} discountPct={discountPct} isVariantOut={isVariantOut} variantStock={variantStock} />
@@ -629,7 +717,17 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
   );
 }
 
-function Hero({ product, image, discountPct, fav, onToggleFav, isVariantOut }) {
+function Hero({
+  product,
+  image,
+  discountPct,
+  fav,
+  onToggleFav,
+  isVariantOut,
+  mediaMode = "2d",
+  onChangeMediaMode,
+  has3D,
+}) {
   const isOutOfStock = isVariantOut;
 
   return (
@@ -663,13 +761,25 @@ function Hero({ product, image, discountPct, fav, onToggleFav, isVariantOut }) {
           />
         ) : null}
 
-        {product.type === "FRAME" && product.model3D?.enabled && !isOutOfStock ? (
+        {product.type === "FRAME" && has3D && !isOutOfStock ? (
           <View style={styles.modeSwitchWrap}>
-            <TouchableOpacity activeOpacity={0.9} style={[styles.modeSwitchItem, styles.modeSwitchItemActive]}>
-              <Text style={[styles.modeSwitchText, styles.modeSwitchTextActive]}>2D</Text>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => onChangeMediaMode?.("2d")}
+              style={[styles.modeSwitchItem, mediaMode === "2d" && styles.modeSwitchItemActive]}
+            >
+              <Text style={[styles.modeSwitchText, mediaMode === "2d" && styles.modeSwitchTextActive]}>
+                2D
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity activeOpacity={0.9} style={styles.modeSwitchItem}>
-              <Text style={styles.modeSwitchText}>3D</Text>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => onChangeMediaMode?.("3d")}
+              style={[styles.modeSwitchItem, mediaMode === "3d" && styles.modeSwitchItemActive]}
+            >
+              <Text style={[styles.modeSwitchText, mediaMode === "3d" && styles.modeSwitchTextActive]}>
+                3D
+              </Text>
             </TouchableOpacity>
           </View>
         ) : null}

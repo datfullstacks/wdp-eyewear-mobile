@@ -28,6 +28,10 @@ const ORDER_TYPE_LABEL = {
 };
 
 const PREORDER_PAY_RATE = 0.3;
+const API_CART_TYPE = {
+  [CART_TYPES.ORDER]: "ready_stock",
+  [CART_TYPES.PREORDER]: "pre_order",
+};
 
 function getPayRate(ci) {
   return ci?.isPreorder ? PREORDER_PAY_RATE : 1;
@@ -138,7 +142,7 @@ export default function CartScreen({ navigation, route }) {
     [cartItems]
   );
 
-  const discount = useMemo(() => Math.round(subtotal * 0.2), [subtotal]);
+  const discount = 0;
   const shipping = cartItems.length > 0 ? 30000 : 0;
   const total = Math.max(0, subtotal - discount + shipping);
 
@@ -255,6 +259,7 @@ export default function CartScreen({ navigation, route }) {
         shippingFee: shipping,
         discountAmount: discount,
         shippingMethod,
+        cartType: API_CART_TYPE[activeCartType] || "ready_stock",
       });
       const quote = await fetchCheckoutQuote(payload);
       navigation.navigate("Checkout", {
