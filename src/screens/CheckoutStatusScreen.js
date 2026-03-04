@@ -137,6 +137,21 @@ const buildSepayQrUrl = ({ accountNumber, bankName, amount, description }) => {
   return `https://qr.sepay.vn/img?${params.join("&")}`;
 };
 
+const buildQrImageSource = (uri) => {
+  const text = toTextValue(uri);
+  if (!text) return null;
+  if (/^https?:\/\/qr\.sepay\.vn\//i.test(text)) {
+    return {
+      uri: text,
+      headers: {
+        // sepay image endpoint may return 403 without browser-like UA
+        "User-Agent": "Mozilla/5.0",
+      },
+    };
+  }
+  return { uri: text };
+};
+
 const buildAddressLines = (addr) => {
   if (!addr) return [];
   const lines = [];
@@ -340,11 +355,7 @@ const normalizeOrder = (raw) => {
     payment.bank,
     payment.bank_name,
     payment.bankCode,
-    payment.bank_code,
-    payment.bankId,
-    payment.bank_id,
-    payment.bankAccountId,
-    payment.bank_account_id
+    payment.bank_code
   );
   const providerQrUrl = paymentMethod === "SEPAY" ? buildSepayQrUrl({
     accountNumber: paymentAccountNumber,
@@ -476,6 +487,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   );
   const isPaymentSettled = paymentStatus === "PAID" || paymentStatus === "REFUNDED";
   const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled;
+  const qrImageSource = useMemo(() => buildQrImageSource(order.payment.qrUrl), [order.payment.qrUrl]);
   const canOpenPaymentUrl = Boolean(order.payment.paymentUrl) && !isPaymentSettled;
   const paymentMethodLabel =
     order.payment.method === "VNPAY"
@@ -531,7 +543,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <Text style={styles.sectionTitle}>QR thanh toán {paymentMethodLabel}</Text>
             <Text style={styles.mutedText}>Quét mã để đặt cọc và hoàn tất đơn đặt trước.</Text>
             <View style={styles.qrWrap}>
-              <Image source={{ uri: order.payment.qrUrl }} style={styles.qrImage} />
+              {qrImageSource ? <Image source={qrImageSource} style={styles.qrImage} /> : null}
             </View>
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Số tiền cần chuyển</Text>
