@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState, useRef } from "react";
 import { CART_TYPES, useCartStore } from "../store/cartStore";
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/apiClient";
@@ -340,7 +340,11 @@ const normalizeOrder = (raw) => {
     payment.bank,
     payment.bank_name,
     payment.bankCode,
-    payment.bank_code
+    payment.bank_code,
+    payment.bankId,
+    payment.bank_id,
+    payment.bankAccountId,
+    payment.bank_account_id
   );
   const providerQrUrl = paymentMethod === "SEPAY" ? buildSepayQrUrl({
     accountNumber: paymentAccountNumber,
@@ -348,8 +352,13 @@ const normalizeOrder = (raw) => {
     amount: paymentAmount,
     description: paymentDescription,
   }) : null;
-  const fallbackQrUrl = payNow > 0 ? makeQrUrl(paymentContent || paymentCode || paymentLink) : null;
-  const qrUrl = firstQrImageUrl(qrCandidate, providerQrUrl, fallbackQrUrl);
+  const vnpayQrUrl =
+    paymentMethod === "VNPAY" && paymentLink ? makeQrUrl(paymentLink) : null;
+  const genericFallbackQrUrl =
+    payNow > 0 && paymentMethod !== "SEPAY" && paymentMethod !== "VNPAY"
+      ? makeQrUrl(paymentLink || paymentContent || paymentCode)
+      : null;
+  const qrUrl = firstQrImageUrl(qrCandidate, providerQrUrl, vnpayQrUrl, genericFallbackQrUrl);
   const bankAccountIdValue = firstTextValue(payment.bankAccountId, payment.bank_account_id);
 
   const rawAddress = raw?.shippingAddress || raw?.address || null;
@@ -394,6 +403,7 @@ const normalizeOrder = (raw) => {
       bankName: paymentBankName,
       createdAt: paymentCreatedAt,
       paidAt: paymentPaidAt,
+      paymentUrl: paymentLink,
       qrUrl,
     },
   };
@@ -466,6 +476,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   );
   const isPaymentSettled = paymentStatus === "PAID" || paymentStatus === "REFUNDED";
   const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled;
+  const canOpenPaymentUrl = Boolean(order.payment.paymentUrl) && !isPaymentSettled;
   const paymentMethodLabel =
     order.payment.method === "VNPAY"
       ? "VNPay"
@@ -554,6 +565,20 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               <Text style={styles.metaLabel}>Thời gian tạo</Text>
               <Text style={styles.metaValue}>{formatDateTime(order.payment.createdAt)}</Text>
             </View>
+          </View>
+        ) : canOpenPaymentUrl ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Thanh toán {paymentMethodLabel}</Text>
+            <Text style={styles.mutedText}>
+              Không có ảnh QR hợp lệ từ hệ thống. Vui lòng mở link thanh toán.
+            </Text>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnPrimary, { marginTop: 12 }]}
+              activeOpacity={0.85}
+              onPress={() => Linking.openURL(order.payment.paymentUrl)}
+            >
+              <Text style={[styles.actionText, styles.actionTextPrimary]}>Mở link thanh toán</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
