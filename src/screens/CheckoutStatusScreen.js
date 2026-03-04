@@ -68,6 +68,9 @@ const makeQrUrl = (content) => {
   )}`;
 };
 
+const isHttpUrl = (value) => /^https?:\/\/.+/i.test(value);
+const isDataImageUrl = (value) => /^data:image\/[a-z0-9.+-]+;base64,/i.test(value);
+
 const toTextValue = (value) => {
   if (value == null) return null;
   if (typeof value === "string") {
@@ -101,6 +104,20 @@ const firstTextValue = (...values) => {
   for (const value of values) {
     const text = toTextValue(value);
     if (text) return text;
+  }
+  return null;
+};
+
+const toQrImageUrl = (value) => {
+  const text = toTextValue(value);
+  if (!text) return null;
+  return isDataImageUrl(text) || isHttpUrl(text) ? text : null;
+};
+
+const firstQrImageUrl = (...values) => {
+  for (const value of values) {
+    const imageUrl = toQrImageUrl(value);
+    if (imageUrl) return imageUrl;
   }
   return null;
 };
@@ -275,7 +292,7 @@ const normalizeOrder = (raw) => {
   const paymentAmount = payment.amount ?? payNow;
   const paymentCreatedAt = payment.createdAt || raw?.createdAt || null;
   const paymentPaidAt = payment.paidAt || raw?.paidAt || null;
-  const qrCandidate = firstTextValue(
+  const qrCandidate = firstQrImageUrl(
     payment.qrUrl,
     payment.qr_url,
     payment.qrImage,
@@ -303,17 +320,15 @@ const normalizeOrder = (raw) => {
     payment.bank_account_number,
     payment.acc,
     payment.account,
-    payment.bankAccountId,
-    payment.bank_account_id
+    payment.account_no,
+    payment.account_number
   );
   const sepayBankName = firstTextValue(
     payment.bankName,
     payment.bank,
     payment.bank_name,
-    payment.bankAccountName,
-    payment.bank_account_name,
-    payment.bankAccountHolderName,
-    payment.bank_account_holder_name
+    payment.bankCode,
+    payment.bank_code
   );
   const sepayQrUrl = buildSepayQrUrl({
     accountNumber: sepayAccountNumber,
@@ -322,7 +337,7 @@ const normalizeOrder = (raw) => {
     description: sepayDescription,
   });
   const fallbackQrUrl = payNow > 0 ? makeQrUrl(paymentContent || paymentCode) : null;
-  const qrUrl = qrCandidate || sepayQrUrl || fallbackQrUrl;
+  const qrUrl = firstQrImageUrl(qrCandidate, sepayQrUrl, fallbackQrUrl);
   const bankAccountIdValue = firstTextValue(payment.bankAccountId, payment.bank_account_id);
 
   const rawAddress = raw?.shippingAddress || raw?.address || null;
