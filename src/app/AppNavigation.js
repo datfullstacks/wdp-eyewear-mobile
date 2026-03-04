@@ -27,6 +27,7 @@ import PrescriptionScreen from "../screens/PrescriptionScreen";
 import PaymentsScreen from "../screens/PaymentsScreen";
 import SupportScreen from "../screens/SupportScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
+import TryOnARScreen from "../screens/TryOnARScreen";
 
 const RootStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -239,6 +240,7 @@ export default function AppNavigation() {
     <NavigationContainer>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="Tabs" component={MainTabs} />
+        <RootStack.Screen name="TryOnAR" component={TryOnARScreen} />
         <RootStack.Screen name="Login" component={LoginScreen} />
         <RootStack.Screen name="Register" component={RegisterScreen} />
         <RootStack.Screen name="CartFlow" component={CartStackScreen} />

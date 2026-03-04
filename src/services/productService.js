@@ -43,6 +43,30 @@ const STATUS_LABEL = {
   OUT_OF_STOCK: "Hết hàng",
 };
 
+const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+
+function toText(value) {
+  return String(value ?? "").trim();
+}
+
+function toBoolean(value, defaultValue = false) {
+  const normalized = toText(value).toLowerCase();
+  if (!normalized) return defaultValue;
+  return TRUE_VALUES.has(normalized);
+}
+
+function toCsvList(value) {
+  return toText(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+const TRYON_FORCE_DEMO = toBoolean(process.env.EXPO_PUBLIC_TRYON_FORCE_DEMO, false);
+const TRYON_DEMO_EFFECT_PATH =
+  toText(process.env.EXPO_PUBLIC_TRYON_DEMO_EFFECT_PATH) || "effects/test_TeethTone";
+const TRYON_DEMO_RESOURCE_PATHS = toCsvList(process.env.EXPO_PUBLIC_TRYON_DEMO_RESOURCE_PATHS);
+
 function safeNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -299,6 +323,84 @@ function buildShipping(fulfillment = {}) {
   return { etaLabel: "Giao nhanh 1–3 ngày" };
 }
 
+function buildTryOnMeta(media = {}) {
+  const assets = Array.isArray(media?.assets) ? media.assets : [];
+  const tryOn = media?.tryOn || {};
+
+  const enabled = Boolean(tryOn?.enabled);
+  const status = String(tryOn?.status || "").trim().toLowerCase();
+  const published = enabled && status === "published";
+  const configuredAssetIds = Array.isArray(tryOn?.assetIds) ? tryOn.assetIds : [];
+  const configuredAssetIdSet = new Set(
+    configuredAssetIds.map((id) => String(id || "").trim()).filter(Boolean)
+  );
+
+  const configuredAssets = configuredAssetIdSet.size
+    ? assets.filter((a) => configuredAssetIdSet.has(String(a?._id || a?.id || "").trim()))
+    : assets.filter((a) => a?.role === "try_on");
+
+  const sourceAssets = configuredAssets.length ? configuredAssets : assets;
+
+  let glbUrl = "";
+  let usdzUrl = "";
+  sourceAssets.forEach((asset) => {
+    if (!asset || asset.assetType !== "3d") return;
+    const format = String(asset.format || "").trim().toLowerCase();
+    const url = asset?.url || "";
+    const ar = asset?.ar || {};
+    if (!glbUrl && (format === "glb" || format === "gltf")) {
+      glbUrl = ar.glbUrl || url || "";
+    }
+    if (!usdzUrl && format === "usdz") {
+      usdzUrl = ar.usdzUrl || url || "";
+    }
+  });
+
+  const arUrl = String(tryOn?.arUrl || "").trim();
+  const effectPath = String(tryOn?.effectPath || tryOn?.effect || "").trim();
+  const resourcePaths = Array.isArray(tryOn?.resourcePaths)
+    ? tryOn.resourcePaths.map((p) => String(p || "").trim()).filter(Boolean)
+    : [];
+  const launchUrl = arUrl || usdzUrl || glbUrl || "";
+  const ready = published && Boolean(launchUrl || effectPath);
+
+  return {
+    enabled,
+    status,
+    published,
+    ready,
+    arUrl,
+    effectPath,
+    resourcePaths,
+    glbUrl,
+    usdzUrl,
+    launchUrl,
+    assetIds: configuredAssetIds.map((id) => String(id || "")).filter(Boolean),
+  };
+}
+
+function withDemoTryOn(tryOn, productType) {
+  if (!TRYON_FORCE_DEMO || productType !== "FRAME") return tryOn;
+  if (tryOn?.ready) return tryOn;
+
+  const effectPath = TRYON_DEMO_EFFECT_PATH || tryOn?.effectPath || "";
+  const resourcePaths = TRYON_DEMO_RESOURCE_PATHS.length
+    ? TRYON_DEMO_RESOURCE_PATHS
+    : Array.isArray(tryOn?.resourcePaths)
+      ? tryOn.resourcePaths
+      : [];
+
+  return {
+    ...tryOn,
+    enabled: true,
+    status: "published",
+    published: true,
+    ready: Boolean(effectPath || tryOn?.launchUrl),
+    effectPath,
+    resourcePaths,
+  };
+}
+
 export function mapApiProductToUi(product) {
   if (!product) return null;
 
@@ -335,6 +437,7 @@ export function mapApiProductToUi(product) {
   const { colors, sizes, colorDots } = buildVariantsMeta(variants, assets, variantAssetsById);
 
   const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
+  const tryOn = withDemoTryOn(buildTryOnMeta(product?.media || {}), uiType);
 
   const apiId = product?._id || product?.id || null;
 
@@ -382,6 +485,7 @@ export function mapApiProductToUi(product) {
         assets: tryOnAssets,
       },
     },
+    tryOn,
 
     specs: buildSpecsList(product),
     sections: {
