@@ -39,6 +39,15 @@ const ORDER_TYPES = {
   CUSTOM: "Làm theo đơn",
 };
 
+const TRY_ON_STATUS_LABEL = {
+  draft: "Try-on chưa được publish",
+  pending_review: "Try-on đang chờ duyệt",
+  approved: "Try-on đã duyệt, chờ phát hành",
+  published: "Try-on đã sẵn sàng",
+  rejected: "Try-on cần cập nhật lại",
+  archived: "Try-on đã lưu trữ",
+};
+
 function normalizeStr(s) {
   return String(s ?? "").trim().toLowerCase();
 }
@@ -547,6 +556,23 @@ export default function ProductDetailScreen({ navigation, route }) {
     });
   };
 
+  const onOpenTryOn = useCallback(() => {
+    const tryOn = product?.tryOn;
+    if (!tryOn?.ready) {
+      Alert.alert("Try-on", "Try-on chưa sẵn sàng cho sản phẩm này.");
+      return;
+    }
+
+    navigation.navigate("TryOnAR", {
+      product: {
+        id: product.id,
+        apiId: product.apiId,
+        name: product.name,
+      },
+      tryOn,
+    });
+  }, [navigation, product]);
+
   if (!product) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -589,6 +615,10 @@ export default function ProductDetailScreen({ navigation, route }) {
         />
 
         <InfoCard product={product} discountPct={discountPct} isVariantOut={isVariantOut} variantStock={variantStock} />
+
+        {normType(product.type) === "FRAME" ? (
+          <TryOnCard tryOn={product.tryOn} onOpenTryOn={onOpenTryOn} />
+        ) : null}
 
         <Card>
           <Text style={styles.sectionTitle}>Loại đơn hàng</Text>
@@ -956,6 +986,42 @@ function LensOptions({
       </View>
 
       <CTAButtons canBuy={canBuy} onAdd={onAdd} onBuyNow={onBuyNow} isPreorder={isPreorderMode} />
+    </Card>
+  );
+}
+
+function TryOnCard({ tryOn, onOpenTryOn }) {
+  const status = String(tryOn?.status || "").trim().toLowerCase();
+  const statusLabel = TRY_ON_STATUS_LABEL[status] || "Không có trạng thái try-on";
+  const canOpen = Boolean(tryOn?.ready);
+
+  return (
+    <Card>
+      <View style={styles.tryOnHeader}>
+        <View style={styles.tryOnTitleWrap}>
+          <Ionicons name="glasses-outline" size={18} color="#111827" />
+          <Text style={styles.sectionTitle}>Virtual Try-On</Text>
+        </View>
+        <View style={[styles.tryOnStatusPill, canOpen ? styles.tryOnStatusPillReady : styles.tryOnStatusPillPending]}>
+          <Text style={[styles.tryOnStatusText, canOpen ? styles.tryOnStatusTextReady : styles.tryOnStatusTextPending]}>
+            {canOpen ? "Sẵn sàng" : "Chưa sẵn sàng"}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.tryOnHint}>{statusLabel}</Text>
+
+      <TouchableOpacity
+        activeOpacity={0.9}
+        disabled={!canOpen}
+        onPress={onOpenTryOn}
+        style={[styles.tryOnButton, !canOpen && styles.btnDisabled]}
+      >
+        <Ionicons name="camera-outline" size={18} color="#FFFFFF" />
+        <Text style={[styles.tryOnButtonText, !canOpen && styles.btnDisabledText]}>
+          {canOpen ? "Mở Try-On" : "Try-On chưa khả dụng"}
+        </Text>
+      </TouchableOpacity>
     </Card>
   );
 }
@@ -1353,6 +1419,26 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: "900", color: "#111827" },
   sectionTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
   mutedText: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  tryOnHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  tryOnTitleWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
+  tryOnStatusPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
+  tryOnStatusPillReady: { backgroundColor: "#E7F8EF" },
+  tryOnStatusPillPending: { backgroundColor: "#FFECEC" },
+  tryOnStatusText: { fontSize: 11, fontWeight: "900" },
+  tryOnStatusTextReady: { color: "#159947" },
+  tryOnStatusTextPending: { color: "#D33A2C" },
+  tryOnHint: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  tryOnButton: {
+    marginTop: 12,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  tryOnButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
 
   metaRow: { marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
