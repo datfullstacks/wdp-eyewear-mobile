@@ -10,6 +10,7 @@ import {
   createCheckout,
 } from "../services/checkoutService";
 import { addMyAddressApi, getMyAddressesApi } from "../services/userService";
+import { validatePromotionApi } from "../services/promotionService";
 
 const SHIPPING_METHODS = [
   { id: "standard", label: "Giao tiêu chuẩn", eta: "2-4 ngày làm việc", price: 25000 },
@@ -21,6 +22,10 @@ const PAYMENT_METHODS = [
 ];
 
 const PREORDER_PAYMENT_METHODS = PAYMENT_METHODS;
+const API_CART_TYPE = {
+  [CART_TYPES.ORDER]: "ready_stock",
+  [CART_TYPES.PREORDER]: "pre_order",
+};
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value) + "đ";
 const EMPTY_ADDRESS = {
@@ -59,6 +64,12 @@ export default function CheckoutScreen({ navigation, route }) {
 
   // ✅ user note only (UI)
   const [userNote, setUserNote] = useState("");
+  const [voucherInput, setVoucherInput] = useState(String(initialQuoteMeta.voucherCode || ""));
+  const [appliedVoucherCode, setAppliedVoucherCode] = useState(
+    String(initialQuoteMeta.voucherCode || "").trim()
+  );
+  const [voucherMeta, setVoucherMeta] = useState(initialQuoteMeta.voucher || null);
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
 
   const items = useCartStore((s) => s.items);
   const preorderItems = useCartStore((s) => s.preorderItems);
@@ -259,6 +270,8 @@ export default function CheckoutScreen({ navigation, route }) {
       shippingFee: shippingMethodFee,
       discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
       shippingAddress: addressComplete ? address : null,
+      voucherCode: appliedVoucherCode || undefined,
+      cartType: API_CART_TYPE[cartType] || "ready_stock",
       // note intentionally omitted
     });
 
@@ -284,7 +297,75 @@ export default function CheckoutScreen({ navigation, route }) {
     return () => {
       active = false;
     };
-  }, [checkoutItems, shippingId, addressComplete, address, skipInitialQuote, cartDiscountAmount, shippingMethodFee]);
+  }, [
+    checkoutItems,
+    shippingId,
+    addressComplete,
+    address,
+    skipInitialQuote,
+    cartDiscountAmount,
+    shippingMethodFee,
+    appliedVoucherCode,
+    cartType,
+  ]);
+
+  const applyVoucher = async () => {
+    if (isApplyingVoucher) return;
+    const code = String(voucherInput || "").trim().toUpperCase();
+    if (!code) {
+      setAppliedVoucherCode("");
+      setVoucherMeta(null);
+      return;
+    }
+
+    if (!checkoutItems.length) {
+      Alert.alert("Giỏ hàng trống", "Không thể áp mã khi chưa có sản phẩm.");
+      return;
+    }
+
+    try {
+      setIsApplyingVoucher(true);
+
+      const validatePayload = {
+        voucherCode: code,
+        items: checkoutItems,
+        shippingFee: shippingMethodFee,
+        shippingMethod: shippingId,
+        cartType: API_CART_TYPE[cartType] || "ready_stock",
+      };
+
+      const validated = await validatePromotionApi(validatePayload);
+      if (!validated?.valid) {
+        throw new Error(validated?.message || "Voucher không hợp lệ.");
+      }
+
+      setAppliedVoucherCode(code);
+      setVoucherMeta(validated?.voucher || null);
+
+      const quotePayload = buildCheckoutPayload({
+        items: checkoutItems,
+        shippingMethod: shippingId,
+        shippingFee: shippingMethodFee,
+        shippingAddress: addressComplete ? address : null,
+        voucherCode: code,
+        cartType: API_CART_TYPE[cartType] || "ready_stock",
+      });
+      const refreshedQuote = await fetchCheckoutQuote(quotePayload);
+      setQuote(refreshedQuote);
+      setQuoteError(null);
+      setSkipInitialQuote(false);
+      Alert.alert("Áp mã thành công", `Đã áp dụng voucher ${code}.`);
+    } catch (err) {
+      const data = err?.response?.data || {};
+      const errors = Array.isArray(data?.errors)
+        ? data.errors.map((e) => e?.msg).filter(Boolean).join("\n")
+        : null;
+      const message = errors || data?.message || data?.error || err?.message;
+      Alert.alert("Không áp dụng được voucher", message || "Vui lòng thử mã khác.");
+    } finally {
+      setIsApplyingVoucher(false);
+    }
+  };
 
   const checkoutOrder = async () => {
     if (isSubmitting || !checkoutItems.length) return;
@@ -305,6 +386,8 @@ export default function CheckoutScreen({ navigation, route }) {
         note: mergedNote || undefined, // ✅ only send if any
         shippingFee: shippingMethodFee,
         discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
+        voucherCode: appliedVoucherCode || undefined,
+        cartType: API_CART_TYPE[cartType] || "ready_stock",
         paymentMethod: "sepay",
       });
 
@@ -334,6 +417,7 @@ export default function CheckoutScreen({ navigation, route }) {
           payNow: breakdown.payNow ?? payNow,
           payLater: breakdown.payLater ?? payLater,
         },
+        voucherCode: appliedVoucherCode || null,
         payment: {
           ...orderPayment,
         },
@@ -576,6 +660,34 @@ export default function CheckoutScreen({ navigation, route }) {
             ) : null}
           </View>
 
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Mã giảm giá</Text>
+            <View style={styles.voucherRow}>
+              <TextInput
+                style={styles.voucherInput}
+                value={voucherInput}
+                onChangeText={setVoucherInput}
+                placeholder="Nhập voucher"
+                autoCapitalize="characters"
+                placeholderTextColor="#9CA3AF"
+              />
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={[styles.voucherBtn, isApplyingVoucher && styles.voucherBtnDisabled]}
+                disabled={isApplyingVoucher}
+                onPress={applyVoucher}
+              >
+                <Text style={styles.voucherBtnText}>{isApplyingVoucher ? "Đang áp..." : "Áp dụng"}</Text>
+              </TouchableOpacity>
+            </View>
+            {appliedVoucherCode ? (
+              <Text style={styles.voucherHint}>
+                Đã áp dụng: {appliedVoucherCode}
+                {voucherMeta?.type ? ` (${voucherMeta.type})` : ""}
+              </Text>
+            ) : null}
+          </View>
+
           {/* ✅ UI note: user only */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Ghi chú đơn hàng (không bắt buộc)</Text>
@@ -785,6 +897,31 @@ const styles = StyleSheet.create({
     color: "#111827",
     backgroundColor: "#FFFFFF",
   },
+  voucherRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 10 },
+  voucherInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+    backgroundColor: "#FFFFFF",
+  },
+  voucherBtn: {
+    height: 44,
+    minWidth: 88,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voucherBtnDisabled: { opacity: 0.7 },
+  voucherBtnText: { color: "#FFFFFF", fontSize: 12.5, fontWeight: "900" },
+  voucherHint: { marginTop: 8, fontSize: 12, fontWeight: "700", color: "#15803D" },
 
   summaryRow: {
     flexDirection: "row",

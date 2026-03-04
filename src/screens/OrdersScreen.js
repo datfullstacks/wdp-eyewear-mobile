@@ -1,6 +1,7 @@
 ﻿// screens/OrdersScreen.js
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   ActivityIndicator,
   FlatList,
   Image,
@@ -12,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { getMyOrdersApi } from "../services/orderService";
+import { getMyOrdersApi, patchOrderItemApi } from "../services/orderService";
 import OrderItemEditModal from "../components/OrderItemEditModal";
 
 const STATUS_META = {
@@ -155,6 +156,7 @@ export default function OrdersScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const [editingOrderItem, setEditingOrderItem] = useState(null);
   const [editingOrder, setEditingOrder] = useState(null);
@@ -183,11 +185,35 @@ export default function OrdersScreen({ navigation }) {
     setEditingOrder(order);
   }, []);
 
-  const handleSavePatch = useCallback((_patch) => {
-    // TODO: nối API cập nhật item khi bạn muốn
-    setEditingOrderItem(null);
-    setEditingOrder(null);
-  }, []);
+  const handleSavePatch = useCallback(async (patch) => {
+    if (isSavingEdit) return;
+    if (!editingOrderItem || !editingOrder) return;
+
+    const orderId = editingOrder?._id || editingOrder?.id || null;
+    const itemId = editingOrderItem?.itemId || editingOrderItem?._id || null;
+
+    if (!orderId || !itemId) {
+      Alert.alert("Không thể cập nhật", "Thiếu thông tin orderId/itemId.");
+      return;
+    }
+
+    try {
+      setIsSavingEdit(true);
+      await patchOrderItemApi(orderId, itemId, editingOrderItem, patch);
+      await loadOrders({ silent: true });
+      setEditingOrderItem(null);
+      setEditingOrder(null);
+    } catch (err) {
+      const data = err?.response?.data || {};
+      const errors = Array.isArray(data?.errors)
+        ? data.errors.map((e) => e?.msg).filter(Boolean).join("\n")
+        : null;
+      const message = errors || data?.message || data?.error || err?.message;
+      Alert.alert("Cập nhật thất bại", message || "Không thể cập nhật sản phẩm trong đơn.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }, [editingOrderItem, editingOrder, isSavingEdit, loadOrders]);
 
   const emptyComponent = useMemo(() => {
     if (loading) {
@@ -253,10 +279,12 @@ export default function OrdersScreen({ navigation }) {
         orderItem={editingOrderItem}
         orderCreatedAt={editingOrder?.createdAt}
         onClose={() => {
+          if (isSavingEdit) return;
           setEditingOrderItem(null);
           setEditingOrder(null);
         }}
         onSave={handleSavePatch}
+        isSaving={isSavingEdit}
       />
     </SafeAreaView>
   );

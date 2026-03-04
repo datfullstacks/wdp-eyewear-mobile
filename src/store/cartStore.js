@@ -166,6 +166,8 @@ export const useCartStore = create((set, get) => ({
     const variantKey =
       product.type === "FRAME"
         ? `c:${variant?.colorId || "-"}|s:${variant?.size || "-"}`
+        : product.type === "LENS"
+        ? `c:${variant?.colorId || variant?.colorName || "-"}`
         : "-";
 
     let rxKey = "-";
@@ -196,7 +198,9 @@ export const useCartStore = create((set, get) => ({
 
     const variantText =
       product.type === "FRAME"
-        ? `Mau: ${variant?.colorName || "-"}, Size: ${variant?.size || "-"}`
+        ? `Màu: ${variant?.colorName || "-"}, Size: ${variant?.size || "-"}`
+        : product.type === "LENS" && variant?.colorName
+        ? `Màu: ${variant.colorName}`
         : null;
 
     const prescriptionFilled =

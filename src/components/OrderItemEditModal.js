@@ -7,7 +7,7 @@
  *  - If past 12h OR it's weekend → read-only with a clear message
  *  - Lens: edit CYL/AXIS or swap rx photo + ✅ edit color (NO size)
  *  - Frame: edit size & color
- *  - No API save yet – onSave(patch) is the callback for future wiring
+ *  - onSave(patch) is handled by parent screen (API call)
  */
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
@@ -74,7 +74,14 @@ function remainingTime(deadline) {
   return `${h}g ${m}p ${s}s`;
 }
 
-export default function OrderItemEditModal({ visible, orderItem, orderCreatedAt, onClose, onSave }) {
+export default function OrderItemEditModal({
+  visible,
+  orderItem,
+  orderCreatedAt,
+  onClose,
+  onSave,
+  isSaving = false,
+}) {
   const item = orderItem;
   const productType = item?.productType; // "LENS" | "FRAME"
 
@@ -143,6 +150,7 @@ export default function OrderItemEditModal({ visible, orderItem, orderCreatedAt,
 
     const colorObj = colors?.find((c) => c.id === colorId);
     const colorName = colorObj?.name || "—";
+    let patchToSave = null;
 
     if (productType === "LENS") {
       const ot = item?.orderType;
@@ -167,16 +175,15 @@ export default function OrderItemEditModal({ visible, orderItem, orderCreatedAt,
         patch.variant = { colorId: colorId || null, colorName, size: null };
         patch.variantText = `Màu: ${colorName}`;
       }
-
-      onSave?.(patch);
+      patchToSave = patch;
     } else {
-      onSave?.({
+      patchToSave = {
         variant: { colorId, colorName, size },
         variantText: `Màu: ${colorName}, Size: ${size || "—"}`,
-      });
+      };
     }
 
-    onClose?.();
+    onSave?.(patchToSave);
   };
 
   if (!item) return null;
@@ -267,7 +274,7 @@ export default function OrderItemEditModal({ visible, orderItem, orderCreatedAt,
               <View style={styles.apiNotice}>
                 <Ionicons name="information-circle-outline" size={14} color="#6B7280" />
                 <Text style={styles.apiNoticeText}>
-                  Chức năng lưu API chưa khả dụng. Thay đổi sẽ được lưu cục bộ tạm thời.
+                  Thay đổi sẽ được cập nhật lên hệ thống khi bạn bấm Lưu thay đổi.
                 </Text>
               </View>
             </ScrollView>
@@ -286,9 +293,14 @@ export default function OrderItemEditModal({ visible, orderItem, orderCreatedAt,
               <Text style={styles.cancelText}>Đóng</Text>
             </TouchableOpacity>
             {canEdit && (
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.9}>
+              <TouchableOpacity
+                style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+                onPress={handleSave}
+                activeOpacity={0.9}
+                disabled={isSaving}
+              >
                 <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                <Text style={styles.saveText}>Lưu thay đổi</Text>
+                <Text style={styles.saveText}>{isSaving ? "Đang lưu..." : "Lưu thay đổi"}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -546,5 +558,6 @@ const styles = StyleSheet.create({
   cancelBtn: { flex: 1, height: 46, borderRadius: 14, borderWidth: 1.5, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
   cancelText: { fontSize: 14, fontWeight: "900", color: "#374151" },
   saveBtn: { flex: 2, height: 46, borderRadius: 14, backgroundColor: "#2563EB", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  saveBtnDisabled: { opacity: 0.7 },
   saveText: { fontSize: 14, fontWeight: "900", color: "#FFFFFF" },
 });
