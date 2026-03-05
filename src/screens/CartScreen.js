@@ -248,9 +248,19 @@ export default function CartScreen({ navigation, route }) {
       );
       return;
     }
-
     // ✅ hidden auto note built from pairing
     const autoNote = buildAutoPairingNote(cartItems);
+
+    // ✅ NEW: infer cart type from items (product.preOrder.enabled OR ci.isPreorder)
+    const hasPreorderItem = cartItems.some(
+      (ci) => ci?.isPreorder || ci?.product?.preOrder?.enabled
+    );
+    const inferredCartType = hasPreorderItem ? CART_TYPES.PREORDER : activeCartType;
+
+    // ✅ OPTIONAL: nếu đang ở tab Mua ngay mà có preorder -> auto switch tab cho đúng UI
+    if (hasPreorderItem && activeCartType === CART_TYPES.ORDER) {
+      setActiveCartType(CART_TYPES.PREORDER);
+    }
 
     try {
       setIsQuoting(true);
@@ -259,17 +269,19 @@ export default function CartScreen({ navigation, route }) {
         shippingFee: shipping,
         discountAmount: discount,
         shippingMethod,
-        cartType: API_CART_TYPE[activeCartType] || "ready_stock",
+        cartType: API_CART_TYPE[inferredCartType] || "ready_stock", // ✅ FIX HERE
       });
+
       const quote = await fetchCheckoutQuote(payload);
+
       navigation.navigate("Checkout", {
         quote,
         quoteMeta: {
           shippingFee: shipping,
           discountAmount: discount,
           shippingMethod,
-          cartType: activeCartType,
-          autoNote, // ✅ pass hidden prefix to checkout
+          cartType: inferredCartType, // ✅ pass inferred type
+          autoNote,
         },
       });
     } catch (err) {
@@ -466,8 +478,8 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
     p?.type !== "LENS"
       ? null
       : ci.orderType === "READY"
-      ? isRxFilled(ci.rxOD, ci.rxOS) ? "Đã nhập Rx" : "Chưa nhập Rx"
-      : Boolean(ci.rxPhotoAssetId || ci.rxPhoto?.uri) ? "Đã tải ảnh đơn kính" : "Chưa tải ảnh đơn kính";
+        ? isRxFilled(ci.rxOD, ci.rxOS) ? "Đã nhập Rx" : "Chưa nhập Rx"
+        : Boolean(ci.rxPhotoAssetId || ci.rxPhoto?.uri) ? "Đã tải ảnh đơn kính" : "Chưa tải ảnh đơn kính";
 
   const payNow = calcLineTotal(ci);
   const full = calcLineTotalFull(ci);

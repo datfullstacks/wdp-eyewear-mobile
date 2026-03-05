@@ -365,3 +365,11 @@ export async function patchOrderItemApi(orderId, itemId, orderItem, patch = {}) 
   const res = await api.patch(`/api/orders/${orderId}/items/${itemId}`, payload);
   return res?.data?.data ?? res?.data ?? null;
 }
+
+export async function cancelOrderApi(orderId) {
+  if (!orderId) throw new Error("Missing orderId");
+
+  // API doc: PUT /api/orders/{id}/cancel
+  const res = await api.put(`/api/orders/${orderId}/cancel`);
+  return res?.data?.data ?? res?.data ?? null;
+}

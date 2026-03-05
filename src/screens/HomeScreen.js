@@ -1,5 +1,5 @@
 ﻿// screens/HomeScreen.js
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   Dimensions,
   FlatList,
@@ -12,10 +12,15 @@ import {
   View,
   ActivityIndicator,
   Alert,
+  Animated,
 } from "react-native";
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+// Import đúng cách từ @expo/vector-icons
+import Ionicons from '@expo/vector-icons/Ionicons';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import AntDesign from '@expo/vector-icons/AntDesign';
 
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import HomeBanner from "../components/HomeBanner";
@@ -52,36 +57,81 @@ const BANNERS = [
   },
 ];
 
+// Cập nhật categories với icon từ các thư viện khác nhau
+const CATEGORIES = [
+  {
+    id: "1",
+    name: "Gọng kính",
+    icon: "glasses",
+    iconSet: "FontAwesome5",
+    color: "#4F46E5",
+    bg: "#EEF2FF"
+  },
+  {
+    id: "2",
+    name: "Tròng kính",
+    icon: "aperture-outline",
+    iconSet: "Ionicons",
+    color: "#E11D48",
+    bg: "#FFE4E6"
+  },
+  {
+    id: "3",
+    name: "Kính mát",
+    icon: "glasses",
+    iconSet: "Ionicons",
+    color: "#F59E0B",
+    bg: "#FEF3C7"
+  },
+  {
+    id: "4",
+    name: "Phụ kiện",
+    icon: "sparkles-sharp",
+    iconSet: "Ionicons",
+    color: "#10B981",
+    bg: "#D1FAE5"
+  },
+];
+
 function chunkArray(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
-function ProductPager({ products = [], onPressItem }) {
+function ProductPager({ products = [], onPressItem, title }) {
   const pages = useMemo(() => chunkArray(products, 2), [products]);
   const [pageIndex, setPageIndex] = useState(0);
+  const scrollX = useRef(new Animated.Value(0)).current;
 
   if (!products?.length) return null;
 
   return (
-    <View style={{ marginTop: 6 }}>
+    <View style={styles.pagerContainer}>
       <FlatList
         data={pages}
         keyExtractor={(_, idx) => `page-${idx}`}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingVertical: 2 }}
+        contentContainerStyle={styles.pagerContent}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: false }
+        )}
         onMomentumScrollEnd={(e) => {
           const i = Math.round(e.nativeEvent.contentOffset.x / PAGE_W);
           setPageIndex(i);
         }}
         renderItem={({ item: pageItems }) => (
-          <View style={{ width: PAGE_W, flexDirection: "row", gap: GAP }}>
-            {pageItems.map((p) => (
-              <View key={p.id} style={{ width: CARD_W }}>
-                <ProductCard item={p} onPress={() => onPressItem?.(p)} />
+          <View style={[styles.pageContainer, { width: PAGE_W }]}>
+            {pageItems.map((p, idx) => (
+              <View key={p.id} style={[styles.productCardWrapper, { width: CARD_W }]}>
+                <ProductCard
+                  item={p}
+                  onPress={() => onPressItem?.(p)}
+                  index={idx}
+                />
               </View>
             ))}
             {pageItems.length === 1 && <View style={{ width: CARD_W }} />}
@@ -91,15 +141,95 @@ function ProductPager({ products = [], onPressItem }) {
 
       {pages.length > 1 && (
         <View style={styles.pagerDots}>
-          {pages.map((_, idx) => (
-            <View
-              key={idx}
-              style={[styles.pagerDot, idx === pageIndex && styles.pagerDotActive]}
-            />
-          ))}
+          {pages.map((_, idx) => {
+            const inputRange = [
+              (idx - 1) * PAGE_W,
+              idx * PAGE_W,
+              (idx + 1) * PAGE_W,
+            ];
+
+            const dotWidth = scrollX.interpolate({
+              inputRange,
+              outputRange: [8, 24, 8],
+              extrapolate: 'clamp',
+            });
+
+            const opacity = scrollX.interpolate({
+              inputRange,
+              outputRange: [0.3, 1, 0.3],
+              extrapolate: 'clamp',
+            });
+
+            return (
+              <Animated.View
+                key={idx}
+                style={[
+                  styles.pagerDot,
+                  {
+                    width: dotWidth,
+                    opacity,
+                    backgroundColor: idx === pageIndex ? "#2563EB" : "#D1D5DB",
+                  },
+                ]}
+              />
+            );
+          })}
         </View>
       )}
     </View>
+  );
+}
+
+function CategoryCard({ category, onPress }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      tension: 150,
+      friction: 3,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 150,
+      friction: 3,
+    }).start();
+  };
+
+  // Render icon dựa vào iconSet
+  const renderIcon = () => {
+    switch (category.iconSet) {
+      case "FontAwesome5":
+        return <FontAwesome5 name={category.icon} size={24} color={category.color} solid />;
+      case "Ionicons":
+        return <Ionicons name={category.icon} size={24} color={category.color} />;
+      case "MaterialIcons":
+        return <MaterialIcons name={category.icon} size={24} color={category.color} />;
+      case "AntDesign":
+        return <AntDesign name={category.icon} size={24} color={category.color} />;
+      default:
+        return <FontAwesome5 name="box" size={24} color={category.color} />;
+    }
+  };
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={onPress}
+        style={[styles.categoryCard, { backgroundColor: category.bg }]}
+      >
+        {renderIcon()}
+        <Text style={[styles.categoryText, { color: category.color }]}>{category.name}</Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -108,7 +238,7 @@ export default function HomeScreen({ navigation }) {
   const logout = useAuthStore((s) => s.logout);
 
   const [query, setQuery] = useState("");
-  const [locationLabel, setLocationLabel] = useState("Quận 1, TP.HCM");
+  const [locationLabel, setLocationLabel] = useState("");
   const [addresses, setAddresses] = useState([]);
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressModalVisible, setAddressModalVisible] = useState(false);
@@ -116,12 +246,29 @@ export default function HomeScreen({ navigation }) {
   const { products } = useProducts();
 
   const [settingDefaultId, setSettingDefaultId] = useState(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
 
-  // wrapped callback so it can be reused by focus effect and other actions
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
   const loadAddress = useCallback(async () => {
     setAddressLoading(true);
     if (!token) {
-      setLocationLabel("Quận 1, TP.HCM");
+      setLocationLabel("");
       setAddresses([]);
       setAddressLoading(false);
       return;
@@ -131,25 +278,21 @@ export default function HomeScreen({ navigation }) {
       const addresses = await getMyAddressesApi();
       const list = Array.isArray(addresses) ? addresses : [];
       setAddresses(list);
-      // note: actual selection/label update occurs in effect watching addresses
     } catch {
-      setLocationLabel("Quận 1, TP.HCM");
+      setLocationLabel("");
     } finally {
       setAddressLoading(false);
     }
   }, [token]);
 
-  // reload every time screen gains focus
   useFocusEffect(
     useCallback(() => {
       loadAddress();
     }, [loadAddress])
   );
 
-  // keep label synced when addresses change (for background updates)
   useEffect(() => {
     if (!addresses.length) return;
-    // retain current selection if still valid, otherwise fall back to default
     let preferred = null;
     if (selectedAddressId) {
       preferred = addresses.find((a) => a._id === selectedAddressId);
@@ -164,7 +307,6 @@ export default function HomeScreen({ navigation }) {
     }
   }, [addresses, selectedAddressId]);
 
-
   const submitSearch = () => {
     const q = query.trim();
     navigation.navigate("ProductsTab", {
@@ -175,7 +317,6 @@ export default function HomeScreen({ navigation }) {
 
   const handlePressLocation = () => {
     if (token) {
-      // refresh before showing so new post-add changes appear immediately
       loadAddress();
       setAddressModalVisible(true);
     } else {
@@ -192,14 +333,11 @@ export default function HomeScreen({ navigation }) {
 
       try {
         setSettingDefaultId(addressId);
-
-        // giống AddressBook: backend trả về danh sách addresses mới
         const data = await setDefaultMyAddressApi(addressId);
         const list = Array.isArray(data) ? data : [];
 
         setAddresses(list);
 
-        // sync label + selected theo address default mới (hoặc theo address vừa chọn)
         const preferred =
           list.find((a) => a?._id === addressId) ||
           list.find((a) => a?.isDefault) ||
@@ -225,121 +363,187 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
+      <Animated.View
+        style={[
+          styles.container,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          }
+        ]}
       >
-        {/* ✅ HEADER (giống kiểu cũ bạn làm) */}
-        <View style={styles.headerWrap}>
-          {/* Row 1: location + login/logout (không title) */}
-          <View style={styles.headerRow1}>
-            <Pressable
-              onPress={handlePressLocation}
-              style={styles.locationRow}
-              android_ripple={{ color: "rgba(0,0,0,0.06)" }}
-            >
-              <Ionicons name="location-outline" size={16} color="#111827" />
-              <Text style={styles.locationText} numberOfLines={1}>
-                Giao đến: {locationLabel}
-              </Text>
-              <Ionicons name="chevron-down" size={14} color="#6B7280" />
-            </Pressable>
-
-            {token ? (
-              <Pressable onPress={logout} style={styles.authBtn}>
-                <Ionicons name="log-out-outline" size={14} color="#fff" />
-                <Text style={styles.authText}>Đăng xuất</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={() => navigation.navigate("Login")}
-                style={[styles.authBtn, { backgroundColor: "#4F46E5" }]}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Location và Auth */}
+          <View style={styles.headerWrap}>
+            <View style={styles.headerRow1}>
+              <TouchableOpacity
+                onPress={handlePressLocation}
+                style={styles.locationRow}
+                activeOpacity={0.85}
               >
-                <Ionicons name="log-in-outline" size={14} color="#fff" />
-                <Text style={styles.authText}>Đăng nhập</Text>
-              </Pressable>
-            )}
+                <Ionicons name="location-outline" size={16} color="#111827" />
+                <Text style={styles.locationText} numberOfLines={1}>
+                  Giao đến: {locationLabel || "Chọn địa chỉ"}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color="#6B7280" />
+              </TouchableOpacity>
+
+              {token ? (
+                <TouchableOpacity onPress={logout} style={styles.authBtn}>
+                  <Ionicons name="log-out-outline" size={14} color="#fff" />
+                  <Text style={styles.authText}>Đăng xuất</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate("Login")}
+                  style={[styles.authBtn, { backgroundColor: "#4F46E5" }]}
+                >
+                  <Ionicons name="log-in-outline" size={14} color="#fff" />
+                  <Text style={styles.authText}>Đăng nhập</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Search */}
+            <HeaderSearchActions
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Tìm gọng kính, tròng kính, dịch vụ..."
+              onPressFav={() => navigation.navigate("FavTab")}
+              onPressCart={() => navigation.navigate("CartFlow", { screen: "Cart" })}
+              onSubmit={submitSearch}
+            />
           </View>
 
-          {/* Row 2: Search */}
-          <HeaderSearchActions
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Tìm gọng kính, tròng kính, dịch vụ..."
-            onPressFav={() => navigation.navigate("FavTab")}
-            onPressCart={() => navigation.navigate("CartFlow", { screen: "Cart" })}
-            onSubmit={submitSearch}
-          />
-        </View>
+          {/* Banner */}
+          <View style={styles.bannerContainer}>
+            <HomeBanner banners={BANNERS} autoPlay intervalMs={3000} />
+          </View>
 
-        {/* BANNER */}
-        <HomeBanner banners={BANNERS} autoPlay intervalMs={3000} />
+          {/* Categories */}
+          <View style={styles.categoriesSection}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionTitle}>Danh mục</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
+                <Text style={styles.sectionLink}>Xem tất cả</Text>
+              </TouchableOpacity>
+            </View>
 
-        {/* SECTION: Bán chạy */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Bán chạy</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
-          >
-            <Text style={styles.sectionLink}>Xem tất cả</Text>
-          </TouchableOpacity>
-        </View>
+          // Trong HomeScreen.js, cập nhật phần onPress của CategoryCard:
 
-        <ProductPager
-          products={products}
-          onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
-        />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoriesScroll}
+            >
+              {CATEGORIES.map((cat) => (
+                <CategoryCard
+                  key={cat.id}
+                  category={cat}
+                  onPress={() => {
+                    // Map category name sang type để lọc
+                    let filterType = '';
+                    switch (cat.name) {
+                      case 'Gọng kính':
+                        filterType = 'frame';
+                        break;
+                      case 'Tròng kính':
+                        filterType = 'lens';
+                        break;
+                      case 'Kính mát':
+                        filterType = 'sunglasses';
+                        break;
+                      case 'Phụ kiện':
+                        filterType = 'accessory';
+                        break;
+                      default:
+                        filterType = cat.name.toLowerCase();
+                    }
 
-        {/* SECTION: Mới về */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Mới về</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
-          >
-            <Text style={styles.sectionLink}>Xem tất cả</Text>
-          </TouchableOpacity>
-        </View>
+                    // Điều hướng sang ProductsTab và truyền params để lọc
+                    navigation.navigate('ProductsTab', {
+                      screen: 'Products',
+                      params: {
+                        category: cat.name,
+                        filterType: filterType,
+                        autoApplyFilter: true // Flag để biết là cần tự động áp dụng filter
+                      }
+                    });
+                  }}
+                />
+              ))}
+            </ScrollView>
+          </View>
 
-        <ProductPager
-          products={products}
-          onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
-        />
+          {/* Bán chạy */}
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionTitle}>Bán chạy</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
+                <Text style={styles.sectionLink}>Xem tất cả</Text>
+              </TouchableOpacity>
+            </View>
 
-        {/* SECTION: Combo */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Sản phẩm ghép sẵn</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
-          >
-            <Text style={styles.sectionLink}>Xem tất cả</Text>
-          </TouchableOpacity>
-        </View>
+            <ProductPager
+              products={products.slice(0, 6)}
+              onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
+            />
+          </View>
 
-        <ProductPager
-          products={products}
-          onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
-        />
+          {/* Mới về */}
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionTitle}>Mới về</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
+                <Text style={styles.sectionLink}>Xem tất cả</Text>
+              </TouchableOpacity>
+            </View>
 
-        {/* SECTION: Combo */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Sản phẩm theo mùa</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("ProductsTab", { screen: "Products" })}
-          >
-            <Text style={styles.sectionLink}>Xem tất cả</Text>
-          </TouchableOpacity>
-        </View>
+            <ProductPager
+              products={products.slice(0, 6)}
+              onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
+            />
+          </View>
 
-        <ProductPager
-          products={products}
-          onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
-        />
+          {/* Flash Sale */}
+          <View style={styles.flashSaleBanner}>
+            <View style={styles.flashSaleContent}>
+              <View style={styles.flashSaleLeft}>
+                <Text style={styles.flashSaleTitle}>FLASH SALE</Text>
+                <Text style={styles.flashSaleSubtitle}>Giảm đến 50%</Text>
+              </View>
+              <TouchableOpacity style={styles.flashSaleBtn}>
+                <Text style={styles.flashSaleBtnText}>Mua ngay</Text>
+                <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        <HomeFooter onChatPress={() => { }} onCallPress={() => { }} />
-      </ScrollView>
+          {/* Sản phẩm ghép sẵn */}
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionTitle}>Sản phẩm ghép sẵn</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
+                <Text style={styles.sectionLink}>Xem tất cả</Text>
+              </TouchableOpacity>
+            </View>
 
-      {/* address modal */}
+            <ProductPager
+              products={products.slice(0, 6)}
+              onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
+            />
+          </View>
+
+          <View style={{ paddingHorizontal: 20 }} >
+            <HomeFooter onChatPress={() => { }} onCallPress={() => { }} />
+          </View>
+        </ScrollView>
+      </Animated.View>
+
+      {/* Address Modal - UI cũ */}
       <Modal
         visible={addressModalVisible}
         transparent
@@ -403,15 +607,27 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
-  listContent: { paddingHorizontal: PAGE_PADDING, paddingBottom: 24 },
+  safe: {
+    flex: 1,
+    backgroundColor: "#F6F7FB"
+  },
 
-  // ✅ header kiểu cũ, nhưng spacing gọn & đồng bộ
+  container: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    paddingBottom: 24,
+  },
+
   headerWrap: {
-    marginTop: 8,
+    paddingHorizontal: PAGE_PADDING,
     gap: 10,
     marginBottom: 10,
+    backgroundColor: "#FFFFFF",
+    paddingBottom: 16,
   },
+
   headerRow1: {
     flexDirection: "row",
     alignItems: "center",
@@ -424,11 +640,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F3F4F6",
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 38,
   },
+
   locationText: {
     fontSize: 12.5,
     color: "#111827",
@@ -445,37 +662,164 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 12,
   },
+
   authText: { color: "#fff", fontWeight: "900", fontSize: 12 },
 
+  bannerContainer: {
+    marginTop: 8,
+    marginHorizontal: PAGE_PADDING,
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
+  categoriesSection: {
+    marginTop: 20,
+    paddingHorizontal: PAGE_PADDING,
+  },
+
+  categoriesScroll: {
+    paddingVertical: 12,
+    gap: 12,
+  },
+
+  categoryCard: {
+    width: 100,
+    height: 100,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+  },
+
+  categoryText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  section: {
+    marginTop: 20,
+    paddingHorizontal: PAGE_PADDING,
+  },
+
   sectionRow: {
-    marginTop: 10,
-    marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 12,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  sectionLink: { fontSize: 13, fontWeight: "800", color: "#2563EB" },
+
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  sectionLink: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#2563EB",
+  },
+
+  pagerContainer: {
+    marginTop: 6,
+  },
+
+  pagerContent: {
+    paddingVertical: 4,
+  },
+
+  pageContainer: {
+    flexDirection: "row",
+    gap: GAP,
+  },
+
+  productCardWrapper: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
 
   pagerDots: {
-    marginTop: 10,
+    marginTop: 16,
     flexDirection: "row",
     justifyContent: "center",
     gap: 6,
   },
+
   pagerDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(17,24,39,0.25)",
-  },
-  pagerDotActive: {
-    width: 18,
-    borderRadius: 6,
-    backgroundColor: "rgba(17,24,39,0.8)",
+    height: 8,
+    borderRadius: 4,
   },
 
-  /* modal styles */
+  flashSaleBanner: {
+    marginTop: 20,
+    marginHorizontal: PAGE_PADDING,
+    borderRadius: 20,
+    padding: 20,
+    backgroundColor: "#E11D48",
+    shadowColor: "#E11D48",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
+  flashSaleContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  flashSaleLeft: {
+    gap: 4,
+  },
+
+  flashSaleTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: 1,
+  },
+
+  flashSaleSubtitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.9)",
+  },
+
+  flashSaleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+
+  flashSaleBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+
+  // Modal styles cũ
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -510,7 +854,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-
   addressText: {
     flex: 1,
     fontSize: 14,
@@ -522,10 +865,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 4,
     color: "#fff",
-  },
-  defaultBadgeText: {
-    color: "#fff",
     fontSize: 12,
     fontWeight: "700",
+    overflow: "hidden",
   },
 });

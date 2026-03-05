@@ -82,30 +82,67 @@ export default function ProductsScreen({ navigation }) {
   const [query, setQuery] = useState("");
   const { products, isLoading, isError } = useProducts();
 
-  useEffect(() => {
-    const q = route?.params?.q;
-    if (typeof q === "string") setQuery(q);
-  }, [route?.params?.q]);
-
+  // Các state filter
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [onlyPreorder, setOnlyPreorder] = useState(false);
   const [typeFrame, setTypeFrame] = useState(false);
   const [typeLens, setTypeLens] = useState(false);
+  const [typeSunglasses, setTypeSunglasses] = useState(false);
+  const [typeAccessory, setTypeAccessory] = useState(false);
   const [priceKey, setPriceKey] = useState("all");
-  const [brandFilter, setBrandFilter] = useState(null); // null or brand name
-  const [colorFilters, setColorFilters] = useState([]); // array of color IDs
-  const [sizeFilters, setSizeFilters] = useState([]); // array of size strings
-
+  const [brandFilter, setBrandFilter] = useState(null);
+  const [colorFilters, setColorFilters] = useState([]);
+  const [sizeFilters, setSizeFilters] = useState([]);
   const [sortKey, setSortKey] = useState("default");
 
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
 
+  // Xử lý params từ navigation (khi nhấn vào category từ HomeScreen)
+  useEffect(() => {
+    const params = route?.params || {};
+    
+    // Nếu có autoApplyFilter thì mới xử lý
+    if (params.autoApplyFilter) {
+      // Reset các filter type khác
+      setTypeFrame(false);
+      setTypeLens(false);
+      setTypeSunglasses(false);
+      setTypeAccessory(false);
+      
+      // Áp dụng filter theo category được chọn
+      switch (params.filterType) {
+        case 'frame':
+          setTypeFrame(true);
+          break;
+        case 'lens':
+          setTypeLens(true);
+          break;
+        case 'sunglasses':
+          setTypeSunglasses(true);
+          break;
+        case 'accessory':
+          setTypeAccessory(true);
+          break;
+        default:
+          break;
+      }
+      
+      // Nếu có query từ params thì set
+      if (params.q) {
+        setQuery(params.q);
+      }
+    }
+  }, [route?.params]);
+
+  // Cập nhật appliedChips để hiển thị đúng
   const appliedChips = useMemo(() => {
     const out = [];
 
     if (typeFrame) out.push({ key: "type_frame", label: "Gọng kính" });
     if (typeLens) out.push({ key: "type_lens", label: "Tròng kính" });
+    if (typeSunglasses) out.push({ key: "type_sunglasses", label: "Kính mát" });
+    if (typeAccessory) out.push({ key: "type_accessory", label: "Phụ kiện" });
 
     if (onlyInStock) out.push({ key: "in_stock", label: "Có sẵn" });
     if (onlyPreorder) out.push({ key: "preorder", label: "Đặt trước" });
@@ -135,8 +172,9 @@ export default function ProductsScreen({ navigation }) {
       out.push({ key: `sort_${s.key}`, label: `Sắp xếp: ${s.label}` });
 
     return out;
-  }, [typeFrame, typeLens, onlyInStock, onlyPreorder, priceKey, sortKey, brandFilter, colorFilters, sizeFilters]);
+  }, [typeFrame, typeLens, typeSunglasses, typeAccessory, onlyInStock, onlyPreorder, priceKey, sortKey, brandFilter, colorFilters, sizeFilters]);
 
+  // Cập nhật hàm removeChip
   const removeChip = (chipKey) => {
     switch (chipKey) {
       case "type_frame":
@@ -144,6 +182,12 @@ export default function ProductsScreen({ navigation }) {
         return;
       case "type_lens":
         setTypeLens(false);
+        return;
+      case "type_sunglasses":
+        setTypeSunglasses(false);
+        return;
+      case "type_accessory":
+        setTypeAccessory(false);
         return;
       case "in_stock":
         setOnlyInStock(false);
@@ -177,11 +221,14 @@ export default function ProductsScreen({ navigation }) {
     }
   };
 
+  // Cập nhật clearAll
   const clearAll = () => {
     setOnlyInStock(false);
     setOnlyPreorder(false);
     setTypeFrame(false);
     setTypeLens(false);
+    setTypeSunglasses(false);
+    setTypeAccessory(false);
     setPriceKey("all");
     setSortKey("default");
     setBrandFilter(null);
@@ -189,6 +236,7 @@ export default function ProductsScreen({ navigation }) {
     setSizeFilters([]);
   };
 
+  // Filter và sort data
   const data = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -197,8 +245,16 @@ export default function ProductsScreen({ navigation }) {
       return (p.name || "").toLowerCase().includes(q);
     });
 
-    if (typeFrame && !typeLens) arr = arr.filter((p) => p.type === "FRAME");
-    if (typeLens && !typeFrame) arr = arr.filter((p) => p.type === "LENS");
+    // Filter theo type
+    const activeTypes = [];
+    if (typeFrame) activeTypes.push("FRAME");
+    if (typeLens) activeTypes.push("LENS");
+    if (typeSunglasses) activeTypes.push("SUNGLASSES");
+    if (typeAccessory) activeTypes.push("ACCESSORY");
+    
+    if (activeTypes.length > 0) {
+      arr = arr.filter((p) => activeTypes.includes(p.type?.toUpperCase()));
+    }
 
     if (onlyInStock && !onlyPreorder)
       arr = arr.filter((p) => p.stockStatus === "IN_STOCK");
@@ -257,6 +313,8 @@ export default function ProductsScreen({ navigation }) {
     query,
     typeFrame,
     typeLens,
+    typeSunglasses,
+    typeAccessory,
     onlyInStock,
     onlyPreorder,
     priceKey,
