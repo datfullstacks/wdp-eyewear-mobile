@@ -1,162 +1,51 @@
 ﻿// screens/OrdersScreen.js
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { CART_TYPES } from "../store/cartStore";
 import {
   Alert,
   ActivityIndicator,
   FlatList,
-  Image,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
-import { getMyOrdersApi, patchOrderItemApi } from "../services/orderService";
+import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
+import { getMyOrdersApi, patchOrderItemApi, cancelOrderApi } from "../services/orderService";
 import OrderItemEditModal from "../components/OrderItemEditModal";
+import OrderCard from "../components/OrderCard";
 
-const STATUS_META = {
-  pending: { label: "Chờ xác nhận", color: "#B45309", bg: "#FFF7ED" },
-  confirmed: { label: "Đã xác nhận", color: "#1D4ED8", bg: "#EFF6FF" },
-  processing: { label: "Đang xử lý", color: "#1D4ED8", bg: "#EFF6FF" },
-  shipped: { label: "Đang giao", color: "#0F766E", bg: "#ECFEFF" },
-  delivered: { label: "Đã giao", color: "#15803D", bg: "#ECFDF5" },
-  cancelled: { label: "Đã hủy", color: "#991B1B", bg: "#FEE2E2" },
-  returned: { label: "Đã trả", color: "#6B7280", bg: "#F3F4F6" },
-};
+const STATUS_FILTERS = [
+  { key: "all", label: "Tất cả", icon: "apps-outline" },
+  { key: "pending", label: "Chờ xác nhận", icon: "time-outline", color: "#B45309" },
+  { key: "confirmed", label: "Đã xác nhận", icon: "checkmark-circle-outline", color: "#1D4ED8" },
+  { key: "processing", label: "Đang xử lý", icon: "sync-outline", color: "#1D4ED8" },
+  { key: "shipped", label: "Đang giao", icon: "bicycle-outline", color: "#0F766E" },
+  { key: "delivered", label: "Đã giao", icon: "checkmark-done-outline", color: "#15803D" },
+  { key: "cancelled", label: "Đã hủy", icon: "close-circle-outline", color: "#991B1B" },
+];
 
-const TYPE_META = {
-  lens: { icon: "eye-outline", color: "#2563EB", bg: "#EFF6FF" },
-  contact_lens: { icon: "eye-outline", color: "#2563EB", bg: "#EFF6FF" },
-  frame: { icon: "glasses-outline", color: "#6B7280", bg: "#F3F4F6" },
-  sunglasses: { icon: "glasses-outline", color: "#B45309", bg: "#FFF7ED" },
-  accessory: { icon: "grid-outline", color: "#6B7280", bg: "#F3F4F6" },
-  service: { icon: "build-outline", color: "#15803D", bg: "#ECFDF5" },
-};
-
-const formatVND = (v) =>
-  new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
-
-const formatDate = (v) => {
-  if (!v) return "--";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime())
-    ? String(v)
-    : d.toLocaleString("vi-VN", { hour12: false });
-};
-
-function StatusPill({ status }) {
-  const key = String(status || "pending").toLowerCase();
-  const meta = STATUS_META[key] || STATUS_META.pending;
-  return (
-    <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
-      <Text style={[styles.statusText, { color: meta.color }]}>{meta.label}</Text>
-    </View>
-  );
-}
-
-function OrderItemRow({ orderItem, onEdit }) {
-  const typeKey = String(orderItem?.type || "").toLowerCase();
-  const typeMeta =
-    TYPE_META[typeKey] || { icon: "cube-outline", color: "#6B7280", bg: "#F3F4F6" };
-  const hasImage = Boolean(orderItem?.image);
-
-  return (
-    <View style={styles.orderItemRow}>
-      {hasImage ? (
-        <Image source={{ uri: orderItem.image }} style={styles.itemThumb} />
-      ) : (
-        <View style={[styles.itemThumbIcon, { backgroundColor: typeMeta.bg }]}>
-          <Ionicons name={typeMeta.icon} size={18} color={typeMeta.color} />
-        </View>
-      )}
-
-      <View style={styles.orderItemMid}>
-        <Text style={styles.orderItemName} numberOfLines={2}>
-          {orderItem?.name || "Sản phẩm"}
-        </Text>
-
-        <Text style={styles.orderItemMeta}>
-          x{orderItem?.qty ?? 1} · {formatVND(orderItem?.price)}{" "}
-          {orderItem?.preorder ? (
-            <Text style={styles.preorderBadge}>· Đặt trước</Text>
-          ) : null}
-        </Text>
-
-        {(orderItem?.payLater ?? 0) > 0 && (
-          <Text style={styles.payLaterNote}>
-            {"Còn thanh toán: " + formatVND(orderItem.payLater)}
-          </Text>
-        )}
-      </View>
-
-      <TouchableOpacity style={styles.editItemBtn} activeOpacity={0.8} onPress={onEdit}>
-        <Ionicons name="pencil" size={12} color="#2563EB" />
-        <Text style={styles.editItemBtnText}>Sửa</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function OrderCard({ order, onEditItem }) {
-  const orderId = order?._id || order?.id || "--";
-  const orderItems = Array.isArray(order?.items) ? order.items : [];
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardTopRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.orderId} numberOfLines={1}>
-            {orderId}
-          </Text>
-          <Text style={styles.orderDate}>{formatDate(order?.createdAt)}</Text>
-        </View>
-        <StatusPill status={order?.status} />
-      </View>
-
-      {orderItems.length > 0 && (
-        <View style={styles.itemsList}>
-          {orderItems.map((item, idx) => (
-            <OrderItemRow
-              key={orderId + "-" + idx}
-              orderItem={item}
-              onEdit={() => onEditItem(item, order)}
-            />
-          ))}
-        </View>
-      )}
-
-      <View style={styles.cardDivider} />
-
-      <View style={styles.cardFooter}>
-        {order?.paymentStatus === "paid" ? (
-          <View style={styles.paidTag}>
-            <Ionicons name="checkmark-circle" size={12} color="#15803D" />
-            <Text style={styles.paidTagText}>Đã thanh toán</Text>
-          </View>
-        ) : (
-          <View style={styles.unpaidTag}>
-            <Ionicons name="time-outline" size={12} color="#B45309" />
-            <Text style={styles.unpaidTagText}>Chưa thanh toán</Text>
-          </View>
-        )}
-
-        <View style={styles.footerRight}>
-          <Text style={styles.totalLabel}>Tổng</Text>
-          <Text style={styles.totalValue}>{formatVND(order?.total)}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
+const SORT_OPTIONS = [
+  { key: "newest", label: "Mới nhất", icon: "arrow-up", iconSet: "FontAwesome5" },
+  { key: "oldest", label: "Cũ nhất", icon: "arrow-down", iconSet: "FontAwesome5" },
+  { key: "price_asc", label: "Giá thấp đến cao", icon: "arrow-up", iconSet: "FontAwesome5" },
+  { key: "price_desc", label: "Giá cao đến thấp", icon: "arrow-down", iconSet: "FontAwesome5" },
+];
 
 export default function OrdersScreen({ navigation }) {
   const [orders, setOrders] = useState([]);
+  const [filteredOrders, setFilteredOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [sortBy, setSortBy] = useState("newest");
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
 
   const [editingOrderItem, setEditingOrderItem] = useState(null);
   const [editingOrder, setEditingOrder] = useState(null);
@@ -166,7 +55,8 @@ export default function OrdersScreen({ navigation }) {
     setError("");
     try {
       const result = await getMyOrdersApi({ page: 1, limit: 50 }, true);
-      setOrders(Array.isArray(result?.items) ? result.items : []);
+      const ordersData = Array.isArray(result?.items) ? result.items : [];
+      setOrders(ordersData);
     } catch (err) {
       const data = err?.response?.data || {};
       setError(data.message || data.error || err?.message || "Không tải được đơn hàng");
@@ -175,6 +65,41 @@ export default function OrdersScreen({ navigation }) {
       setRefreshing(false);
     }
   }, []);
+
+  // Filter and sort orders
+  useEffect(() => {
+    let filtered = [...orders];
+    
+    // Apply filter
+    if (activeFilter !== "all") {
+      filtered = filtered.filter(order => 
+        String(order?.status || "").toLowerCase() === activeFilter
+      );
+    }
+    
+    // Apply sort
+    filtered.sort((a, b) => {
+      const dateA = new Date(a?.createdAt || 0).getTime();
+      const dateB = new Date(b?.createdAt || 0).getTime();
+      const totalA = Number(a?.total || 0);
+      const totalB = Number(b?.total || 0);
+      
+      switch (sortBy) {
+        case "newest":
+          return dateB - dateA; // Mới nhất lên đầu
+        case "oldest":
+          return dateA - dateB; // Cũ nhất lên đầu
+        case "price_asc":
+          return totalA - totalB; // Giá thấp đến cao
+        case "price_desc":
+          return totalB - totalA; // Giá cao đến thấp
+        default:
+          return dateB - dateA;
+      }
+    });
+    
+    setFilteredOrders(filtered);
+  }, [orders, activeFilter, sortBy]);
 
   useEffect(() => {
     loadOrders();
@@ -224,6 +149,28 @@ export default function OrdersScreen({ navigation }) {
         </View>
       );
     }
+    
+    if (activeFilter !== "all" && filteredOrders.length === 0) {
+      const filterLabel = STATUS_FILTERS.find(f => f.key === activeFilter)?.label || "";
+      return (
+        <View style={styles.emptyWrap}>
+          <View style={styles.emptyIconContainer}>
+            <Ionicons name="filter-outline" size={44} color="#9CA3AF" />
+          </View>
+          <Text style={styles.emptyTitle}>Không có đơn hàng</Text>
+          <Text style={styles.emptySub}>
+            Không tìm thấy đơn hàng nào ở trạng thái "{filterLabel}"
+          </Text>
+          <TouchableOpacity
+            style={styles.clearFilterBtn}
+            onPress={() => setActiveFilter("all")}
+          >
+            <Text style={styles.clearFilterText}>Xem tất cả đơn hàng</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
     return (
       <View style={styles.emptyWrap}>
         <Ionicons name="receipt-outline" size={44} color="#9CA3AF" />
@@ -231,7 +178,78 @@ export default function OrdersScreen({ navigation }) {
         <Text style={styles.emptySub}>Đơn hàng sẽ hiển thị ở đây sau khi thanh toán.</Text>
       </View>
     );
-  }, [loading]);
+  }, [loading, activeFilter, filteredOrders.length]);
+
+  const handleCancelOrder = useCallback((order) => {
+    const orderId = order?._id || order?.id || null;
+    if (!orderId) {
+      Alert.alert("Không thể huỷ", "Thiếu orderId.");
+      return;
+    }
+
+    Alert.alert(
+      "Huỷ đơn hàng?",
+      "Bạn chắc chắn muốn huỷ đơn này? Thao tác không thể hoàn tác.",
+      [
+        { text: "Không", style: "cancel" },
+        {
+          text: "Huỷ đơn",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await cancelOrderApi(orderId);
+              await loadOrders({ silent: true });
+              Alert.alert("Thành công", "Đã huỷ đơn hàng.");
+            } catch (err) {
+              const data = err?.response?.data || {};
+              Alert.alert(
+                "Huỷ thất bại",
+                data?.message || data?.error || err?.message || "Không thể huỷ đơn."
+              );
+            }
+          },
+        },
+      ]
+    );
+  }, [loadOrders]);
+
+  const getOrderCountByStatus = (statusKey) => {
+    if (statusKey === "all") return orders.length;
+    return orders.filter(order => String(order?.status || "").toLowerCase() === statusKey).length;
+  };
+
+  const activeFilterLabel = STATUS_FILTERS.find(f => f.key === activeFilter)?.label || "Tất cả";
+  
+  const getActiveSortLabel = () => {
+    switch (sortBy) {
+      case "newest": return "Mới nhất";
+      case "oldest": return "Cũ nhất";
+      case "price_asc": return "Giá thấp → cao";
+      case "price_desc": return "Giá cao → thấp";
+      default: return "Mới nhất";
+    }
+  };
+
+  const getSortButtonLabel = () => {
+    switch (sortBy) {
+      case "newest": return "Mới";
+      case "oldest": return "Cũ";
+      case "price_asc": return "Giá ↑";
+      case "price_desc": return "Giá ↓";
+      default: return "Mới";
+    }
+  };
+
+  const renderSortIcon = (option) => {
+    const color = sortBy === option.key ? "#2563EB" : "#6B7280";
+    const size = 14;
+    
+    if (option.iconSet === "Ionicons") {
+      return <Ionicons name={option.icon} size={size} color={color} />;
+    } else {
+      return <FontAwesome5 name={option.icon} size={size} color={color} />;
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -246,7 +264,178 @@ export default function OrdersScreen({ navigation }) {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Đơn hàng</Text>
         </View>
+        
+        <View style={styles.headerRight}>
+          {/* Sort Button */}
+          <TouchableOpacity
+            style={[styles.sortBtn, showSortDropdown && styles.sortBtnActive]}
+            onPress={() => {
+              setShowSortDropdown(!showSortDropdown);
+              setShowFilterDropdown(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <FontAwesome5
+              name="sort-amount-down"
+              size={14}
+              color={showSortDropdown ? "#2563EB" : "#6B7280"}
+            />
+            <Text style={[styles.sortBtnText, showSortDropdown && styles.sortBtnTextActive]}>
+              {getSortButtonLabel()}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Filter Button */}
+          <TouchableOpacity
+            style={[styles.filterBtn, showFilterDropdown && styles.filterBtnActive]}
+            onPress={() => {
+              setShowFilterDropdown(!showFilterDropdown);
+              setShowSortDropdown(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <FontAwesome5  
+              name="filter" 
+              size={14} 
+              color={showFilterDropdown ? "#2563EB" : "#6B7280"} 
+            />
+            {activeFilter !== "all" && (
+              <View style={styles.filterDot} />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* Sort Dropdown */}
+      {showSortDropdown && (
+        <View style={styles.sortDropdown}>
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.sortDropdownContent}
+          >
+            {SORT_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.key}
+                style={[
+                  styles.sortOption,
+                  sortBy === option.key && styles.sortOptionActive,
+                ]}
+                onPress={() => {
+                  setSortBy(option.key);
+                  setShowSortDropdown(false);
+                }}
+              >
+                <View style={styles.sortOptionLeft}>
+                  {renderSortIcon(option)}
+                  <Text style={[
+                    styles.sortOptionText,
+                    sortBy === option.key && styles.sortOptionTextActive
+                  ]}>
+                    {option.label}
+                  </Text>
+                </View>
+                {sortBy === option.key && (
+                  <Ionicons name="checkmark" size={16} color="#2563EB" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Filter Dropdown */}
+      {showFilterDropdown && (
+        <View style={styles.filterDropdown}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterScrollContent}
+          >
+            {STATUS_FILTERS.map((filter) => {
+              const count = getOrderCountByStatus(filter.key);
+              const isActive = activeFilter === filter.key;
+              
+              return (
+                <TouchableOpacity
+                  key={filter.key}
+                  style={[
+                    styles.filterChip,
+                    isActive && styles.filterChipActive,
+                  ]}
+                  onPress={() => {
+                    setActiveFilter(filter.key);
+                    setShowFilterDropdown(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons 
+                    name={filter.icon} 
+                    size={14} 
+                    color={isActive ? "#2563EB" : filter.color || "#6B7280"} 
+                  />
+                  <Text style={[
+                    styles.filterChipText,
+                    isActive && styles.filterChipTextActive
+                  ]}>
+                    {filter.label}
+                  </Text>
+                  {count > 0 && (
+                    <View style={styles.filterChipBadge}>
+                      <Text style={styles.filterChipBadgeText}>{count}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Active Filters Bar */}
+      {(activeFilter !== "all" || sortBy !== "newest") && !showFilterDropdown && !showSortDropdown && (
+        <View style={styles.activeFilterBar}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.activeFilterScrollContent}
+          >
+            <View style={styles.activeFilterTags}>
+              {activeFilter !== "all" && (
+                <View style={styles.activeFilterTag}>
+                  <Ionicons name="filter" size={12} color="#2563EB" />
+                  <Text style={styles.activeFilterText}>
+                    {activeFilterLabel}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setActiveFilter("all")}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close-circle" size={14} color="#9CA3AF" />
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              {sortBy !== "newest" && (
+                <View style={styles.activeFilterTag}>
+                  <FontAwesome5 name="sort-amount-down" size={10} color="#2563EB" />
+                  <Text style={styles.activeFilterText}>
+                    {getActiveSortLabel()}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setSortBy("newest")}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close-circle" size={14} color="#9CA3AF" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+          <Text style={styles.activeFilterCount}>
+            {filteredOrders.length} đơn
+          </Text>
+        </View>
+      )}
 
       {error ? (
         <View style={styles.errorBox}>
@@ -258,10 +447,26 @@ export default function OrdersScreen({ navigation }) {
       ) : null}
 
       <FlatList
-        data={orders}
+        data={filteredOrders}
         keyExtractor={(item) => String(item?._id || item?.id)}
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => <OrderCard order={item} onEditItem={handleEditItem} />}
+        renderItem={({ item }) => (
+          <OrderCard
+            order={item}
+            onEditItem={handleEditItem}
+            onCancel={handleCancelOrder}
+            onPress={() => {
+              navigation.navigate("CartFlow", {
+                screen: "CheckoutStatus",
+                params: {
+                  order: item,
+                  cartType: CART_TYPES.ORDER,
+                },
+              });
+            }}
+            showEditButton={true}
+          />
+        )}
         ListEmptyComponent={emptyComponent}
         refreshControl={
           <RefreshControl
@@ -299,10 +504,219 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
   headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
   iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  
+  sortBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+  },
+  
+  sortBtnActive: {
+    backgroundColor: "#EFF6FF",
+  },
+  
+  sortBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  
+  sortBtnTextActive: {
+    color: "#2563EB",
+  },
+  
+  filterBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F3F4F6",
+    position: "relative",
+  },
+  
+  filterBtnActive: {
+    backgroundColor: "#EFF6FF",
+  },
+  
+  filterDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#2563EB",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+  },
+
+  sortDropdown: {
+    position: "absolute",
+    top: 60,
+    right: 60,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 1000,
+    minWidth: 200,
+    maxHeight: 300,
+  },
+
+  sortDropdownContent: {
+    gap: 4,
+  },
+
+  sortOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+
+  sortOptionActive: {
+    backgroundColor: "#EFF6FF",
+  },
+
+  sortOptionLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  sortOptionText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+
+  sortOptionTextActive: {
+    color: "#2563EB",
+  },
+
+  filterDropdown: {
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  filterScrollContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+
+  filterChipActive: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#2563EB",
+  },
+
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+
+  filterChipTextActive: {
+    color: "#2563EB",
+  },
+
+  filterChipBadge: {
+    marginLeft: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    borderRadius: 12,
+  },
+
+  filterChipBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+
+  activeFilterBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#F9FAFB",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+
+  activeFilterScrollContent: {
+    flex: 1,
+    paddingRight: 8,
+  },
+
+  activeFilterTags: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  activeFilterTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+
+  activeFilterText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#2563EB",
+  },
+
+  activeFilterCount: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
 
   errorBox: {
     marginHorizontal: 16,
@@ -322,107 +736,25 @@ const styles = StyleSheet.create({
 
   listContent: { paddingHorizontal: 16, paddingBottom: 32, flexGrow: 1 },
 
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  cardTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 12,
-  },
-  orderId: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  orderDate: { marginTop: 3, fontSize: 11.5, fontWeight: "700", color: "#9CA3AF" },
-
-  statusPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
-  statusText: { fontSize: 11.5, fontWeight: "900" },
-
-  itemsList: { gap: 8, marginBottom: 4 },
-  orderItemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: "#F6F7FB",
-    borderRadius: 12,
-  },
-  itemThumb: { width: 48, height: 40, borderRadius: 10, backgroundColor: "#E5E7EB", flexShrink: 0 },
-  itemThumbIcon: {
-    width: 48,
-    height: 40,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-
-  orderItemMid: { flex: 1 },
-  orderItemName: { fontSize: 12.5, fontWeight: "800", color: "#111827", lineHeight: 17 },
-  orderItemMeta: { fontSize: 11.5, fontWeight: "700", color: "#6B7280", marginTop: 2 },
-  payLaterNote: { fontSize: 11, fontWeight: "700", color: "#B45309", marginTop: 2 },
-
-  editItemBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: "#EFF6FF",
-    flexShrink: 0,
-  },
-  editItemBtnText: { fontSize: 12, fontWeight: "800", color: "#2563EB" },
-
-  cardDivider: { height: 1, backgroundColor: "#F3F4F6", marginVertical: 10 },
-
-  cardFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  footerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
-  totalLabel: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
-  totalValue: { fontSize: 14, fontWeight: "900", color: "#EF4444" },
-
-  paidTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: "#ECFDF5",
-    borderRadius: 999,
-  },
-  paidTagText: { fontSize: 11.5, fontWeight: "800", color: "#15803D" },
-
-  unpaidTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: "#FFF7ED",
-    borderRadius: 999,
-  },
-  unpaidTagText: { fontSize: 11.5, fontWeight: "800", color: "#B45309" },
-
   emptyWrap: { paddingTop: 48, alignItems: "center", gap: 8 },
   emptyTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
   emptySub: { fontSize: 12, fontWeight: "700", color: "#6B7280", textAlign: "center" },
-  preorderBadge: {
-    color: "#15803D",
-    backgroundColor: "#ECFDF5",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    fontWeight: "900",
-    fontSize: 11.5,
-    overflow: "hidden",
+  
+  emptyIconContainer: {
+    marginBottom: 8,
+  },
+  
+  clearFilterBtn: {
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#EFF6FF",
+    borderRadius: 20,
+  },
+  
+  clearFilterText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#2563EB",
   },
 });

@@ -21,6 +21,7 @@
       }
     },
     "android": {
+      "package": "com.wdp.eyewear",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
