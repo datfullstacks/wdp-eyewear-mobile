@@ -432,8 +432,6 @@ export default function HomeScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-          // Trong HomeScreen.js, cập nhật phần onPress của CategoryCard:
-
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
