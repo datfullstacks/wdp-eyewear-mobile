@@ -18,7 +18,7 @@ const SHIPPING_METHODS = [
 ];
 
 const PAYMENT_METHODS = [
-  { id: "vnpay", label: "VNPay (QR)", desc: "Quét QR VNPay để thanh toán" },
+  { id: "sepay", label: "SePay (QR)", desc: "Quét QR SePay để thanh toán" },
 ];
 
 const PREORDER_PAYMENT_METHODS = PAYMENT_METHODS;
@@ -28,6 +28,12 @@ const API_CART_TYPE = {
 };
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value) + "đ";
+const pickValue = (...values) => {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+};
 const EMPTY_ADDRESS = {
   fullName: "",
   phone: "",
@@ -60,7 +66,7 @@ export default function CheckoutScreen({ navigation, route }) {
   const autoNote = String(initialQuoteMeta.autoNote || "").trim();
 
   const [shippingId, setShippingId] = useState(initialQuoteMeta.shippingMethod || "standard");
-  const [paymentId, setPaymentId] = useState(PAYMENT_METHODS[0]?.id || "vnpay");
+  const [paymentId, setPaymentId] = useState(PAYMENT_METHODS[0]?.id || "sepay");
 
   // ✅ user note only (UI)
   const [userNote, setUserNote] = useState("");
@@ -388,22 +394,94 @@ export default function CheckoutScreen({ navigation, route }) {
         discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
         voucherCode: appliedVoucherCode || undefined,
         cartType: API_CART_TYPE[cartType] || "ready_stock",
-        paymentMethod: paymentId || "vnpay",
+        paymentMethod: paymentId || "sepay",
       });
 
       const data = await createCheckout(payload);
       const now = new Date().toISOString();
       const orderId = data?.orderId || data?.id || `OD${Date.now().toString().slice(-6)}`;
       const breakdown = data?.breakdown || data || {};
-      const serverPayment = data?.payment || {};
-      const fallbackMethod = "VNPAY";
+      const serverPayment = data?.payment || data?.paymentInstructions || data?.paymentInstruction || {};
+      const fallbackMethod = "SEPAY";
       const fallbackStatus = "PENDING_QR";
       const orderPayment = {
         ...serverPayment,
-        method: serverPayment.method || fallbackMethod,
-        status: serverPayment.status || fallbackStatus,
-        createdAt: serverPayment.createdAt || now,
-        paidAt: serverPayment.paidAt || null,
+        method:
+          pickValue(
+            serverPayment.method,
+            serverPayment.paymentMethod,
+            data?.paymentMethod,
+            data?.method
+          ) || fallbackMethod,
+        status:
+          pickValue(
+            serverPayment.status,
+            serverPayment.paymentStatus,
+            data?.paymentStatus,
+            data?.status
+          ) || fallbackStatus,
+        paymentCode:
+          pickValue(
+            serverPayment.paymentCode,
+            serverPayment.code,
+            data?.paymentCode,
+            data?.code
+          ) || null,
+        content:
+          pickValue(
+            serverPayment.content,
+            serverPayment.description,
+            data?.content,
+            serverPayment.paymentCode,
+            data?.paymentCode
+          ) || null,
+        bankAccountId:
+          pickValue(
+            serverPayment.bankAccountId,
+            serverPayment.bank_account_id,
+            data?.bankAccountId,
+            data?.bank_account_id
+          ) || null,
+        bankAccountNumber:
+          pickValue(
+            serverPayment.bankAccountNumber,
+            serverPayment.bank_account_number,
+            data?.bankAccountNumber,
+            data?.bank_account_number,
+            serverPayment.bankAccountId,
+            data?.bankAccountId
+          ) || null,
+        bankName:
+          pickValue(
+            serverPayment.bankName,
+            serverPayment.bank_name,
+            data?.bankName,
+            data?.bank_name
+          ) || null,
+        bankAccountName:
+          pickValue(
+            serverPayment.bankAccountName,
+            serverPayment.bank_account_name,
+            data?.bankAccountName,
+            data?.bank_account_name
+          ) || null,
+        qrUrl:
+          pickValue(
+            serverPayment.qrUrl,
+            serverPayment.qr_url,
+            data?.qrUrl,
+            data?.qr_url
+          ) || null,
+        paymentUrl:
+          pickValue(
+            serverPayment.paymentUrl,
+            serverPayment.payment_url,
+            serverPayment.checkoutUrl,
+            data?.paymentUrl,
+            data?.payment_url
+          ) || null,
+        createdAt: pickValue(serverPayment.createdAt, data?.createdAt, now) || now,
+        paidAt: pickValue(serverPayment.paidAt, data?.paidAt, null),
       };
       const orderPayload = {
         orderId,
@@ -654,7 +732,7 @@ export default function CheckoutScreen({ navigation, route }) {
             {hasPreorder ? (
               <View style={styles.noticeBox}>
                 <Text style={styles.noticeText}>
-                  Đơn đặt trước cần đặt cọc qua VNPay, phần còn lại thanh toán khi nhận hàng.
+                  Đơn đặt trước cần đặt cọc qua SePay, phần còn lại thanh toán khi nhận hàng.
                 </Text>
               </View>
             ) : null}
@@ -724,7 +802,7 @@ export default function CheckoutScreen({ navigation, route }) {
             {hasPreorder ? (
               <>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Trả trước (VNPay)</Text>
+                  <Text style={styles.summaryLabel}>Trả trước (SePay)</Text>
                   <Text style={styles.summaryValue}>{formatVND(payNow)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
