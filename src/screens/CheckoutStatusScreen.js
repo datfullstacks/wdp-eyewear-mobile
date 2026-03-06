@@ -53,6 +53,12 @@ const ORDER_STEPS = [
 ];
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
+const SEPAY_FALLBACK_ACCOUNT_NUMBER =
+  process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NUMBER ||
+  process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_ID ||
+  null;
+const SEPAY_FALLBACK_BANK_NAME = process.env.EXPO_PUBLIC_SEPAY_BANK_NAME || null;
+const SEPAY_FALLBACK_ACCOUNT_NAME = process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NAME || null;
 
 const formatDateTime = (value) => {
   if (!value) return "--";
@@ -167,13 +173,13 @@ const buildAddressLines = (addr) => {
 
 const normalizePaymentMethod = (value, payNow = 0) => {
   const method = String(value || "").trim().toUpperCase();
-  if (!method) return payNow > 0 ? "VNPAY" : "COD";
+  if (!method) return payNow > 0 ? "SEPAY" : "COD";
   if (["VNPAY", "VNPAY_QR", "VNPAYQR", "VN_PAY"].includes(method)) return "VNPAY";
   if (["SEPAY", "SE_PAY"].includes(method)) return "SEPAY";
   return method;
 };
 
-const normalizePaymentStatus = (status, { payNow = 0, method = "VNPAY" } = {}) => {
+const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) => {
   if (typeof status === "string" && PAYMENT_STATUS_META[status]) return status;
 
   const normalized = String(status || "").trim().toLowerCase();
@@ -238,6 +244,31 @@ const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
         serverOrder.paymentCode ||
         localPayment.paymentCode,
       content: serverPayment.content || serverOrder.paymentCode || localPayment.content,
+      bankAccountId:
+        serverPayment.bankAccountId ||
+        serverPayment.bank_account_id ||
+        serverOrder.bankAccountId ||
+        localPayment.bankAccountId,
+      bankAccountNumber:
+        serverPayment.bankAccountNumber ||
+        serverPayment.bank_account_number ||
+        serverOrder.bankAccountNumber ||
+        localPayment.bankAccountNumber,
+      bankName:
+        serverPayment.bankName ||
+        serverPayment.bank_name ||
+        serverOrder.bankName ||
+        localPayment.bankName,
+      bankAccountName:
+        serverPayment.bankAccountName ||
+        serverPayment.bank_account_name ||
+        serverOrder.bankAccountName ||
+        localPayment.bankAccountName,
+      qrUrl:
+        serverPayment.qrUrl ||
+        serverPayment.qr_url ||
+        serverOrder.qrUrl ||
+        localPayment.qrUrl,
       paidAt: serverPayment.paidAt || serverOrder.paidAt || inferredPaidAt,
     },
   };
@@ -328,7 +359,9 @@ const normalizeOrder = (raw) => {
     payment.qrCode,
     payment.qr_code,
     payment.qrLink,
-    payment.qr_link
+    payment.qr_link,
+    raw?.qrUrl,
+    raw?.qr_url
   );
 
   const paymentDescription =
@@ -348,14 +381,33 @@ const normalizeOrder = (raw) => {
     payment.acc,
     payment.account,
     payment.account_no,
-    payment.account_number
+    payment.account_number,
+    raw?.bankAccountNumber,
+    raw?.bank_account_number,
+    raw?.accountNumber,
+    raw?.account_number,
+    payment.bankAccountId,
+    payment.bank_account_id,
+    raw?.bankAccountId,
+    raw?.bank_account_id,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NUMBER : null
   );
   const paymentBankName = firstTextValue(
     payment.bankName,
     payment.bank,
     payment.bank_name,
     payment.bankCode,
-    payment.bank_code
+    payment.bank_code,
+    raw?.bankName,
+    raw?.bank_name,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_BANK_NAME : null
+  );
+  const paymentAccountName = firstTextValue(
+    payment.bankAccountName,
+    payment.bank_account_name,
+    raw?.bankAccountName,
+    raw?.bank_account_name,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NAME : null
   );
   const providerQrUrl = paymentMethod === "SEPAY" ? buildSepayQrUrl({
     accountNumber: paymentAccountNumber,
@@ -412,6 +464,7 @@ const normalizeOrder = (raw) => {
       bankAccountId: bankAccountIdValue,
       bankAccountNumber: paymentAccountNumber,
       bankName: paymentBankName,
+      bankAccountName: paymentAccountName,
       createdAt: paymentCreatedAt,
       paidAt: paymentPaidAt,
       paymentUrl: paymentLink,
