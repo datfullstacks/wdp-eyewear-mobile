@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useCartStore } from "../store/cartStore";
+import { CART_TYPES, useCartStore } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
 import {
   buildCheckoutPayload,
@@ -10,33 +10,30 @@ import {
   createCheckout,
 } from "../services/checkoutService";
 import { addMyAddressApi, getMyAddressesApi } from "../services/userService";
+import { validatePromotionApi } from "../services/promotionService";
 
 const SHIPPING_METHODS = [
-  {
-    id: "standard",
-    label: "Giao tiêu chuẩn",
-    eta: "2-4 ngày làm việc",
-    price: 25000,
-  },
-  {
-    id: "express",
-    label: "Giao nhanh",
-    eta: "1-2 ngày làm việc",
-    price: 45000,
-  },
+  { id: "standard", label: "Giao tiêu chuẩn", eta: "2-4 ngày làm việc", price: 25000 },
+  { id: "express", label: "Giao nhanh", eta: "1-2 ngày làm việc", price: 45000 },
 ];
 
 const PAYMENT_METHODS = [
-  {
-    id: "sepay",
-    label: "SePay (QR)",
-    desc: "Quét QR SePay để thanh toán",
-  },
+  { id: "sepay", label: "SePay (QR)", desc: "Quét QR SePay để thanh toán" },
 ];
 
 const PREORDER_PAYMENT_METHODS = PAYMENT_METHODS;
+const API_CART_TYPE = {
+  [CART_TYPES.ORDER]: "ready_stock",
+  [CART_TYPES.PREORDER]: "pre_order",
+};
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value) + "đ";
+const pickValue = (...values) => {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+};
 const EMPTY_ADDRESS = {
   fullName: "",
   phone: "",
@@ -54,9 +51,7 @@ const buildAddressLines = (addr) => {
   if (!addr) return [];
   const lines = [];
   if (addr.line1) lines.push(addr.line1);
-  const line2 = [addr.line2, addr.ward, addr.district, addr.province]
-    .filter(Boolean)
-    .join(", ");
+  const line2 = [addr.line2, addr.ward, addr.district, addr.province].filter(Boolean).join(", ");
   if (line2) lines.push(line2);
   const country = addr.country || "VN";
   if (country) lines.push(country === "VN" ? "Việt Nam" : country);
@@ -66,10 +61,28 @@ const buildAddressLines = (addr) => {
 export default function CheckoutScreen({ navigation, route }) {
   const initialQuote = route?.params?.quote || null;
   const initialQuoteMeta = route?.params?.quoteMeta || {};
+
+  // ✅ hidden note from cart pairing (NOT shown on UI)
+  const autoNote = String(initialQuoteMeta.autoNote || "").trim();
+
   const [shippingId, setShippingId] = useState(initialQuoteMeta.shippingMethod || "standard");
-  const [paymentId, setPaymentId] = useState("cod");
-  const [note, setNote] = useState("");
+  const [paymentId, setPaymentId] = useState(PAYMENT_METHODS[0]?.id || "sepay");
+
+  // ✅ user note only (UI)
+  const [userNote, setUserNote] = useState("");
+  const [voucherInput, setVoucherInput] = useState(String(initialQuoteMeta.voucherCode || ""));
+  const [appliedVoucherCode, setAppliedVoucherCode] = useState(
+    String(initialQuoteMeta.voucherCode || "").trim()
+  );
+  const [voucherMeta, setVoucherMeta] = useState(initialQuoteMeta.voucher || null);
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+
   const items = useCartStore((s) => s.items);
+  const preorderItems = useCartStore((s) => s.preorderItems);
+  const cartType =
+    route?.params?.quoteMeta?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
+  const cartItems = cartType === CART_TYPES.PREORDER ? preorderItems : items;
+
   const isHydrating = useCartStore((s) => s.isHydrating);
   const hydrate = useCartStore((s) => s.hydrate);
   const token = useAuthStore((s) => s.token);
@@ -94,20 +107,35 @@ export default function CheckoutScreen({ navigation, route }) {
   }, [quoteError]);
 
   const cartSubtotal = useMemo(
-    () => items.reduce((sum, it) => sum + (it.product?.price || 0) * (it.qty || 0), 0),
-    [items]
+    () =>
+      cartItems.reduce((sum, it) => {
+        const payRate = it?.isPreorder ? 0.3 : 1;
+        return sum + (it.product?.price || 0) * (it.qty || 0) * payRate;
+      }, 0),
+    [cartItems]
   );
 
-  const hasPreorder = useMemo(() => items.some((it) => it.orderType === "PREORDER"), [items]);
+  const hasPreorder = useMemo(() => cartItems.some((it) => Boolean(it?.isPreorder)), [cartItems]);
   const paymentMethods = PAYMENT_METHODS;
 
   const shippingMethodFee = useMemo(() => {
     const found = SHIPPING_METHODS.find((m) => m.id === shippingId);
     return found ? found.price : 0;
   }, [shippingId]);
+
   const cartDiscountAmount = initialQuoteMeta.discountAmount;
 
-  const checkoutItems = useMemo(() => buildCheckoutItems(items), [items]);
+  const checkoutItems = useMemo(() => {
+    const built = buildCheckoutItems(cartItems);
+    return built.map((it, idx) => {
+      const ci = cartItems[idx];
+      return {
+        ...it,
+        isPreorder: Boolean(ci?.isPreorder),
+        payRate: ci?.isPreorder ? 0.3 : 1,
+      };
+    });
+  }, [cartItems]);
 
   const subtotal = quote?.subtotal ?? cartSubtotal;
   const discount = quote?.discountAmount ?? 0;
@@ -186,12 +214,7 @@ export default function CheckoutScreen({ navigation, route }) {
       note: draftAddress.note.trim(),
     };
     const hasValue = Boolean(
-      cleaned.fullName ||
-        cleaned.phone ||
-        cleaned.line1 ||
-        cleaned.ward ||
-        cleaned.district ||
-        cleaned.province
+      cleaned.fullName || cleaned.phone || cleaned.line1 || cleaned.ward || cleaned.district || cleaned.province
     );
     if (!hasValue) {
       setAddress(null);
@@ -222,28 +245,19 @@ export default function CheckoutScreen({ navigation, route }) {
       setIsEditingAddress(false);
     } catch (err) {
       const data = err?.response?.data || {};
-      const message = data.message || data.error || err?.message || "Khong luu duoc dia chi";
-      Alert.alert("Dia chi", message);
+      const message = data.message || data.error || err?.message || "Không lưu được địa chỉ";
+      Alert.alert("Địa chỉ", message);
     }
   };
 
   const hasAddress = Boolean(
-    address?.fullName ||
-      address?.phone ||
-      address?.line1 ||
-      address?.ward ||
-      address?.district ||
-      address?.province
+    address?.fullName || address?.phone || address?.line1 || address?.ward || address?.district || address?.province
   );
   const addressComplete = Boolean(
-    address?.fullName &&
-      address?.phone &&
-      address?.line1 &&
-      address?.ward &&
-      address?.district &&
-      address?.province
+    address?.fullName && address?.phone && address?.line1 && address?.ward && address?.district && address?.province
   );
 
+  // ✅ quote update (do NOT include autoNote / userNote in quote)
   useEffect(() => {
     let active = true;
     if (!checkoutItems.length) {
@@ -262,6 +276,9 @@ export default function CheckoutScreen({ navigation, route }) {
       shippingFee: shippingMethodFee,
       discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
       shippingAddress: addressComplete ? address : null,
+      voucherCode: appliedVoucherCode || undefined,
+      cartType: API_CART_TYPE[cartType] || "ready_stock",
+      // note intentionally omitted
     });
 
     setQuoteLoading(true);
@@ -286,7 +303,75 @@ export default function CheckoutScreen({ navigation, route }) {
     return () => {
       active = false;
     };
-  }, [checkoutItems, shippingId, addressComplete, address, skipInitialQuote, cartDiscountAmount, shippingMethodFee]);
+  }, [
+    checkoutItems,
+    shippingId,
+    addressComplete,
+    address,
+    skipInitialQuote,
+    cartDiscountAmount,
+    shippingMethodFee,
+    appliedVoucherCode,
+    cartType,
+  ]);
+
+  const applyVoucher = async () => {
+    if (isApplyingVoucher) return;
+    const code = String(voucherInput || "").trim().toUpperCase();
+    if (!code) {
+      setAppliedVoucherCode("");
+      setVoucherMeta(null);
+      return;
+    }
+
+    if (!checkoutItems.length) {
+      Alert.alert("Giỏ hàng trống", "Không thể áp mã khi chưa có sản phẩm.");
+      return;
+    }
+
+    try {
+      setIsApplyingVoucher(true);
+
+      const validatePayload = {
+        voucherCode: code,
+        items: checkoutItems,
+        shippingFee: shippingMethodFee,
+        shippingMethod: shippingId,
+        cartType: API_CART_TYPE[cartType] || "ready_stock",
+      };
+
+      const validated = await validatePromotionApi(validatePayload);
+      if (!validated?.valid) {
+        throw new Error(validated?.message || "Voucher không hợp lệ.");
+      }
+
+      setAppliedVoucherCode(code);
+      setVoucherMeta(validated?.voucher || null);
+
+      const quotePayload = buildCheckoutPayload({
+        items: checkoutItems,
+        shippingMethod: shippingId,
+        shippingFee: shippingMethodFee,
+        shippingAddress: addressComplete ? address : null,
+        voucherCode: code,
+        cartType: API_CART_TYPE[cartType] || "ready_stock",
+      });
+      const refreshedQuote = await fetchCheckoutQuote(quotePayload);
+      setQuote(refreshedQuote);
+      setQuoteError(null);
+      setSkipInitialQuote(false);
+      Alert.alert("Áp mã thành công", `Đã áp dụng voucher ${code}.`);
+    } catch (err) {
+      const data = err?.response?.data || {};
+      const errors = Array.isArray(data?.errors)
+        ? data.errors.map((e) => e?.msg).filter(Boolean).join("\n")
+        : null;
+      const message = errors || data?.message || data?.error || err?.message;
+      Alert.alert("Không áp dụng được voucher", message || "Vui lòng thử mã khác.");
+    } finally {
+      setIsApplyingVoucher(false);
+    }
+  };
 
   const checkoutOrder = async () => {
     if (isSubmitting || !checkoutItems.length) return;
@@ -295,31 +380,108 @@ export default function CheckoutScreen({ navigation, route }) {
       return;
     }
 
+    // ✅ merge hidden auto note + user note (user note appended)
+    const mergedNote = [autoNote, String(userNote || "").trim()].filter(Boolean).join("\n");
+
     try {
       setIsSubmitting(true);
       const payload = buildCheckoutPayload({
         items: checkoutItems,
         shippingMethod: shippingId,
         shippingAddress: addressComplete ? address : null,
-        note: note?.trim() || undefined,
+        note: mergedNote || undefined, // ✅ only send if any
         shippingFee: shippingMethodFee,
         discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
-        paymentMethod: "sepay",
+        voucherCode: appliedVoucherCode || undefined,
+        cartType: API_CART_TYPE[cartType] || "ready_stock",
+        paymentMethod: paymentId || "sepay",
       });
 
       const data = await createCheckout(payload);
       const now = new Date().toISOString();
       const orderId = data?.orderId || data?.id || `OD${Date.now().toString().slice(-6)}`;
       const breakdown = data?.breakdown || data || {};
-      const serverPayment = data?.payment || {};
+      const serverPayment = data?.payment || data?.paymentInstructions || data?.paymentInstruction || {};
       const fallbackMethod = "SEPAY";
       const fallbackStatus = "PENDING_QR";
       const orderPayment = {
         ...serverPayment,
-        method: serverPayment.method || fallbackMethod,
-        status: serverPayment.status || fallbackStatus,
-        createdAt: serverPayment.createdAt || now,
-        paidAt: serverPayment.paidAt || null,
+        method:
+          pickValue(
+            serverPayment.method,
+            serverPayment.paymentMethod,
+            data?.paymentMethod,
+            data?.method
+          ) || fallbackMethod,
+        status:
+          pickValue(
+            serverPayment.status,
+            serverPayment.paymentStatus,
+            data?.paymentStatus,
+            data?.status
+          ) || fallbackStatus,
+        paymentCode:
+          pickValue(
+            serverPayment.paymentCode,
+            serverPayment.code,
+            data?.paymentCode,
+            data?.code
+          ) || null,
+        content:
+          pickValue(
+            serverPayment.content,
+            serverPayment.description,
+            data?.content,
+            serverPayment.paymentCode,
+            data?.paymentCode
+          ) || null,
+        bankAccountId:
+          pickValue(
+            serverPayment.bankAccountId,
+            serverPayment.bank_account_id,
+            data?.bankAccountId,
+            data?.bank_account_id
+          ) || null,
+        bankAccountNumber:
+          pickValue(
+            serverPayment.bankAccountNumber,
+            serverPayment.bank_account_number,
+            data?.bankAccountNumber,
+            data?.bank_account_number,
+            serverPayment.bankAccountId,
+            data?.bankAccountId
+          ) || null,
+        bankName:
+          pickValue(
+            serverPayment.bankName,
+            serverPayment.bank_name,
+            data?.bankName,
+            data?.bank_name
+          ) || null,
+        bankAccountName:
+          pickValue(
+            serverPayment.bankAccountName,
+            serverPayment.bank_account_name,
+            data?.bankAccountName,
+            data?.bank_account_name
+          ) || null,
+        qrUrl:
+          pickValue(
+            serverPayment.qrUrl,
+            serverPayment.qr_url,
+            data?.qrUrl,
+            data?.qr_url
+          ) || null,
+        paymentUrl:
+          pickValue(
+            serverPayment.paymentUrl,
+            serverPayment.payment_url,
+            serverPayment.checkoutUrl,
+            data?.paymentUrl,
+            data?.payment_url
+          ) || null,
+        createdAt: pickValue(serverPayment.createdAt, data?.createdAt, now) || now,
+        paidAt: pickValue(serverPayment.paidAt, data?.paidAt, null),
       };
       const orderPayload = {
         orderId,
@@ -333,56 +495,52 @@ export default function CheckoutScreen({ navigation, route }) {
           payNow: breakdown.payNow ?? payNow,
           payLater: breakdown.payLater ?? payLater,
         },
+        voucherCode: appliedVoucherCode || null,
         payment: {
           ...orderPayment,
         },
         shippingAddress: address,
         items: checkoutItems.map((it) => ({
-          name: items.find((x) => x.product?.id === it.productId)?.product?.name || "Sản phẩm",
+          name: cartItems.find((x) => x.product?.id === it.productId)?.product?.name || "Sản phẩm",
           qty: it.quantity,
-          price: items.find((x) => x.product?.id === it.productId)?.product?.price || 0,
-          preorder: it.orderType === "PREORDER",
+          price: cartItems.find((x) => x.product?.id === it.productId)?.product?.price || 0,
+          preorder: Boolean(it.isPreorder),
         })),
       };
 
-      navigation.navigate("CheckoutStatus", { order: orderPayload });
+      console.log("Note:", mergedNote);
+      navigation.navigate("CheckoutStatus", { order: orderPayload, cartType });
     } catch (err) {
       const data = err?.response?.data || {};
       const errors = Array.isArray(data.errors)
         ? data.errors.map((e) => e.msg).filter(Boolean).join("\n")
         : null;
       const message = errors || data.message || data.error || err?.message;
-      Alert.alert(
-        "Thanh toán thất bại",
-        message || "Không thể tạo đơn hàng. Vui lòng thử lại."
-      );
+      Alert.alert("Thanh toán thất bại", message || "Không thể tạo đơn hàng. Vui lòng thử lại.");
     } finally {
       setIsSubmitting(false);
     }
   };
-    return (
+
+  return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.container}>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Thanh toán</Text>
-            <Text style={styles.headerStep}>1/2 Giao hàng</Text>
+            <Text style={styles.headerStep}>1/2 giao hàng</Text>
           </View>
 
           <View style={styles.card}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={isEditingAddress}
-                onPress={() => startEditAddress(address)}
-              >
+              <TouchableOpacity activeOpacity={0.85} disabled={isEditingAddress} onPress={() => startEditAddress(address)}>
                 <Text style={[styles.linkText, isEditingAddress && styles.linkDisabled]}>
                   {isEditingAddress ? "Đang chỉnh sửa" : hasAddress ? "Thay đổi" : "Thêm"}
                 </Text>
               </TouchableOpacity>
             </View>
-            {addressLoading ? <Text style={styles.addressMeta}>Đang tải số địa chỉ...</Text> : null}
+            {addressLoading ? <Text style={styles.addressMeta}>Đang tải địa chỉ...</Text> : null}
 
             {isEditingAddress ? (
               <View style={styles.addressForm}>
@@ -393,9 +551,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Nhập họ và tên"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.fullName}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, fullName: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, fullName: value }))}
                   />
                 </View>
 
@@ -407,9 +563,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholderTextColor="#9CA3AF"
                     keyboardType="phone-pad"
                     value={draftAddress.phone}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, phone: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, phone: value }))}
                   />
                 </View>
 
@@ -422,9 +576,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     keyboardType="email-address"
                     autoCapitalize="none"
                     value={draftAddress.email}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, email: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, email: value }))}
                   />
                 </View>
 
@@ -437,9 +589,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     multiline
                     textAlignVertical="top"
                     value={draftAddress.line1}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, line1: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, line1: value }))}
                   />
                 </View>
 
@@ -447,12 +597,10 @@ export default function CheckoutScreen({ navigation, route }) {
                   <Text style={styles.fieldLabel}>Bổ sung (line 2)</Text>
                   <TextInput
                     style={styles.fieldInput}
-                    placeholder="Hẻm/tầng/phòng (tuỳ chọn)"
+                    placeholder="Hầm/tầng/phòng (tuỳ chọn)"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.line2}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, line2: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, line2: value }))}
                   />
                 </View>
 
@@ -463,9 +611,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Nhập phường/xã"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.ward}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, ward: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, ward: value }))}
                   />
                 </View>
 
@@ -476,9 +622,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Nhập quận/huyện"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.district}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, district: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, district: value }))}
                   />
                 </View>
 
@@ -489,25 +633,15 @@ export default function CheckoutScreen({ navigation, route }) {
                     placeholder="Nhập tỉnh/thành phố"
                     placeholderTextColor="#9CA3AF"
                     value={draftAddress.province}
-                    onChangeText={(value) =>
-                      setDraftAddress((prev) => ({ ...prev, province: value }))
-                    }
+                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, province: value }))}
                   />
                 </View>
 
                 <View style={styles.addressActions}>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.actionBtnGhost]}
-                    activeOpacity={0.85}
-                    onPress={cancelEditAddress}
-                  >
+                  <TouchableOpacity style={[styles.actionBtn, styles.actionBtnGhost]} activeOpacity={0.85} onPress={cancelEditAddress}>
                     <Text style={[styles.actionText, styles.actionTextGhost]}>Hủy</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.actionBtnPrimary]}
-                    activeOpacity={0.85}
-                    onPress={saveEditAddress}
-                  >
+                  <TouchableOpacity style={[styles.actionBtn, styles.actionBtnPrimary]} activeOpacity={0.85} onPress={saveEditAddress}>
                     <Text style={[styles.actionText, styles.actionTextPrimary]}>Lưu</Text>
                   </TouchableOpacity>
                 </View>
@@ -529,11 +663,7 @@ export default function CheckoutScreen({ navigation, route }) {
                   <Text style={styles.addressEmpty}>Chưa có địa chỉ giao hàng</Text>
                 )}
 
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  style={styles.addAddressBtn}
-                  onPress={() => startEditAddress(EMPTY_ADDRESS)}
-                >
+                <TouchableOpacity activeOpacity={0.9} style={styles.addAddressBtn} onPress={() => startEditAddress(EMPTY_ADDRESS)}>
                   <Text style={styles.addAddressText}>+ Thêm địa chỉ</Text>
                 </TouchableOpacity>
               </>
@@ -567,12 +697,13 @@ export default function CheckoutScreen({ navigation, route }) {
                 );
               })}
             </View>
-
-            <View style={styles.noticeBox}>
-              <Text style={styles.noticeText}>
-                Đơn có sản phẩm đặt trước, thời gian giao dự kiến tính sau khi có hàng.
-              </Text>
-            </View>
+            {hasPreorder ? (
+              <View style={styles.noticeBox}>
+                <Text style={styles.noticeText}>
+                  Đơn có sản phẩm đặt trước, thời gian giao dự kiến tính sau khi có hàng.
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.card}>
@@ -580,8 +711,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
             <View style={styles.radioList}>
               {(() => {
-                const activeMethod =
-                  paymentMethods.find((m) => m.id === paymentId) || paymentMethods[0];
+                const activeMethod = paymentMethods.find((m) => m.id === paymentId) || paymentMethods[0];
                 if (!activeMethod) return null;
                 return (
                   <View style={[styles.radioItem, styles.radioItemActive]}>
@@ -609,14 +739,43 @@ export default function CheckoutScreen({ navigation, route }) {
           </View>
 
           <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Mã giảm giá</Text>
+            <View style={styles.voucherRow}>
+              <TextInput
+                style={styles.voucherInput}
+                value={voucherInput}
+                onChangeText={setVoucherInput}
+                placeholder="Nhập voucher"
+                autoCapitalize="characters"
+                placeholderTextColor="#9CA3AF"
+              />
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={[styles.voucherBtn, isApplyingVoucher && styles.voucherBtnDisabled]}
+                disabled={isApplyingVoucher}
+                onPress={applyVoucher}
+              >
+                <Text style={styles.voucherBtnText}>{isApplyingVoucher ? "Đang áp..." : "Áp dụng"}</Text>
+              </TouchableOpacity>
+            </View>
+            {appliedVoucherCode ? (
+              <Text style={styles.voucherHint}>
+                Đã áp dụng: {appliedVoucherCode}
+                {voucherMeta?.type ? ` (${voucherMeta.type})` : ""}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* ✅ UI note: user only */}
+          <View style={styles.card}>
             <Text style={styles.sectionTitle}>Ghi chú đơn hàng (không bắt buộc)</Text>
             <TextInput
               style={styles.noteInput}
               multiline
-              placeholder="Ghi chú cho cửa hàng"
+              placeholder="VD: Hãy cẩn thận khi giao hàng..."
               placeholderTextColor="#9CA3AF"
-              value={note}
-              onChangeText={setNote}
+              value={userNote}
+              onChangeText={setUserNote}
               textAlignVertical="top"
             />
           </View>
@@ -639,6 +798,7 @@ export default function CheckoutScreen({ navigation, route }) {
               <Text style={styles.summaryTotalLabel}>Tổng cộng</Text>
               <Text style={styles.summaryTotalValue}>{formatVND(total)}</Text>
             </View>
+
             {hasPreorder ? (
               <>
                 <View style={styles.summaryRow}>
@@ -651,26 +811,20 @@ export default function CheckoutScreen({ navigation, route }) {
                 </View>
               </>
             ) : null}
-            {quoteLoading ? <Text style={styles.quoteHint}>Đang cập nhật giá…</Text> : null}
+
+            {quoteLoading ? <Text style={styles.quoteHint}>Đang cập nhật giá...</Text> : null}
             {quoteError ? (
-              <Text style={styles.quoteError}>
-                {quoteErrorMessage || "Không lấy được báo giá mới."}
-              </Text>
+              <Text style={styles.quoteError}>{quoteErrorMessage || "Không lấy được báo giá mới."}</Text>
             ) : null}
           </View>
 
           <TouchableOpacity
             activeOpacity={0.9}
-            style={[
-              styles.continueBtn,
-              (isSubmitting || !addressComplete) && styles.continueBtnDisabled,
-            ]}
+            style={[styles.continueBtn, (isSubmitting || !addressComplete) && styles.continueBtnDisabled]}
             onPress={checkoutOrder}
             disabled={isSubmitting || !checkoutItems.length}
           >
-            <Text style={styles.continueText}>
-              {isSubmitting ? "Đang tạo đơn..." : "Tiếp tục"}
-            </Text>
+            <Text style={styles.continueText}>{isSubmitting ? "Đang tạo đơn..." : "Tiếp tục"}</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -821,6 +975,31 @@ const styles = StyleSheet.create({
     color: "#111827",
     backgroundColor: "#FFFFFF",
   },
+  voucherRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 10 },
+  voucherInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+    backgroundColor: "#FFFFFF",
+  },
+  voucherBtn: {
+    height: 44,
+    minWidth: 88,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voucherBtnDisabled: { opacity: 0.7 },
+  voucherBtnText: { color: "#FFFFFF", fontSize: 12.5, fontWeight: "900" },
+  voucherHint: { marginTop: 8, fontSize: 12, fontWeight: "700", color: "#15803D" },
 
   summaryRow: {
     flexDirection: "row",

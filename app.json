@@ -21,6 +21,7 @@
       }
     },
     "android": {
+      "package": "com.wdp.eyewear",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -28,18 +29,16 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "CAMERA",
-        "RECORD_AUDIO",
-        "CAMERA",
         "RECORD_AUDIO"
-      ],
-      "package": "com.anonymous.WDP301_Mobile"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
-      "expo-dev-client"
+      "expo-dev-client",
+      "./plugins/withWdpTryOnIos"
     ]
   }
 }

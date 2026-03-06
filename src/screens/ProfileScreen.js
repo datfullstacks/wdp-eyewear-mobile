@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import {
@@ -278,7 +278,7 @@ export default function ProfileScreen({ navigation }) {
               <Text style={[styles.statValue, { color: STAT_ACCENTS.orders.fg }]}>
                 {stats.pendingOrders}
               </Text>
-              <Text style={styles.statLabel}>Pending</Text>
+              <Text style={styles.statLabel}>Đơn hàng</Text>
             </Pressable>
 
             <Pressable
@@ -341,8 +341,8 @@ export default function ProfileScreen({ navigation }) {
           <RowItem
             icon="receipt-outline"
             title="Đơn hàng"
-            subtitle="Track shipping and returns"
-            rightText={`${stats.pendingOrders} pending`}
+            subtitle="Theo dõi đơn hàng và hoàn trả"
+            rightText={`${stats.pendingOrders} đơn`}
             onPress={() => navigation.navigate("Orders")}
             accent={{ bg: "#EEF2FF", fg: "#4F46E5" }}
           />
@@ -350,8 +350,8 @@ export default function ProfileScreen({ navigation }) {
           <RowItem
             icon="heart-outline"
             title="Yêu thích"
-            subtitle="Saved frames and lenses"
-            rightText={`${stats.favorites} items`}
+            subtitle="Sản phẩm bạn đã yêu thích"
+            rightText={`${stats.favorites} sản phẩm`}
             onPress={() => navigation.navigate("FavTab")}
             accent={{ bg: "#FCE7F3", fg: "#DB2777" }}
           />
@@ -360,7 +360,7 @@ export default function ProfileScreen({ navigation }) {
             icon="reader-outline"
             title="Kê đơn"
             subtitle="PD, Rx, lens preferences"
-            rightText="View"
+            rightText="Xem chi tiết"
             onPress={() => navigation.navigate("Prescription")}
             accent={{ bg: "#EFF6FF", fg: "#2563EB" }}
           />
@@ -368,7 +368,7 @@ export default function ProfileScreen({ navigation }) {
           <RowItem
             icon="location-outline"
             title="Địa chỉ mặc định"
-            subtitle="Default shipping address"
+            subtitle="Địa chỉ giao hàng mặt định"
             rightText={`${stats.addresses}`}
             onPress={() => navigation.navigate("AddressBook")}
             accent={{ bg: "#ECFDF5", fg: "#059669" }}
@@ -382,32 +382,32 @@ export default function ProfileScreen({ navigation }) {
         <Card style={{ paddingVertical: 6, marginBottom: 18 }}>
           <RowItem
             icon="card-outline"
-            title="Payments"
-            subtitle="Cards and billing"
+            title="Thanh toán"
+            subtitle="Thẻ và thanh toán"
             onPress={() => navigation.navigate("Payments")}
             accent={SETTING_ACCENTS.payments}
           />
           <Divider />
           <RowItem
             icon="chatbubble-ellipses-outline"
-            title="Support"
-            subtitle="Chat with us"
+            title="Hỗ trợ"
+            subtitle="Nhắn tin với chúng tôi"
             onPress={() => navigation.navigate("Support")}
             accent={SETTING_ACCENTS.support}
           />
           <Divider />
           <RowItem
             icon="notifications-outline"
-            title="Notifications"
-            subtitle="Order updates and deals"
+            title="Thông báo"
+            subtitle="Cập nhật và ưu đãi mới nhất"
             onPress={() => navigation.navigate("Notifications")}
             accent={SETTING_ACCENTS.noti}
           />
           <Divider />
           <RowItem
             icon="log-out-outline"
-            title="Sign out"
-            subtitle="Log out of this device"
+            title="Đăng xuất"
+            subtitle="Đăng xuất khỏi thiết bị này"
             onPress={logout}
             danger
           />

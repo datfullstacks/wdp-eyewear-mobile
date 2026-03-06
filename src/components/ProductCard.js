@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFavoriteStore } from "../store/favoriteStore";
@@ -9,6 +9,28 @@ const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v) + "đ";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
+
+// ✅ Nhận diện hết hàng từ nhiều kiểu field khác nhau
+const checkOutOfStock = (item) => {
+  if (!item) return false;
+
+  // Kiểu string status
+  if (item.stockStatus === "OUT_OF_STOCK") return true;
+  if (item.stockStatus === "out_of_stock") return true;
+
+  // Kiểu số
+  if (typeof item.totalStock === "number" && item.totalStock <= 0) return true;
+  if (typeof item.stock === "number" && item.stock <= 0) return true;
+
+  // Kiểu boolean
+  if (item.isAvailable === false) return true;
+  if (item.inStock === false) return true;
+
+  // Kiểu preOrder enabled + hết stock
+  if (item.preOrder?.enabled === true && typeof item.totalStock === "number" && item.totalStock <= 0) return true;
+
+  return false;
+};
 
 export default function ProductCard({ item, onPress }) {
   const navigation = useNavigation();
@@ -45,7 +67,12 @@ export default function ProductCard({ item, onPress }) {
 
   const img = item?.image || item?.posterUrl || FALLBACK_IMG;
   const brand = item?.brand ? String(item.brand) : null;
-  const isOutOfStock = item?.stockStatus === "OUT_OF_STOCK";
+
+  // ✅ Dùng hàm check đa trường
+  const isOutOfStock = checkOutOfStock(item);
+
+  // Debug: bỏ comment dòng dưới nếu muốn kiểm tra
+  // console.log("[ProductCard] item stock debug:", item?.name, { stockStatus: item?.stockStatus, totalStock: item?.totalStock, stock: item?.stock, isOutOfStock });
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
@@ -127,7 +154,6 @@ const styles = StyleSheet.create({
 
   media: { position: "relative" },
   image: { width: "100%", height: IMAGE_H },
-
   imageDisabled: { opacity: 0.5 },
 
   outOfStockOverlay: {
@@ -166,7 +192,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 8,
     top: 8,
-    zIndex: 3,
+    zIndex: 5,
     width: 30,
     height: 30,
     borderRadius: 15,
@@ -223,9 +249,15 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-
   priceDisabled: { color: "#9CA3AF" },
 
   dots: { flexDirection: "row", gap: 4 },
   dot: { width: 8, height: 8, borderRadius: 4 },
+
+  outOfStockHint: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#EF4444",
+  },
 });

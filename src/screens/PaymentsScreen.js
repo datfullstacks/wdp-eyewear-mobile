@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+﻿import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -84,7 +84,7 @@ export default function PaymentsScreen({ navigation }) {
   const submit = async () => {
     if (submitting) return;
     if (!form.label.trim() || !form.maskedNumber.trim()) {
-      Alert.alert("Payments", "Vui lòng nhập label va maskedNumber.");
+      Alert.alert("Payments", "Vui lòng nhập label và maskedNumber.");
       return;
     }
     try {

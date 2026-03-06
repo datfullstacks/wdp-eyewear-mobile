@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+﻿import { useQuery } from "@tanstack/react-query";
 import { fetchProducts } from "../services/productService";
 
 export function useProducts() {

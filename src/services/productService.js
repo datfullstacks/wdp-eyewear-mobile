@@ -1,4 +1,4 @@
-import { api } from "./apiClient";
+﻿import { api } from "./apiClient";
 
 const DEFAULT_IMAGE =
   "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
@@ -72,6 +72,20 @@ function safeNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function toIdString(value) {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object") {
+    if (value._id != null) return toIdString(value._id);
+    if (value.id != null) return toIdString(value.id);
+    if (typeof value.toString === "function") {
+      const text = String(value.toString());
+      if (text && text !== "[object Object]") return text;
+    }
+  }
+  return "";
+}
+
 function slugify(value) {
   return String(value || "")
     .trim()
@@ -92,14 +106,53 @@ function toHex(name) {
   return "#111827";
 }
 
+function normalizeAsset(asset = {}) {
+  return {
+    ...asset,
+    id: toIdString(asset?._id || asset?.id),
+    url: asset?.url || null,
+    posterUrl: asset?.posterUrl || null,
+    role: asset?.role || null,
+    assetType: asset?.assetType || null,
+    format: asset?.format || null,
+    ar: asset?.ar || null,
+    order: safeNumber(asset?.order) ?? 9999,
+  };
+}
+
+function normalizeAssets(assets = []) {
+  return assets
+    .map((asset) => normalizeAsset(asset))
+    .sort((a, b) => (a.order || 9999) - (b.order || 9999));
+}
+
+function pick2DAsset(assets = []) {
+  return (
+    assets.find((a) => a?.assetType === "2d" && a?.role === "hero") ||
+    assets.find((a) => a?.assetType === "2d" && a?.role === "gallery") ||
+    assets.find((a) => a?.assetType === "2d" && a?.role === "thumbnail") ||
+    assets.find((a) => a?.assetType === "2d" && a?.role === "lifestyle") ||
+    assets.find((a) => a?.assetType === "2d") ||
+    null
+  );
+}
+
+function pick3DAsset(assets = []) {
+  return (
+    assets.find((a) => a?.assetType === "3d" && a?.role === "viewer") ||
+    assets.find((a) => a?.assetType === "3d" && a?.role === "try_on") ||
+    assets.find((a) => a?.assetType === "3d") ||
+    null
+  );
+}
+
 function pickHeroImage(assets = []) {
   const hero2d =
-    assets.find((a) => a?.role === "hero" && a?.assetType === "2d") ||
-    assets.find((a) => a?.assetType === "2d") ||
+    pick2DAsset(assets) ||
     assets.find((a) => a?.role === "hero") ||
     assets[0];
 
-  return hero2d?.url || DEFAULT_IMAGE;
+  return hero2d?.url || hero2d?.posterUrl || DEFAULT_IMAGE;
 }
 
 function computePricing(pricing = {}) {
@@ -128,15 +181,34 @@ function computePricing(pricing = {}) {
   };
 }
 
+// function computeStockStatus(product, totalStock) {
+//   const statusRaw = String(product?.status || "").toLowerCase();
+//   if (statusRaw === "out_of_stock") return "OUT_OF_STOCK";
+//   if (statusRaw === "inactive") return "OUT_OF_STOCK";
+//   if (statusRaw === "draft") return "PREORDER";
+
+//   if (product?.inventory?.track && typeof totalStock === "number") {
+//     if (totalStock <= 0) return "OUT_OF_STOCK";
+//     return "IN_STOCK";
+//   }
+
+//   return "IN_STOCK";
+// }
+
 function computeStockStatus(product, totalStock) {
   const statusRaw = String(product?.status || "").toLowerCase();
-  if (statusRaw === "out_of_stock") return "OUT_OF_STOCK";
-  if (statusRaw === "inactive") return "OUT_OF_STOCK";
-  if (statusRaw === "draft") return "PREORDER";
+
+  // ✅ nếu preOrder.enabled true và hết hàng => PREORDER
+  const preorderEnabled = product?.preOrder?.enabled === true;
 
   if (product?.inventory?.track && typeof totalStock === "number") {
-    if (totalStock <= 0) return "OUT_OF_STOCK";
+    if (totalStock <= 0) return preorderEnabled ? "PREORDER" : "OUT_OF_STOCK";
     return "IN_STOCK";
+  }
+
+  // fallback theo status cũ
+  if (statusRaw === "out_of_stock" || statusRaw === "inactive") {
+    return preorderEnabled ? "PREORDER" : "OUT_OF_STOCK";
   }
 
   return "IN_STOCK";
@@ -181,20 +253,51 @@ function buildSpecsList(product) {
   return out.slice(0, 6);
 }
 
-function buildVariantsMeta(variants = [], assets = []) {
+function buildVariantAssetMap(variants = [], assets = []) {
+  const assetById = new Map(
+    assets
+      .map((asset) => [toIdString(asset?.id || asset?._id), asset])
+      .filter((entry) => Boolean(entry[0] && entry[1]))
+  );
+
+  const byVariant = {};
+  variants.forEach((variant) => {
+    const variantId = toIdString(variant?._id || variant?.id);
+    if (!variantId) return;
+    const ids = Array.isArray(variant?.assetIds) ? variant.assetIds : [];
+    const matchedAssets = ids
+      .map((assetId) => assetById.get(toIdString(assetId)))
+      .filter(Boolean);
+    byVariant[variantId] = matchedAssets;
+  });
+
+  return byVariant;
+}
+
+function buildVariantsMeta(variants = [], assets = [], variantAssetsById = {}) {
   const colors = uniq(variants.map((v) => v?.options?.color));
   const sizes = uniq(variants.map((v) => v?.options?.size).map((s) => (s != null ? String(s) : null)));
-
-  const assetUrlById = new Map(
-    assets.map((a) => [String(a?._id || a?.id || ""), a?.url]).filter((x) => x[0] && x[1])
-  );
 
   const colorToImage = new Map();
   variants.forEach((v) => {
     const color = v?.options?.color;
-    const assetId = Array.isArray(v?.assetIds) ? v.assetIds[0] : null;
-    if (!color || !assetId) return;
-    const url = assetUrlById.get(String(assetId));
+    const variantId = toIdString(v?._id || v?.id);
+    if (!color || !variantId) return;
+
+    const variantAssets = Array.isArray(variantAssetsById[variantId])
+      ? variantAssetsById[variantId]
+      : [];
+    const picked =
+      pick2DAsset(variantAssets) ||
+      pick2DAsset(
+        assets.filter((asset) => {
+          if (asset?.assetType !== "2d") return false;
+          if (asset?.role === "hero") return true;
+          return asset?.role === "gallery";
+        })
+      );
+
+    const url = picked?.url || picked?.posterUrl || null;
     if (url && !colorToImage.has(color)) colorToImage.set(color, url);
   });
 
@@ -228,7 +331,9 @@ function buildTryOnMeta(media = {}) {
   const status = String(tryOn?.status || "").trim().toLowerCase();
   const published = enabled && status === "published";
   const configuredAssetIds = Array.isArray(tryOn?.assetIds) ? tryOn.assetIds : [];
-  const configuredAssetIdSet = new Set(configuredAssetIds.map((id) => String(id || "").trim()).filter(Boolean));
+  const configuredAssetIdSet = new Set(
+    configuredAssetIds.map((id) => String(id || "").trim()).filter(Boolean)
+  );
 
   const configuredAssets = configuredAssetIdSet.size
     ? assets.filter((a) => configuredAssetIdSet.has(String(a?._id || a?.id || "").trim()))
@@ -282,8 +387,8 @@ function withDemoTryOn(tryOn, productType) {
   const resourcePaths = TRYON_DEMO_RESOURCE_PATHS.length
     ? TRYON_DEMO_RESOURCE_PATHS
     : Array.isArray(tryOn?.resourcePaths)
-    ? tryOn.resourcePaths
-    : [];
+      ? tryOn.resourcePaths
+      : [];
 
   return {
     ...tryOn,
@@ -299,8 +404,13 @@ function withDemoTryOn(tryOn, productType) {
 export function mapApiProductToUi(product) {
   if (!product) return null;
 
-  const assets = product?.media?.assets || [];
+  const assets = normalizeAssets(product?.media?.assets || []);
   const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const variantAssetsById = buildVariantAssetMap(variants, assets);
+  const mediaTryOn = product?.media?.tryOn || {};
+  const tryOnAssetIds = Array.isArray(mediaTryOn?.assetIds) ? mediaTryOn.assetIds : [];
+  const tryOnAssetIdSet = new Set(tryOnAssetIds.map((id) => toIdString(id)).filter(Boolean));
+  const tryOnAssets = assets.filter((asset) => tryOnAssetIdSet.has(toIdString(asset.id)));
 
   const { price, originalPrice, discountPct } = computePricing(product?.pricing || {});
 
@@ -313,12 +423,20 @@ export function mapApiProductToUi(product) {
 
   const uiType = normalizeType(product?.type);
 
-  const orderTypes = uiType === "LENS" ? ["READY", "CUSTOM"] : ["READY", "PREORDER", "CUSTOM"];
+  const preorderEnabled = product?.preOrder?.enabled === true;
+
+  const orderTypes =
+    uiType === "LENS"
+      ? ["READY", "CUSTOM"]
+      : preorderEnabled
+        ? ["READY", "PREORDER", "CUSTOM"]
+        : ["READY", "CUSTOM"];
+
   const defaultOrderType = stockStatus === "PREORDER" ? "PREORDER" : "READY";
 
-  const { colors, sizes, colorDots } = buildVariantsMeta(variants, assets);
+  const { colors, sizes, colorDots } = buildVariantsMeta(variants, assets, variantAssetsById);
 
-  const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer");
+  const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
   const tryOn = withDemoTryOn(buildTryOnMeta(product?.media || {}), uiType);
 
   const apiId = product?._id || product?.id || null;
@@ -354,7 +472,19 @@ export function mapApiProductToUi(product) {
     colors,
     sizes,
     qtyLimits: { min: 1, max: 99 },
-    model3D: { enabled: has3D },
+    model3D: {
+      enabled: has3D,
+      defaultAsset: pick3DAsset(assets),
+    },
+    media: {
+      assets,
+      byVariant: variantAssetsById,
+      tryOn: {
+        enabled: Boolean(mediaTryOn?.enabled),
+        status: mediaTryOn?.status || null,
+        assets: tryOnAssets,
+      },
+    },
     tryOn,
 
     specs: buildSpecsList(product),
@@ -365,6 +495,7 @@ export function mapApiProductToUi(product) {
 
     qaCount: 0,
     relatedIds: [],
+    preOrder: product?.preOrder ?? { enabled: false, allowCod: true },
   };
 }
 

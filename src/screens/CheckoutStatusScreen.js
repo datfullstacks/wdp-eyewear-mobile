@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
-import { useCartStore } from "../store/cartStore";
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+﻿import React, { useEffect, useMemo, useState, useRef } from "react";
+import { CART_TYPES, useCartStore } from "../store/cartStore";
+import { Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/apiClient";
@@ -8,7 +8,7 @@ import { api } from "../services/apiClient";
 const PAYMENT_STATUS_META = {
   PENDING_QR: {
     label: "Chờ thanh toán",
-    desc: "Vui lòng quét QR SePay để đặt cọc.",
+    desc: "Vui lòng quét mã QR để đặt cọc.",
     color: "#B45309",
     bg: "#FFF7ED",
   },
@@ -44,7 +44,6 @@ const PAYMENT_STATUS_META = {
   },
 };
 
-
 const ORDER_STEPS = [
   { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
   { key: "AWAITING_STOCK", label: "Chờ hàng về", desc: "Đang chờ sản phẩm về kho" },
@@ -54,6 +53,12 @@ const ORDER_STEPS = [
 ];
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
+const SEPAY_FALLBACK_ACCOUNT_NUMBER =
+  process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NUMBER ||
+  process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_ID ||
+  null;
+const SEPAY_FALLBACK_BANK_NAME = process.env.EXPO_PUBLIC_SEPAY_BANK_NAME || null;
+const SEPAY_FALLBACK_ACCOUNT_NAME = process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NAME || null;
 
 const formatDateTime = (value) => {
   if (!value) return "--";
@@ -68,6 +73,9 @@ const makeQrUrl = (content) => {
     content
   )}`;
 };
+
+const isHttpUrl = (value) => /^https?:\/\/.+/i.test(value);
+const isDataImageUrl = (value) => /^data:image\/[a-z0-9.+-]+;base64,/i.test(value);
 
 const toTextValue = (value) => {
   if (value == null) return null;
@@ -106,6 +114,20 @@ const firstTextValue = (...values) => {
   return null;
 };
 
+const toQrImageUrl = (value) => {
+  const text = toTextValue(value);
+  if (!text) return null;
+  return isDataImageUrl(text) || isHttpUrl(text) ? text : null;
+};
+
+const firstQrImageUrl = (...values) => {
+  for (const value of values) {
+    const imageUrl = toQrImageUrl(value);
+    if (imageUrl) return imageUrl;
+  }
+  return null;
+};
+
 const buildSepayQrUrl = ({ accountNumber, bankName, amount, description }) => {
   if (!accountNumber || !bankName) return null;
   const params = [
@@ -119,6 +141,21 @@ const buildSepayQrUrl = ({ accountNumber, bankName, amount, description }) => {
     params.push(`des=${encodeURIComponent(description)}`);
   }
   return `https://qr.sepay.vn/img?${params.join("&")}`;
+};
+
+const buildQrImageSource = (uri) => {
+  const text = toTextValue(uri);
+  if (!text) return null;
+  if (/^https?:\/\/qr\.sepay\.vn\//i.test(text)) {
+    return {
+      uri: text,
+      headers: {
+        // sepay image endpoint may return 403 without browser-like UA
+        "User-Agent": "Mozilla/5.0",
+      },
+    };
+  }
+  return { uri: text };
 };
 
 const buildAddressLines = (addr) => {
@@ -136,8 +173,10 @@ const buildAddressLines = (addr) => {
 
 const normalizePaymentMethod = (value, payNow = 0) => {
   const method = String(value || "").trim().toUpperCase();
-  if (method) return method;
-  return payNow > 0 ? "SEPAY" : "COD";
+  if (!method) return payNow > 0 ? "SEPAY" : "COD";
+  if (["VNPAY", "VNPAY_QR", "VNPAYQR", "VN_PAY"].includes(method)) return "VNPAY";
+  if (["SEPAY", "SE_PAY"].includes(method)) return "SEPAY";
+  return method;
 };
 
 const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) => {
@@ -205,6 +244,31 @@ const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
         serverOrder.paymentCode ||
         localPayment.paymentCode,
       content: serverPayment.content || serverOrder.paymentCode || localPayment.content,
+      bankAccountId:
+        serverPayment.bankAccountId ||
+        serverPayment.bank_account_id ||
+        serverOrder.bankAccountId ||
+        localPayment.bankAccountId,
+      bankAccountNumber:
+        serverPayment.bankAccountNumber ||
+        serverPayment.bank_account_number ||
+        serverOrder.bankAccountNumber ||
+        localPayment.bankAccountNumber,
+      bankName:
+        serverPayment.bankName ||
+        serverPayment.bank_name ||
+        serverOrder.bankName ||
+        localPayment.bankName,
+      bankAccountName:
+        serverPayment.bankAccountName ||
+        serverPayment.bank_account_name ||
+        serverOrder.bankAccountName ||
+        localPayment.bankAccountName,
+      qrUrl:
+        serverPayment.qrUrl ||
+        serverPayment.qr_url ||
+        serverOrder.qrUrl ||
+        localPayment.qrUrl,
       paidAt: serverPayment.paidAt || serverOrder.paidAt || inferredPaidAt,
     },
   };
@@ -236,11 +300,11 @@ const DEMO_ORDER = {
     { name: "Tròng kính chống ánh xanh", qty: 1, price: 1200000, preorder: true },
   ],
   payment: {
-    method: "SEPAY",
+    method: "VNPAY",
     status: "PENDING_QR",
     amount: 735000,
-    paymentCode: "SEPAY-2025-123456",
-    content: "SEPAY-2025-123456",
+    paymentCode: "VNPAY-2025-123456",
+    content: "VNPAY-2025-123456",
     bankAccountId: "BANK-001",
     createdAt: new Date().toISOString(),
     paidAt: null,
@@ -276,7 +340,17 @@ const normalizeOrder = (raw) => {
   const paymentAmount = payment.amount ?? payNow;
   const paymentCreatedAt = payment.createdAt || raw?.createdAt || null;
   const paymentPaidAt = payment.paidAt || raw?.paidAt || null;
-  const qrCandidate = firstTextValue(
+  const paymentLink = firstTextValue(
+    payment.paymentUrl,
+    payment.payment_url,
+    payment.checkoutUrl,
+    payment.checkout_url,
+    payment.payUrl,
+    payment.pay_url,
+    payment.url,
+    payment.link
+  );
+  const qrCandidate = firstQrImageUrl(
     payment.qrUrl,
     payment.qr_url,
     payment.qrImage,
@@ -285,10 +359,12 @@ const normalizeOrder = (raw) => {
     payment.qrCode,
     payment.qr_code,
     payment.qrLink,
-    payment.qr_link
+    payment.qr_link,
+    raw?.qrUrl,
+    raw?.qr_url
   );
 
-  const sepayDescription =
+  const paymentDescription =
     firstTextValue(
       payment.description,
       payment.note,
@@ -298,32 +374,54 @@ const normalizeOrder = (raw) => {
       payment.content,
       payment.payment_content
     ) || paymentContent || paymentCode;
-  const sepayAccountNumber = firstTextValue(
+  const paymentAccountNumber = firstTextValue(
     payment.bankAccountNumber,
     payment.accountNumber,
     payment.bank_account_number,
     payment.acc,
     payment.account,
+    payment.account_no,
+    payment.account_number,
+    raw?.bankAccountNumber,
+    raw?.bank_account_number,
+    raw?.accountNumber,
+    raw?.account_number,
     payment.bankAccountId,
-    payment.bank_account_id
+    payment.bank_account_id,
+    raw?.bankAccountId,
+    raw?.bank_account_id,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NUMBER : null
   );
-  const sepayBankName = firstTextValue(
+  const paymentBankName = firstTextValue(
     payment.bankName,
     payment.bank,
     payment.bank_name,
+    payment.bankCode,
+    payment.bank_code,
+    raw?.bankName,
+    raw?.bank_name,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_BANK_NAME : null
+  );
+  const paymentAccountName = firstTextValue(
     payment.bankAccountName,
     payment.bank_account_name,
-    payment.bankAccountHolderName,
-    payment.bank_account_holder_name
+    raw?.bankAccountName,
+    raw?.bank_account_name,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NAME : null
   );
-  const sepayQrUrl = buildSepayQrUrl({
-    accountNumber: sepayAccountNumber,
-    bankName: sepayBankName,
+  const providerQrUrl = paymentMethod === "SEPAY" ? buildSepayQrUrl({
+    accountNumber: paymentAccountNumber,
+    bankName: paymentBankName,
     amount: paymentAmount,
-    description: sepayDescription,
-  });
-  const fallbackQrUrl = payNow > 0 ? makeQrUrl(paymentContent || paymentCode) : null;
-  const qrUrl = qrCandidate || sepayQrUrl || fallbackQrUrl;
+    description: paymentDescription,
+  }) : null;
+  const vnpayQrUrl =
+    paymentMethod === "VNPAY" && paymentLink ? makeQrUrl(paymentLink) : null;
+  const genericFallbackQrUrl =
+    payNow > 0 && paymentMethod !== "SEPAY" && paymentMethod !== "VNPAY"
+      ? makeQrUrl(paymentLink || paymentContent || paymentCode)
+      : null;
+  const qrUrl = firstQrImageUrl(qrCandidate, providerQrUrl, vnpayQrUrl, genericFallbackQrUrl);
   const bankAccountIdValue = firstTextValue(payment.bankAccountId, payment.bank_account_id);
 
   const rawAddress = raw?.shippingAddress || raw?.address || null;
@@ -362,12 +460,14 @@ const normalizeOrder = (raw) => {
       amount: paymentAmount,
       paymentCode,
       content: paymentContent,
-      description: sepayDescription,
+      description: paymentDescription,
       bankAccountId: bankAccountIdValue,
-      bankAccountNumber: sepayAccountNumber,
-      bankName: sepayBankName,
+      bankAccountNumber: paymentAccountNumber,
+      bankName: paymentBankName,
+      bankAccountName: paymentAccountName,
       createdAt: paymentCreatedAt,
       paidAt: paymentPaidAt,
+      paymentUrl: paymentLink,
       qrUrl,
     },
   };
@@ -375,6 +475,10 @@ const normalizeOrder = (raw) => {
 
 export default function CheckoutStatusScreen({ navigation, route }) {
   const initialOrder = route?.params?.order || null;
+  const cartType =
+    route?.params?.cartType === CART_TYPES.PREORDER
+      ? CART_TYPES.PREORDER
+      : CART_TYPES.ORDER;
   const [serverOrder, setServerOrder] = useState(null);
   const clearCart = useCartStore((s) => s.clear);
   const clearedRef = useRef(false);
@@ -436,6 +540,14 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   );
   const isPaymentSettled = paymentStatus === "PAID" || paymentStatus === "REFUNDED";
   const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled;
+  const qrImageSource = useMemo(() => buildQrImageSource(order.payment.qrUrl), [order.payment.qrUrl]);
+  const canOpenPaymentUrl = Boolean(order.payment.paymentUrl) && !isPaymentSettled;
+  const paymentMethodLabel =
+    order.payment.method === "VNPAY"
+      ? "VNPay"
+      : order.payment.method === "SEPAY"
+        ? "SePay"
+        : order.payment.method || "QR";
 
   const navigateToTab = (tabName, screenName) => {
     navigation.navigate("Tabs", {
@@ -447,13 +559,12 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   useEffect(() => {
     if (paymentStatus === "PAID" && !clearedRef.current) {
       clearedRef.current = true;
-      clearCart();
+      clearCart(cartType);
     }
-  }, [paymentStatus, clearCart]);
+  }, [paymentStatus, clearCart, cartType]);
 
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
   const handleViewOrderDetail = () => navigateToTab("OrdersTab", "Orders");
-
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -482,10 +593,10 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
         {shouldShowQr ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>QR thanh toán SePay</Text>
+            <Text style={styles.sectionTitle}>QR thanh toán {paymentMethodLabel}</Text>
             <Text style={styles.mutedText}>Quét mã để đặt cọc và hoàn tất đơn đặt trước.</Text>
             <View style={styles.qrWrap}>
-              <Image source={{ uri: order.payment.qrUrl }} style={styles.qrImage} />
+              {qrImageSource ? <Image source={qrImageSource} style={styles.qrImage} /> : null}
             </View>
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Số tiền cần chuyển</Text>
@@ -501,12 +612,14 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 {order.payment.content || order.payment.paymentCode || order.payment.description || "--"}
               </Text>
             </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Tài khoản nhận</Text>
-              <Text style={styles.metaValue}>
-                {order.payment.bankAccountNumber || order.payment.bankAccountId || "--"}
-              </Text>
-            </View>
+            {order.payment.bankAccountNumber || order.payment.bankAccountId ? (
+              <View style={styles.rowBetween}>
+                <Text style={styles.metaLabel}>Tài khoản nhận</Text>
+                <Text style={styles.metaValue}>
+                  {order.payment.bankAccountNumber || order.payment.bankAccountId || "--"}
+                </Text>
+              </View>
+            ) : null}
             {order.payment.bankName ? (
               <View style={styles.rowBetween}>
                 <Text style={styles.metaLabel}>Ngân hàng</Text>
@@ -517,6 +630,20 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               <Text style={styles.metaLabel}>Thời gian tạo</Text>
               <Text style={styles.metaValue}>{formatDateTime(order.payment.createdAt)}</Text>
             </View>
+          </View>
+        ) : canOpenPaymentUrl ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Thanh toán {paymentMethodLabel}</Text>
+            <Text style={styles.mutedText}>
+              Không có ảnh QR hợp lệ từ hệ thống. Vui lòng mở link thanh toán.
+            </Text>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnPrimary, { marginTop: 12 }]}
+              activeOpacity={0.85}
+              onPress={() => Linking.openURL(order.payment.paymentUrl)}
+            >
+              <Text style={[styles.actionText, styles.actionTextPrimary]}>Mở link thanh toán</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -552,7 +679,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Thanh toán thành công!</Text>
             <Text style={styles.mutedText}>
-              Đơn hàng đã đượcc ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết đơn.
+              Đơn hàng đã được ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết đơn.
             </Text>
             <View style={styles.actionRow}>
               <TouchableOpacity
