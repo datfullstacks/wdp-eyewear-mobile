@@ -19,8 +19,7 @@ import {
 } from "../services/userService";
 import { getMyOrdersApi } from "../services/orderService";
 
-const AVATAR_URI =
-  "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=320&q=80";
+// Remove AVATAR_URI constant
 
 const STAT_ACCENTS = {
   orders: { bg: "#EEF2FF", fg: "#4F46E5" },
@@ -34,6 +33,13 @@ const SETTING_ACCENTS = {
   support: { bg: "#F3E8FF", fg: "#7C3AED" },
   noti: { bg: "#ECFEFF", fg: "#0891B2" },
 };
+
+// Add avatar color array
+const AVATAR_COLORS = [
+  "#F44336", "#E91E63", "#9C27B0", "#673AB7", "#3F51B5", 
+  "#2196F3", "#03A9F4", "#00BCD4", "#009688", "#4CAF50", 
+  "#8BC34A", "#CDDC39", "#FFC107", "#FF9800", "#FF5722"
+];
 
 function Card({ children, style }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -115,17 +121,57 @@ function LoginRequired({ navigation }) {
   );
 }
 
-/* -------------------- Header (same format as Favorites) -------------------- */
+/* -------------------- Header -------------------- */
 
-function ProfileHeader({ right }) {
+function ProfileHeader({ navigation, right }) {
   return (
     <View style={styles.header}>
-      <View style={styles.headerLeft}>
-        <View style={styles.iconBtn} />{/* placeholder để cân layout như Favorites */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+        <Pressable
+          style={styles.iconBtn}
+          onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
+        >
+          <Ionicons name="chevron-back" size={22} color="#111827" />
+        </Pressable>
         <Text style={styles.headerTitle}>Tài khoản</Text>
       </View>
 
       {right ?? <View style={styles.iconBtn} />}
+    </View>
+  );
+}
+
+/* -------------------- Text Avatar Component -------------------- */
+
+function TextAvatar({ name, size = 74, style }) {
+  // Get first letter of name, default to "?" if no name
+  const firstLetter = name?.trim()?.charAt(0)?.toUpperCase() || "?";
+  
+  // Generate consistent color based on name
+  const getColorFromName = (name) => {
+    if (!name) return AVATAR_COLORS[0];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % AVATAR_COLORS.length;
+    return AVATAR_COLORS[index];
+  };
+
+  const backgroundColor = getColorFromName(name);
+
+  return (
+    <View style={[
+      styles.avatarRing,
+      { backgroundColor: "#FFFFFF" },
+      style
+    ]}>
+      <View style={[
+        styles.textAvatar,
+        { backgroundColor, width: "100%", height: "100%" }
+      ]}>
+        <Text style={styles.textAvatarLetter}>{firstLetter}</Text>
+      </View>
     </View>
   );
 }
@@ -180,7 +226,7 @@ export default function ProfileScreen({ navigation }) {
           addresses: Array.isArray(addresses) ? addresses.length : 0,
           prescription: String(Array.isArray(prescriptions) ? prescriptions.length : 0),
         }));
-      } catch {}
+      } catch { }
     };
 
     loadStats();
@@ -207,6 +253,7 @@ export default function ProfileScreen({ navigation }) {
         <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
 
         <ProfileHeader
+          navigation={navigation}
           right={
             <Pressable onPress={logout} style={styles.iconBtn}>
               <Ionicons name="log-out-outline" size={20} color="#111827" />
@@ -228,8 +275,9 @@ export default function ProfileScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
 
-      {/* Header: same format as Favorites */}
+      {/* Header with back button */}
       <ProfileHeader
+        navigation={navigation}
         right={
           <Pressable
             onPress={() => console.log("Edit profile")}
@@ -247,14 +295,7 @@ export default function ProfileScreen({ navigation }) {
         {/* Profile card */}
         <Card style={{ padding: 16 }}>
           <View style={styles.profileTop}>
-            <View style={styles.avatarRing}>
-              <Image
-                source={{ uri: AVATAR_URI }}
-                style={styles.avatar}
-                contentFit="cover"
-                transition={150}
-              />
-            </View>
+            <TextAvatar name={displayName} size={74} />
 
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{displayName}</Text>
@@ -463,7 +504,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(37,99,235,0.18)",
   },
-  avatar: { width: "100%", height: "100%", borderRadius: 999 },
+  textAvatar: {
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  textAvatarLetter: {
+    color: "#FFFFFF",
+    fontSize: 32,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
 
   name: { fontSize: 18, fontWeight: "800", color: "#111827" },
   email: { marginTop: 2, color: "#6B7280", fontWeight: "600" },
@@ -576,4 +627,11 @@ const styles = StyleSheet.create({
   lockBtnText: { color: "#fff", fontWeight: "900" },
   lockLink: { marginTop: 10, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 12 },
   lockLinkText: { color: "#2563EB", fontWeight: "900" },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

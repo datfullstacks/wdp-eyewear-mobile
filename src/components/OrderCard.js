@@ -221,13 +221,13 @@ export default function OrderCard({
         <View style={styles.cardHeader}>
           <View style={styles.orderInfo}>
             <View style={styles.orderIdContainer}>
-              <Ionicons name="receipt-outline" size={16} color="#6B7280" />
+              <Ionicons name="receipt-outline" size={16} color="black" />
               <Text style={styles.orderId} numberOfLines={1}>
                 {orderId.slice(-8).toUpperCase()}
               </Text>
             </View>
             <View style={styles.orderDateContainer}>
-              <Ionicons name="calendar-outline" size={12} color="#9CA3AF" />
+              <Ionicons name="calendar-outline" size={12} color="black" />
               <Text style={styles.orderDate}>{formatDate(order?.createdAt)}</Text>
             </View>
           </View>
@@ -240,7 +240,7 @@ export default function OrderCard({
 
         <View style={styles.itemsPreview}>
           <View style={styles.itemsCount}>
-            <Ionicons name="cube-outline" size={14} color="#6B7280" />
+            <Ionicons name="cube-outline" size={14} color="black" />
             <Text style={styles.itemsCountText}>{totalItems} sản phẩm</Text>
           </View>
           
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
   orderDate: { 
     fontSize: 12, 
     fontWeight: "500", 
-    color: "#9CA3AF" 
+    color: "black" 
   },
 
   badgeContainer: {
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
   itemsCountText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#6B7280",
+    color: "black",
   },
 
   itemsList: {
@@ -637,9 +637,9 @@ const styles = StyleSheet.create({
   },
 
   totalLabel: { 
-    fontSize: 11, 
+    fontSize: 15, 
     fontWeight: "500", 
-    color: "#9CA3AF",
+    color: "black",
     marginBottom: 2,
   },
 

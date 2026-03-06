@@ -17,10 +17,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from "react-native-safe-area-context";
 // Import đúng cách từ @expo/vector-icons
-import Ionicons from '@expo/vector-icons/Ionicons';
-import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import AntDesign from '@expo/vector-icons/AntDesign';
+import { Ionicons, AntDesign, MaterialIcons, FontAwesome5, FontAwesome6, Entypo, MaterialCommunityIcons } from '@expo/vector-icons';
 
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import HomeBanner from "../components/HomeBanner";
@@ -92,6 +89,85 @@ const CATEGORIES = [
     bg: "#D1FAE5"
   },
 ];
+
+// Hàm xác định mùa hiện tại
+const getCurrentSeason = () => {
+  const month = new Date().getMonth() + 1; // JavaScript months are 0-indexed
+
+  if (month >= 3 && month <= 5) {
+    return {
+      name: 'Mùa Xuân',
+      icon: 'flower',
+      iconSet: 'MaterialCommunityIcons',
+      color: '#10B981',
+      bg: '#D1FAE5',
+      subtitle: 'Sản phẩm tươi mới cho mùa xuân'
+    };
+  } else if (month >= 6 && month <= 8) {
+    return {
+      name: 'Mùa Hè',
+      icon: 'sunny-sharp',
+      iconSet: 'Ionicons',
+      color: '#F59E0B',
+      bg: '#FEF3C7',
+      subtitle: 'Chống nắng, chống chói cho mùa hè'
+    };
+  } else if (month >= 9 && month <= 11) {
+    return {
+      name: 'Mùa Thu',
+      icon: 'canadian-maple-leaf',
+      iconSet: 'FontAwesome6',
+      color: '#E11D48',
+      bg: '#FFE4E6',
+      subtitle: 'Phong cách ấm áp cho mùa thu'
+    };
+  } else {
+    return {
+      name: 'Mùa Đông',
+      icon: 'snowflake',
+      iconSet: 'FontAwesome5',
+      color: '#4F46E5',
+      bg: '#EEF2FF',
+      subtitle: 'Giữ ấm đôi mắt mùa đông'
+    };
+  }
+};
+
+// Hàm lọc sản phẩm theo mùa
+const getSeasonalProducts = (products, season) => {
+  if (!products?.length) return [];
+
+  // Logic lọc sản phẩm theo mùa dựa vào tags hoặc categories
+  // Bạn có thể điều chỉnh logic này dựa vào dữ liệu thực tế của bạn
+  const seasonalKeywords = {
+    'Mùa Xuân': ['xuân', 'spring', 'tết', 'hoa', 'nhẹ', 'pastel'],
+    'Mùa Hè': ['hè', 'summer', 'nắng', 'chống nắng', 'kính mát', 'polarized', 'UV'],
+    'Mùa Thu': ['thu', 'autumn', 'ấm', 'nâu', 'vintage', 'retro'],
+    'Mùa Đông': ['đông', 'winter', 'len', 'gió', 'chống gió', 'chống trầy']
+  };
+
+  const keywords = seasonalKeywords[season.name] || [];
+
+  // Lọc sản phẩm dựa vào tên hoặc tags (nếu có)
+  // Tạm thời trả về 6 sản phẩm đầu, bạn có thể thay bằng logic thực tế
+  // Ví dụ: filter sản phẩm có tags phù hợp với mùa
+  const filtered = products.filter(product => {
+    // Nếu product có trường seasonalTags
+    if (product.seasonalTags) {
+      return product.seasonalTags.includes(season.name) ||
+        product.seasonalTags.some(tag => keywords.includes(tag.toLowerCase()));
+    }
+    // Nếu product có category phù hợp với mùa
+    if (product.category) {
+      if (season.name === 'Mùa Hè' && product.category === 'Kính mát') return true;
+      if (season.name === 'Mùa Đông' && product.category === 'Gọng kính') return true;
+    }
+    return false;
+  });
+
+  // Nếu có sản phẩm filter thì trả về, không thì trả về 6 sản phẩm đầu
+  return filtered.length > 0 ? filtered.slice(0, 6) : products.slice(0, 6);
+};
 
 function chunkArray(arr, size) {
   const out = [];
@@ -212,6 +288,8 @@ function CategoryCard({ category, onPress }) {
         return <MaterialIcons name={category.icon} size={24} color={category.color} />;
       case "AntDesign":
         return <AntDesign name={category.icon} size={24} color={category.color} />;
+      case "MaterialCommunityIcons":
+        return <MaterialCommunityIcons name={category.icon} size={24} color={category.color} />;
       default:
         return <FontAwesome5 name="box" size={24} color={category.color} />;
     }
@@ -233,6 +311,60 @@ function CategoryCard({ category, onPress }) {
   );
 }
 
+// Component icon cho seasonal section
+const SeasonalIcon = ({ season }) => {
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotateAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const spin = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
+
+  const renderIcon = () => {
+    switch (season.iconSet) {
+      case "FontAwesome5":
+        return <FontAwesome5 name={season.icon} size={24} color={season.color} solid />;
+      case "Ionicons":
+        return <Ionicons name={season.icon} size={24} color={season.color} />;
+      case "MaterialCommunityIcons":
+        return <MaterialCommunityIcons name={season.icon} size={24} color={season.color} />;
+      case "FontAwesome6":
+        return <FontAwesome6 name={season.icon} size={24} color={season.color} solid />;
+      default:
+        return <FontAwesome5 name="leaf" size={24} color={season.color} />;
+    }
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.seasonalIconContainer,
+        { backgroundColor: season.bg },
+        season.name === 'Mùa Hè' && { transform: [{ rotate: spin }] }
+      ]}
+    >
+      {renderIcon()}
+    </Animated.View>
+  );
+};
+
 export default function HomeScreen({ navigation }) {
   const token = useAuthStore((s) => s.token);
   const logout = useAuthStore((s) => s.logout);
@@ -244,6 +376,7 @@ export default function HomeScreen({ navigation }) {
   const [addressModalVisible, setAddressModalVisible] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const { products } = useProducts();
+  const [currentSeason, setCurrentSeason] = useState(getCurrentSeason());
 
   const [settingDefaultId, setSettingDefaultId] = useState(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -264,6 +397,37 @@ export default function HomeScreen({ navigation }) {
       }),
     ]).start();
   }, []);
+
+  // Kiểm tra và cập nhật mùa mỗi khi app mở lại
+  useEffect(() => {
+    const checkSeasonChange = () => {
+      const newSeason = getCurrentSeason();
+      if (newSeason.name !== currentSeason.name) {
+        // Animation khi đổi mùa
+        Animated.sequence([
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start();
+
+        setCurrentSeason(newSeason);
+      }
+    };
+
+    checkSeasonChange();
+  }, []);
+
+  const seasonalProducts = useMemo(() =>
+    getSeasonalProducts(products, currentSeason),
+    [products, currentSeason]
+  );
 
   const loadAddress = useCallback(async () => {
     setAddressLoading(true);
@@ -479,7 +643,7 @@ export default function HomeScreen({ navigation }) {
           {/* Bán chạy */}
           <View style={styles.section}>
             <View style={styles.sectionRow}>
-              <Text style={styles.sectionTitle}>Bán chạy</Text>
+              <Text style={styles.sectionTitle}><FontAwesome5 name="fire-alt" size={20} color="red" /> Bán chạy</Text>
               <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
                 <Text style={styles.sectionLink}>Xem tất cả</Text>
               </TouchableOpacity>
@@ -494,7 +658,7 @@ export default function HomeScreen({ navigation }) {
           {/* Mới về */}
           <View style={styles.section}>
             <View style={styles.sectionRow}>
-              <Text style={styles.sectionTitle}>Mới về</Text>
+              <Text style={styles.sectionTitle}><Entypo name="new" size={20} color="orange" /> Mới về</Text>
               <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
                 <Text style={styles.sectionLink}>Xem tất cả</Text>
               </TouchableOpacity>
@@ -520,17 +684,35 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Sản phẩm ghép sẵn */}
+          {/* Sản phẩm theo mùa - ĐÃ CẬP NHẬT */}
           <View style={styles.section}>
             <View style={styles.sectionRow}>
-              <Text style={styles.sectionTitle}>Sản phẩm ghép sẵn</Text>
-              <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
+              <View style={styles.seasonalTitleContainer}>
+                <SeasonalIcon season={currentSeason} />
+                <View>
+                  <Text style={styles.sectionTitle}>
+                    {currentSeason.name}
+                  </Text>
+                  <Text style={styles.seasonalSubtitle}>
+                    {currentSeason.subtitle}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("ProductsTab", {
+                  screen: "Products",
+                  params: {
+                    season: currentSeason.name,
+                    autoApplyFilter: true
+                  }
+                })}
+              >
                 <Text style={styles.sectionLink}>Xem tất cả</Text>
               </TouchableOpacity>
             </View>
 
             <ProductPager
-              products={products.slice(0, 6)}
+              products={seasonalProducts}
               onPressItem={(item) => navigation.navigate("ProductDetail", { item, id: item.apiId })}
             />
           </View>
@@ -622,7 +804,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: PAGE_PADDING,
     gap: 10,
     marginBottom: 10,
-    backgroundColor: "#FFFFFF",
     paddingBottom: 16,
   },
 
@@ -638,7 +819,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#FFF",
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 38,
@@ -722,6 +903,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900",
     color: "#111827",
+    marginLeft: 4,
   },
 
   sectionLink: {
@@ -815,6 +997,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+
+  // Seasonal styles
+  seasonalTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  seasonalIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  seasonalSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+    fontWeight: '500',
   },
 
   // Modal styles cũ
