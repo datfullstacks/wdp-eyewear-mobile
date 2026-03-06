@@ -42,6 +42,18 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+android_bak_*/
+**/.cxx/
+**/.gradle/
+*.apk
+*.aab
+
+# IDE local files
+.idea/caches/
+.idea/deviceManager.xml
+.idea/emulatorDisplays.xml
+.idea/tasks.xml
+.idea/workspace.xml
 
 # local docs and data
 product.md
