@@ -36,8 +36,8 @@ const SETTING_ACCENTS = {
 
 // Add avatar color array
 const AVATAR_COLORS = [
-  "#F44336", "#E91E63", "#9C27B0", "#673AB7", "#3F51B5", 
-  "#2196F3", "#03A9F4", "#00BCD4", "#009688", "#4CAF50", 
+  "#F44336", "#E91E63", "#9C27B0", "#673AB7", "#3F51B5",
+  "#2196F3", "#03A9F4", "#00BCD4", "#009688", "#4CAF50",
   "#8BC34A", "#CDDC39", "#FFC107", "#FF9800", "#FF5722"
 ];
 
@@ -146,7 +146,7 @@ function ProfileHeader({ navigation, right }) {
 function TextAvatar({ name, size = 74, style }) {
   // Get first letter of name, default to "?" if no name
   const firstLetter = name?.trim()?.charAt(0)?.toUpperCase() || "?";
-  
+
   // Generate consistent color based on name
   const getColorFromName = (name) => {
     if (!name) return AVATAR_COLORS[0];
@@ -240,7 +240,15 @@ export default function ProfileScreen({ navigation }) {
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Tài khoản</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Pressable
+              style={styles.iconBtn}
+              onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
+            >
+              <Ionicons name="chevron-back" size={22} color="#111827" />
+            </Pressable>
+            <Text style={styles.headerTitle}>Tài khoản</Text>
+          </View>
         </View>
         <LoginRequired navigation={navigation} />
       </SafeAreaView>
