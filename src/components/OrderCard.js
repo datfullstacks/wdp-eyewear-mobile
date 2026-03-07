@@ -10,45 +10,45 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 const STATUS_META = {
-  pending: { 
-    label: "Chờ xác nhận", 
-    color: "#B45309", 
+  pending: {
+    label: "Chờ xác nhận",
+    color: "#B45309",
     bg: "#FFF7ED",
     icon: "time-outline",
   },
-  confirmed: { 
-    label: "Đã xác nhận", 
-    color: "#1D4ED8", 
+  confirmed: {
+    label: "Đã xác nhận",
+    color: "#1D4ED8",
     bg: "#EFF6FF",
     icon: "checkmark-circle-outline",
   },
-  processing: { 
-    label: "Đang xử lý", 
-    color: "#1D4ED8", 
+  processing: {
+    label: "Đang xử lý",
+    color: "#1D4ED8",
     bg: "#EFF6FF",
     icon: "sync-outline",
   },
-  shipped: { 
-    label: "Đang giao", 
-    color: "#0F766E", 
+  shipped: {
+    label: "Đang giao",
+    color: "#0F766E",
     bg: "#ECFEFF",
     icon: "bicycle-outline",
   },
-  delivered: { 
-    label: "Đã giao", 
-    color: "#15803D", 
+  delivered: {
+    label: "Đã giao",
+    color: "#15803D",
     bg: "#ECFDF5",
     icon: "checkmark-done-outline",
   },
-  cancelled: { 
-    label: "Đã hủy", 
-    color: "#991B1B", 
+  cancelled: {
+    label: "Đã hủy",
+    color: "#991B1B",
     bg: "#FEE2E2",
     icon: "close-circle-outline",
   },
-  returned: { 
-    label: "Đã trả", 
-    color: "#6B7280", 
+  returned: {
+    label: "Đã trả",
+    color: "#6B7280",
     bg: "#F3F4F6",
     icon: "return-down-back-outline",
   },
@@ -75,11 +75,11 @@ const formatDate = (v) => {
   if (!v) return "--";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(v);
-  
+
   const now = new Date();
   const diff = now - d;
   const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 0) {
     return `Hôm nay, ${d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`;
   } else if (diffDays === 1) {
@@ -87,7 +87,7 @@ const formatDate = (v) => {
   } else if (diffDays < 7) {
     return `${diffDays} ngày trước`;
   }
-  
+
   return d.toLocaleDateString("vi-VN", {
     day: "2-digit",
     month: "2-digit",
@@ -98,14 +98,14 @@ const formatDate = (v) => {
 function StatusBadge({ status, size = "medium" }) {
   const key = String(status || "pending").toLowerCase();
   const meta = STATUS_META[key] || STATUS_META.pending;
-  
+
   const badgeStyles = {
     small: { paddingHorizontal: 8, paddingVertical: 4, fontSize: 10 },
     medium: { paddingHorizontal: 12, paddingVertical: 6, fontSize: 11.5 },
   };
-  
+
   const selected = badgeStyles[size] || badgeStyles.medium;
-  
+
   return (
     <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
       <Ionicons name={meta.icon} size={selected.fontSize + 2} color={meta.color} />
@@ -127,13 +127,13 @@ function PreorderBadge() {
 
 function OrderItemRow({ orderItem, onEdit }) {
   const typeKey = String(orderItem?.type || "").toLowerCase();
-  const typeMeta = TYPE_META[typeKey] || { 
-    icon: "cube-outline", 
-    color: "#6B7280", 
-    bg: "#F3F4F6", 
-    label: "Sản phẩm" 
+  const typeMeta = TYPE_META[typeKey] || {
+    icon: "cube-outline",
+    color: "#6B7280",
+    bg: "#F3F4F6",
+    label: "Sản phẩm"
   };
-  
+
   const hasImage = Boolean(orderItem?.image);
 
   return (
@@ -146,7 +146,7 @@ function OrderItemRow({ orderItem, onEdit }) {
             <Ionicons name={typeMeta.icon} size={20} color={typeMeta.color} />
           </View>
         )}
-        
+
         {orderItem?.preorder && (
           <View style={styles.preorderItemBadge}>
             <Ionicons name="time-outline" size={10} color="#15803D" />
@@ -190,14 +190,15 @@ function OrderItemRow({ orderItem, onEdit }) {
   );
 }
 
-export default function OrderCard({ 
-  order, 
-  onEditItem, 
-  onCancel, 
+export default function OrderCard({
+  order,
+  onEditItem,
+  onCancel,
   onPress,
-  showEditButton = true 
+  showEditButton = true
 }) {
   const orderId = order?._id || order?.id || "--";
+  const orderCode = order?.paymentCode;
   const orderItems = Array.isArray(order?.items) ? order.items : [];
 
   const statusKey = String(order?.status || "").toLowerCase();
@@ -207,43 +208,43 @@ export default function OrderCard({
   const canCancel = ["pending", "confirmed", "processing"].includes(statusKey) && !isPaid;
 
   const totalItems = orderItems.reduce((sum, item) => sum + (item?.qty || 1), 0);
-  
+
   // Kiểm tra xem có sản phẩm nào là preorder không
   const hasPreorder = orderItems.some(item => item?.preorder);
 
   return (
-    <TouchableOpacity 
-      activeOpacity={0.95} 
+    <TouchableOpacity
+      activeOpacity={0.95}
       onPress={onPress}
       style={styles.cardWrapper}
     >
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View style={styles.orderInfo}>
-            <View style={styles.orderIdContainer}>
-              <Ionicons name="receipt-outline" size={16} color="#6B7280" />
-              <Text style={styles.orderId} numberOfLines={1}>
-                {orderId.slice(-8).toUpperCase()}
+            <View style={styles.orderCodeContainer}>
+              <Ionicons name="receipt-outline" size={16} color="black" />
+              <Text style={styles.orderCode} numberOfLines={1}>
+                {orderCode}
               </Text>
             </View>
             <View style={styles.orderDateContainer}>
-              <Ionicons name="calendar-outline" size={12} color="#9CA3AF" />
+              <Ionicons name="calendar-outline" size={12} color="black" />
               <Text style={styles.orderDate}>{formatDate(order?.createdAt)}</Text>
             </View>
           </View>
-          
+
           <View style={styles.badgeContainer}>
-            {hasPreorder && <PreorderBadge />}
             <StatusBadge status={order?.status} />
+            {hasPreorder && <PreorderBadge />}
           </View>
         </View>
 
         <View style={styles.itemsPreview}>
           <View style={styles.itemsCount}>
-            <Ionicons name="cube-outline" size={14} color="#6B7280" />
+            <Ionicons name="cube-outline" size={14} color="black" />
             <Text style={styles.itemsCountText}>{totalItems} sản phẩm</Text>
           </View>
-          
+
           {orderItems.length > 0 && (
             <View style={styles.itemsList}>
               {orderItems.slice(0, 2).map((item, idx) => (
@@ -253,9 +254,9 @@ export default function OrderCard({
                   onEdit={() => showEditButton && onEditItem?.(item, order)}
                 />
               ))}
-              
+
               {orderItems.length > 2 && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.viewMoreBtn}
                   onPress={(e) => {
                     e.stopPropagation();
@@ -343,16 +344,16 @@ const styles = StyleSheet.create({
     gap: 4,
   },
 
-  orderIdContainer: {
+  orderCodeContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
 
-  orderId: { 
-    fontSize: 15, 
-    fontWeight: "800", 
-    color: "#111827" 
+  orderCode: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#111827"
   },
 
   orderDateContainer: {
@@ -361,18 +362,17 @@ const styles = StyleSheet.create({
     gap: 4,
   },
 
-  orderDate: { 
-    fontSize: 12, 
-    fontWeight: "500", 
-    color: "#9CA3AF" 
+  orderDate: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "black"
   },
 
   badgeContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "flex-end",
     gap: 8,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
   },
 
   statusBadge: {
@@ -384,9 +384,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
 
-  statusBadgeText: { 
-    fontSize: 11.5, 
-    fontWeight: "700" 
+  statusBadgeText: {
+    fontSize: 11.5,
+    fontWeight: "700"
   },
 
   preorderBadge: {
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
   itemsCountText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#6B7280",
+    color: "black",
   },
 
   itemsList: {
@@ -443,11 +443,11 @@ const styles = StyleSheet.create({
     position: "relative",
   },
 
-  itemThumb: { 
-    width: 56, 
-    height: 56, 
-    borderRadius: 12, 
-    backgroundColor: "#F3F4F6" 
+  itemThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6"
   },
 
   itemThumbIcon: {
@@ -479,14 +479,14 @@ const styles = StyleSheet.create({
     color: "#15803D",
   },
 
-  orderItemMid: { 
-    flex: 1 
+  orderItemMid: {
+    flex: 1
   },
 
-  orderItemName: { 
-    fontSize: 13, 
-    fontWeight: "600", 
-    color: "#111827", 
+  orderItemName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#111827",
     lineHeight: 18,
     marginBottom: 4,
   },
@@ -539,10 +539,10 @@ const styles = StyleSheet.create({
     borderColor: "#BFDBFE",
   },
 
-  editItemBtnText: { 
-    fontSize: 12, 
-    fontWeight: "600", 
-    color: "#2563EB" 
+  editItemBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#2563EB"
   },
 
   viewMoreBtn: {
@@ -587,10 +587,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
 
-  paidTagText: { 
-    fontSize: 12, 
-    fontWeight: "700", 
-    color: "#15803D" 
+  paidTagText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#15803D"
   },
 
   unpaidTag: {
@@ -604,10 +604,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
 
-  unpaidTagText: { 
-    fontSize: 12, 
-    fontWeight: "700", 
-    color: "#B45309" 
+  unpaidTagText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#B45309"
   },
 
   footerRight: {
@@ -636,16 +636,16 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
 
-  totalLabel: { 
-    fontSize: 11, 
-    fontWeight: "500", 
-    color: "#9CA3AF",
+  totalLabel: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "black",
     marginBottom: 2,
   },
 
-  totalValue: { 
-    fontSize: 16, 
-    fontWeight: "800", 
-    color: "#EF4444" 
+  totalValue: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#EF4444"
   },
 });

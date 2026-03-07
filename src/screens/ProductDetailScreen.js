@@ -627,7 +627,7 @@ export default function ProductDetailScreen({ navigation, route }) {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <HeaderBar navigation={navigation} title={headerTitle} isPreorderMode={isPreorderMode} />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={styles.content}>
         {isRefreshing ? (
           <Text style={{ marginTop: 10, fontWeight: "700", color: "#6B7280" }}>
             Đang cập nhật dữ liệu mới nhất...
