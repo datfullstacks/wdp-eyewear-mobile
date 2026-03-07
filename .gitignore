@@ -39,12 +39,16 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# native build outputs and machine-local files
 android_bak_*/
-**/.cxx/
-**/.gradle/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/**/.cxx/
+android/**/*.iml
+android/**/*.hprof
+android/*.log
+/ios
 *.apk
 *.aab
 

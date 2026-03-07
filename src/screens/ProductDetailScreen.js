@@ -48,8 +48,23 @@ const TRY_ON_STATUS_LABEL = {
   archived: "Try-on đã lưu trữ",
 };
 
+const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
+const MODEL_FILE_PATTERN = /\.(glb|gltf|usdz)(\?|#|$)/i;
+
 function normalizeStr(s) {
   return String(s ?? "").trim().toLowerCase();
+}
+
+function canUseAbsoluteHttpUrl(value) {
+  return ABSOLUTE_URL_PATTERN.test(String(value ?? "").trim());
+}
+
+function isModelFileUrl(value) {
+  return MODEL_FILE_PATTERN.test(String(value ?? "").trim());
+}
+
+function isWebTryOnUrl(value) {
+  return canUseAbsoluteHttpUrl(value) && !isModelFileUrl(value);
 }
 
 function toIdString(value) {
@@ -208,7 +223,6 @@ function getCompatibleProducts(products, product) {
       return idSet.has(pid);
     });
 }
-
 /* -------------------- Screen -------------------- */
 
 export default function ProductDetailScreen({ navigation, route }) {
@@ -557,7 +571,25 @@ export default function ProductDetailScreen({ navigation, route }) {
   };
 
   const onOpenTryOn = useCallback(() => {
-    const tryOn = product?.tryOn;
+    const baseTryOn = product?.tryOn;
+    const assetFormat = String(image3DAsset?.format || "").trim().toLowerCase();
+    const assetUrl = String(image3DAsset?.url || "").trim();
+    const assetAr = image3DAsset?.ar && typeof image3DAsset.ar === "object" ? image3DAsset.ar : {};
+    const tryOn = {
+      ...(baseTryOn || {}),
+      glbUrl:
+        assetFormat === "glb" || assetFormat === "gltf"
+          ? String(assetAr.glbUrl || assetUrl || baseTryOn?.glbUrl || "").trim()
+          : String(baseTryOn?.glbUrl || "").trim(),
+      usdzUrl:
+        assetFormat === "usdz"
+          ? String(assetAr.usdzUrl || assetUrl || baseTryOn?.usdzUrl || "").trim()
+          : String(baseTryOn?.usdzUrl || "").trim(),
+    };
+    tryOn.launchUrl =
+      (isWebTryOnUrl(baseTryOn?.launchUrl) ? String(baseTryOn?.launchUrl || "").trim() : "") ||
+      (isWebTryOnUrl(tryOn.arUrl) ? String(tryOn.arUrl || "").trim() : "");
+
     if (!tryOn?.ready) {
       Alert.alert("Try-on", "Try-on chưa sẵn sàng cho sản phẩm này.");
       return;
@@ -571,7 +603,7 @@ export default function ProductDetailScreen({ navigation, route }) {
       },
       tryOn,
     });
-  }, [navigation, product]);
+  }, [image3DAsset, navigation, product]);
 
   if (!product) {
     return (
@@ -616,7 +648,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
         <InfoCard product={product} discountPct={discountPct} isVariantOut={isVariantOut} variantStock={variantStock} />
 
-        {normType(product.type) === "FRAME" ? (
+        {product.type === "FRAME" && product?.tryOn?.enabled ? (
           <TryOnCard tryOn={product.tryOn} onOpenTryOn={onOpenTryOn} />
         ) : null}
 
@@ -892,7 +924,6 @@ function LensOptions({
   decQty,
 }) {
   const hasColors = Array.isArray(product?.colors) && product.colors.length > 0;
-
   return (
     <Card>
       {hasColors ? (
