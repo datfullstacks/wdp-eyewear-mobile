@@ -1,4 +1,4 @@
-package com.anonymous.WDP301_Mobile
+package com.wdp.eyewear
 
 import android.app.Application
 import android.content.res.Configuration
@@ -15,6 +15,9 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
+// @generated begin wdp-tryon-android-import - expo prebuild (DO NOT MODIFY) sync-b1d4d913f001d37676816b868791dd4a2f4a9c4d
+import com.wdp.eyewear.tryon.WdpTryOnPackage
+// @generated end wdp-tryon-android-import
 
 class MainApplication : Application(), ReactApplication {
 
@@ -23,8 +26,11 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              // Manually register custom native package for Android try-on bridge.
-              add(WdpTryOnSdkPackage())
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
+// @generated begin wdp-tryon-android-package - expo prebuild (DO NOT MODIFY) sync-de8ccb36c5cb8cf591c7cbb123a6c9474be03347
+              add(WdpTryOnPackage())
+// @generated end wdp-tryon-android-package
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

@@ -1,4 +1,4 @@
-package com.anonymous.WDP301_Mobile
+package com.wdp.eyewear
 
 import android.os.Build
 import android.os.Bundle

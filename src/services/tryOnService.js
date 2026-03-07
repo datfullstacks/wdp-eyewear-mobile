@@ -11,6 +11,7 @@ const toText = (value) => String(value ?? "").trim();
 const canUseAbsoluteHttpUrl = (value) => ABSOLUTE_URL_PATTERN.test(toText(value));
 
 const isModelFileUrl = (value) => MODEL_FILE_PATTERN.test(toText(value));
+const isWebTryOnUrl = (value) => canUseAbsoluteHttpUrl(value) && !isModelFileUrl(value);
 
 const appendQueryParams = (baseUrl, params) => {
   const pairs = Object.entries(params).filter(([, value]) => toText(value).length > 0);
@@ -25,22 +26,27 @@ const appendQueryParams = (baseUrl, params) => {
 
 export function getTryOnFallbackUrl(tryOn = {}) {
   const arUrl = toText(tryOn.arUrl);
-  if (canUseAbsoluteHttpUrl(arUrl)) return arUrl;
+  if (isWebTryOnUrl(arUrl)) return arUrl;
 
   const usdz = toText(tryOn.usdzUrl);
   const glb = toText(tryOn.glbUrl);
   const launch = toText(tryOn.launchUrl);
 
+  const pickAbsolute = (...candidates) =>
+    candidates.find((value) => canUseAbsoluteHttpUrl(value)) || "";
+  const pickWeb = (...candidates) =>
+    candidates.find((value) => isWebTryOnUrl(value)) || "";
+
   if (Platform.OS === "ios") {
-    return usdz || launch || glb || "";
+    return pickAbsolute(usdz, launch, glb);
   }
-  return glb || launch || usdz || "";
+  return pickWeb(launch);
 }
 
 export function buildTryOnSessionUrl({ product = {}, tryOn = {} } = {}) {
   const fallbackUrl = getTryOnFallbackUrl(tryOn);
   const backendArUrl = toText(tryOn.arUrl);
-  const baseUrl = canUseAbsoluteHttpUrl(backendArUrl) ? backendArUrl : toText(SDK_BASE_URL);
+  const baseUrl = isWebTryOnUrl(backendArUrl) ? backendArUrl : toText(SDK_BASE_URL);
 
   if (!canUseAbsoluteHttpUrl(baseUrl)) {
     return { sessionUrl: "", fallbackUrl };

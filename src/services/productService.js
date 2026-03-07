@@ -1,4 +1,5 @@
 ﻿import { api } from "./apiClient";
+import { attachSupabaseTryOnToProducts } from "./tryOnSupabaseService";
 
 const DEFAULT_IMAGE =
   "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
@@ -44,6 +45,8 @@ const STATUS_LABEL = {
 };
 
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
+const MODEL_FILE_PATTERN = /\.(glb|gltf|usdz)(\?|#|$)/i;
 
 function toText(value) {
   return String(value ?? "").trim();
@@ -53,6 +56,18 @@ function toBoolean(value, defaultValue = false) {
   const normalized = toText(value).toLowerCase();
   if (!normalized) return defaultValue;
   return TRUE_VALUES.has(normalized);
+}
+
+function canUseAbsoluteHttpUrl(value) {
+  return ABSOLUTE_URL_PATTERN.test(toText(value));
+}
+
+function isModelFileUrl(value) {
+  return MODEL_FILE_PATTERN.test(toText(value));
+}
+
+function isWebTryOnUrl(value) {
+  return canUseAbsoluteHttpUrl(value) && !isModelFileUrl(value);
 }
 
 function toCsvList(value) {
@@ -327,9 +342,46 @@ function buildTryOnMeta(media = {}) {
   const assets = Array.isArray(media?.assets) ? media.assets : [];
   const tryOn = media?.tryOn || {};
 
-  const enabled = Boolean(tryOn?.enabled);
   const status = String(tryOn?.status || "").trim().toLowerCase();
-  const published = enabled && status === "published";
+  const arUrl = String(tryOn?.arUrl || "").trim();
+  const directGlbUrl = String(tryOn?.glbUrl || "").trim();
+  const directUsdzUrl = String(tryOn?.usdzUrl || "").trim();
+  const directLaunchUrl = String(tryOn?.launchUrl || "").trim();
+  const effectPath = String(tryOn?.effectPath || tryOn?.effect || "").trim();
+  const scene = String(tryOn?.scene || "").trim();
+  const rotation = String(
+    tryOn?.prefab?.rotation ?? tryOn?.rotation ?? tryOn?.modelRotation ?? tryOn?.banubaRotation ?? ""
+  ).trim();
+  const scale = String(
+    tryOn?.prefab?.scale ?? tryOn?.scale ?? tryOn?.modelScale ?? tryOn?.banubaScale ?? ""
+  ).trim();
+  const translation = String(
+    tryOn?.prefab?.translation ??
+      tryOn?.translation ??
+      tryOn?.modelTranslation ??
+      tryOn?.banubaTranslation ??
+      ""
+  ).trim();
+  const gravity = String(tryOn?.prefab?.gravity ?? tryOn?.gravity ?? "").trim();
+  const cut = String(tryOn?.prefab?.cut ?? tryOn?.cut ?? "").trim();
+  const usePhysics =
+    typeof tryOn?.prefab?.usePhysics === "boolean"
+        ? tryOn.prefab.usePhysics
+      : typeof tryOn?.usePhysics === "boolean"
+        ? tryOn.usePhysics
+        : undefined;
+  const colliders = Array.isArray(tryOn?.prefab?.colliders)
+      ? tryOn.prefab.colliders
+    : Array.isArray(tryOn?.colliders)
+      ? tryOn.colliders
+      : [];
+
+  const hasDirectLaunch = Boolean(arUrl || directGlbUrl || directUsdzUrl || directLaunchUrl || effectPath);
+  const enabled =
+    typeof tryOn?.enabled === "boolean"
+      ? tryOn.enabled
+      : status === "published" || hasDirectLaunch;
+  const published = status === "published" && enabled;
   const configuredAssetIds = Array.isArray(tryOn?.assetIds) ? tryOn.assetIds : [];
   const configuredAssetIdSet = new Set(
     configuredAssetIds.map((id) => String(id || "").trim()).filter(Boolean)
@@ -356,13 +408,25 @@ function buildTryOnMeta(media = {}) {
     }
   });
 
-  const arUrl = String(tryOn?.arUrl || "").trim();
-  const effectPath = String(tryOn?.effectPath || tryOn?.effect || "").trim();
   const resourcePaths = Array.isArray(tryOn?.resourcePaths)
     ? tryOn.resourcePaths.map((p) => String(p || "").trim()).filter(Boolean)
     : [];
-  const launchUrl = arUrl || usdzUrl || glbUrl || "";
-  const ready = published && Boolean(launchUrl || effectPath);
+  if (!glbUrl) glbUrl = directGlbUrl;
+  if (!usdzUrl) usdzUrl = directUsdzUrl;
+  const prefab = {
+    rotation,
+    scale,
+    translation,
+    gravity,
+    cut,
+    ...(typeof usePhysics === "boolean" ? { usePhysics } : {}),
+    ...(Array.isArray(colliders) ? { colliders } : {}),
+  };
+
+  const launchUrl =
+    (isWebTryOnUrl(directLaunchUrl) ? directLaunchUrl : "") ||
+    (isWebTryOnUrl(arUrl) ? arUrl : "");
+  const ready = published && Boolean(effectPath || glbUrl || usdzUrl || launchUrl);
 
   return {
     enabled,
@@ -370,7 +434,9 @@ function buildTryOnMeta(media = {}) {
     published,
     ready,
     arUrl,
+    scene,
     effectPath,
+    prefab,
     resourcePaths,
     glbUrl,
     usdzUrl,
@@ -519,7 +585,8 @@ export async function fetchProducts(params = {}) {
     page += 1;
   } while (page <= totalPages);
 
-  return mapApiProductsToUi(all);
+  const merged = await attachSupabaseTryOnToProducts(all);
+  return mapApiProductsToUi(merged);
 }
 
 export function getRelatedProducts(products, product, limit = 8) {
@@ -534,5 +601,7 @@ export function getRelatedProducts(products, product, limit = 8) {
 
 export async function fetchProductById(id) {
   const res = await api.get(`/api/products/${id}`);
-  return mapApiProductToUi(res?.data?.data);
+  const raw = res?.data?.data;
+  const [merged] = await attachSupabaseTryOnToProducts(raw ? [raw] : []);
+  return mapApiProductToUi(merged || raw);
 }

@@ -30,6 +30,6 @@
         <data android:scheme="exp+wdp301mobile"/>
       </intent-filter>
     </activity>
-    <activity android:name=".WdpTryOnActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme"/>
+    <activity android:name=".tryon.WdpTryOnActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/AppTheme"/>
   </application>
 </manifest>

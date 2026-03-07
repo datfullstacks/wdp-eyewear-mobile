@@ -1,4 +1,6 @@
 import { NativeModules, Platform } from "react-native";
+import { prepareTryOnModelCache } from "./tryOnAssetCacheService";
+import { prepareBanubaRuntimeEffect } from "./tryOnBanubaEffectService";
 
 const DEFAULT_NATIVE_MODULE_NAME = "WdpTryOnSdk";
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
@@ -31,8 +33,54 @@ const pickStartMethod = (module) => {
 };
 
 const canUseAbsoluteHttpUrl = (value) => /^https?:\/\//i.test(toText(value));
+const canUseOpenableUrl = (value) => /^(https?:\/\/|file:\/\/|content:\/\/)/i.test(toText(value));
+const isModelFileUrl = (value) => /\.(glb|gltf|usdz)(\?|#|$)/i.test(toText(value));
+const isWebFallbackUrl = (value) => canUseAbsoluteHttpUrl(value) && !isModelFileUrl(value);
+const canUseExternalFallbackUrl = (value) =>
+  Platform.OS === "ios" ? canUseAbsoluteHttpUrl(value) : isWebFallbackUrl(value);
 const toStringArray = (value) =>
   Array.isArray(value) ? value.map((it) => toText(it)).filter(Boolean) : [];
+
+const pickExternalFallbackUrl = (tryOn = {}) =>
+  Platform.OS === "ios"
+    ? toText(tryOn.usdzUrl) || toText(tryOn.launchUrl) || toText(tryOn.glbUrl)
+    : (isWebFallbackUrl(tryOn.arUrl) ? toText(tryOn.arUrl) : "") ||
+      (isWebFallbackUrl(tryOn.launchUrl) ? toText(tryOn.launchUrl) : "");
+
+function resolvePreparedFallbackUrl({
+  fallbackUrl = "",
+  originalTryOn = {},
+  preparedTryOn = {},
+} = {}) {
+  const requested = toText(fallbackUrl);
+  const original = {
+    arUrl: toText(originalTryOn.arUrl),
+    launchUrl: toText(originalTryOn.launchUrl),
+    glbUrl: toText(originalTryOn.glbUrl),
+    usdzUrl: toText(originalTryOn.usdzUrl),
+  };
+  const prepared = {
+    arUrl: toText(preparedTryOn.arUrl),
+    launchUrl: toText(preparedTryOn.launchUrl),
+    glbUrl: toText(preparedTryOn.glbUrl),
+    usdzUrl: toText(preparedTryOn.usdzUrl),
+  };
+
+  if (requested) {
+    const replacements = [
+      [original.arUrl, prepared.arUrl],
+      [original.launchUrl, prepared.launchUrl],
+      [original.glbUrl, prepared.glbUrl],
+      [original.usdzUrl, prepared.usdzUrl],
+    ];
+    for (const [source, resolved] of replacements) {
+      if (requested === source && canUseExternalFallbackUrl(resolved)) return resolved;
+    }
+    return canUseExternalFallbackUrl(requested) ? requested : "";
+  }
+
+  return pickExternalFallbackUrl(originalTryOn) || pickExternalFallbackUrl(preparedTryOn);
+}
 
 export function shouldPreferNativeTryOn() {
   return toBoolean(process.env.EXPO_PUBLIC_TRYON_PREFER_NATIVE, true);
@@ -73,7 +121,7 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
   const usdzUrl = toText(tryOn.usdzUrl);
   const launchUrl = toText(tryOn.launchUrl);
   const effectPath = toText(tryOn.effectPath || tryOn.effect || "");
-  const resolvedFallback = toText(fallbackUrl);
+  const resolvedFallback = canUseExternalFallbackUrl(fallbackUrl) ? toText(fallbackUrl) : "";
   const resourcePaths = toStringArray(tryOn.resourcePaths);
 
   const modelUrl =
@@ -92,6 +140,10 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
     published: Boolean(tryOn.published),
     ready: Boolean(tryOn.ready),
     arUrl: canUseAbsoluteHttpUrl(primaryArUrl) ? primaryArUrl : "",
+    launchUrl:
+      Platform.OS === "ios"
+        ? (canUseOpenableUrl(launchUrl) ? launchUrl : "")
+        : (isWebFallbackUrl(launchUrl) ? launchUrl : ""),
     effectPath: resolvedEffectPath,
     resourcePaths,
     modelUrl,
@@ -111,17 +163,64 @@ export async function startNativeTryOnSession({ product = {}, tryOn = {}, fallba
 
   const { moduleName, module } = getNativeModule();
   const startMethod = availability.startMethod;
-  const payload = buildNativeTryOnPayload({ product, tryOn, fallbackUrl });
+  const originalTryOn = tryOn || {};
+  const cachedTryOn = await prepareTryOnModelCache(originalTryOn);
+  const runtimeEffect = await prepareBanubaRuntimeEffect({
+    product,
+    originalTryOn,
+    cachedTryOn,
+  });
+  const preparedFallbackUrl = resolvePreparedFallbackUrl({
+    fallbackUrl,
+    originalTryOn,
+    preparedTryOn: originalTryOn,
+  });
+  const resolvedEffectPath =
+    runtimeEffect.effectPath || originalTryOn.effectPath || originalTryOn.effect || "";
+
+  if (!toText(resolvedEffectPath)) {
+    const runtimeReason = toText(runtimeEffect?.runtimeEffectMeta?.reason);
+    if (runtimeReason === "local_glb_unavailable") {
+      throw new Error(
+        "Try-on model was not cached locally. Restart Metro with --clear and try again."
+      );
+    }
+
+    throw new Error("Native try-on requires a local Banuba effect or a cached local GLB model.");
+  }
+
+  const payloadTryOn = {
+    ...originalTryOn,
+    effectPath: resolvedEffectPath,
+    resourcePaths:
+      runtimeEffect.resourcePaths?.length
+        ? runtimeEffect.resourcePaths
+        : toStringArray(originalTryOn.resourcePaths),
+  };
+  const payload = buildNativeTryOnPayload({
+    product,
+    tryOn: payloadTryOn,
+    fallbackUrl: preparedFallbackUrl,
+  });
 
   if (!payload.productId) {
     throw new Error("Native try-on requires productId");
   }
 
   const result = await module[startMethod](payload);
+  console.log("[TryOn Native] Session result", {
+    moduleName,
+    startMethod,
+    result,
+    cacheMeta: cachedTryOn?.cacheMeta || null,
+    runtimeEffectMeta: runtimeEffect?.runtimeEffectMeta || null,
+  });
   return {
     moduleName,
     startMethod,
     payload,
+    cacheMeta: cachedTryOn?.cacheMeta || null,
+    runtimeEffectMeta: runtimeEffect?.runtimeEffectMeta || null,
     result: result ?? null,
   };
 }

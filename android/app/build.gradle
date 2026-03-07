@@ -105,9 +105,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.anonymous.WDP301_Mobile'
+    namespace 'com.wdp.eyewear'
     defaultConfig {
-        applicationId 'com.anonymous.WDP301_Mobile'
+        applicationId 'com.wdp.eyewear'
         minSdkVersion Math.max((rootProject.ext.minSdkVersion as int), banubaMinSdkVersion)
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -9,9 +8,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { WebView } from "react-native-webview";
 
-import { buildTryOnSessionUrl, getTryOnFallbackUrl } from "../services/tryOnService";
 import {
   getNativeTryOnAvailability,
   shouldPreferNativeTryOn,
@@ -22,35 +19,14 @@ export default function TryOnARScreen({ navigation, route }) {
   const product = useMemo(() => route?.params?.product || null, [route?.params?.product]);
   const tryOn = useMemo(() => route?.params?.tryOn || null, [route?.params?.tryOn]);
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [forceWebFallback, setForceWebFallback] = useState(false);
   const [nativeLaunchState, setNativeLaunchState] = useState({
     status: "idle",
     message: "",
   });
 
-  const { sessionUrl, fallbackUrl } = useMemo(
-    () => buildTryOnSessionUrl({ product: product || {}, tryOn: tryOn || {} }),
-    [product, tryOn]
-  );
-
-  const directFallbackUrl = useMemo(() => getTryOnFallbackUrl(tryOn || {}), [tryOn]);
   const nativeAvailability = useMemo(() => getNativeTryOnAvailability(), []);
   const preferNative = useMemo(() => shouldPreferNativeTryOn(), []);
-  const shouldUseNative = preferNative && nativeAvailability.available && !forceWebFallback;
-
-  const openFallback = async () => {
-    const targetUrl = fallbackUrl || directFallbackUrl;
-    if (!targetUrl) return;
-
-    try {
-      const canOpen = await Linking.canOpenURL(targetUrl);
-      if (canOpen) await Linking.openURL(targetUrl);
-    } catch (error) {
-      // Ignore fallback open errors to avoid breaking the screen
-    }
-  };
+  const canUseNative = preferNative && nativeAvailability.available;
 
   const launchNativeSession = useCallback(async () => {
     setNativeLaunchState({
@@ -59,22 +35,31 @@ export default function TryOnARScreen({ navigation, route }) {
     });
 
     try {
-      await startNativeTryOnSession({
+      const nativeResult = await startNativeTryOnSession({
         product: product || {},
         tryOn: tryOn || {},
-        fallbackUrl: fallbackUrl || directFallbackUrl,
       });
+      const resultStatus = nativeResult?.result?.status || "launched";
+      const resultMessage =
+        nativeResult?.result?.message ||
+        (resultStatus === "completed"
+          ? "Native AR session completed."
+          : resultStatus === "cancelled"
+            ? "Native AR session closed."
+            : "Native AR SDK launched.");
+
       setNativeLaunchState({
-        status: "launched",
-        message: "Native AR SDK launched. If no AR view appears, switch to web fallback.",
+        status: resultStatus,
+        message: resultMessage,
       });
     } catch (error) {
+      console.warn("[TryOn Native] Launch failed", error);
       setNativeLaunchState({
         status: "failed",
         message: error?.message || "Native AR launch failed",
       });
     }
-  }, [directFallbackUrl, fallbackUrl, nativeAvailability.moduleName, product, tryOn]);
+  }, [nativeAvailability.moduleName, product, tryOn]);
 
   useEffect(() => {
     if (!preferNative) {
@@ -93,75 +78,45 @@ export default function TryOnARScreen({ navigation, route }) {
       return;
     }
 
-    if (!forceWebFallback) {
-      launchNativeSession();
-    }
-  }, [forceWebFallback, launchNativeSession, nativeAvailability.available, nativeAvailability.reason, preferNative]);
+    launchNativeSession();
+  }, [launchNativeSession, nativeAvailability.available, nativeAvailability.reason, preferNative]);
 
-  const renderUnsupported = () => (
+  const renderUnavailable = () => (
     <View style={styles.centerWrap}>
       <Ionicons name="camera-outline" size={36} color="#6B7280" />
-      <Text style={styles.title}>AR Session Is Not Configured</Text>
+      <Text style={styles.title}>Native AR Is Not Available</Text>
       <Text style={styles.hint}>
-        Set `EXPO_PUBLIC_TRYON_SDK_URL` or `media.tryOn.arUrl` to a web AR endpoint that supports face tracking.
+        {nativeLaunchState.message || "Check Banuba Android configuration and rebuild the app."}
       </Text>
-      {(fallbackUrl || directFallbackUrl) ? (
-        <TouchableOpacity style={styles.secondaryBtn} onPress={openFallback} activeOpacity={0.9}>
-          <Text style={styles.secondaryBtnText}>Open Fallback Link</Text>
-        </TouchableOpacity>
-      ) : null}
     </View>
   );
 
-  const renderError = () => (
-    <View style={styles.centerWrap}>
-      <Ionicons name="warning-outline" size={34} color="#D33A2C" />
-      <Text style={styles.title}>Cannot Load AR Session</Text>
-      <Text style={styles.hint}>
-        Check network connection and SDK endpoint. You can still open fallback AR URL below.
-      </Text>
-      {(fallbackUrl || directFallbackUrl) ? (
-        <TouchableOpacity style={styles.secondaryBtn} onPress={openFallback} activeOpacity={0.9}>
-          <Text style={styles.secondaryBtnText}>Open Fallback Link</Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
+  const renderNativeLaunchState = () => {
+    const isLaunching = nativeLaunchState.status === "launching";
+    const isFailed = nativeLaunchState.status === "failed";
 
-  const renderNativeLaunchState = () => (
-    <View style={styles.centerWrap}>
-      <Ionicons name="sparkles-outline" size={34} color="#2563EB" />
-      <Text style={styles.title}>Native AR SDK</Text>
-      <Text style={styles.hint}>
-        {nativeLaunchState.message ||
-          `Using module ${nativeAvailability.moduleName}. Implement startTryOnSession/startSession/openTryOn in native code.`}
-      </Text>
+    return (
+      <View style={styles.centerWrap}>
+        <Ionicons name="sparkles-outline" size={34} color={isFailed ? "#D33A2C" : "#2563EB"} />
+        <Text style={styles.title}>Native AR SDK</Text>
+        <Text style={styles.hint}>
+          {nativeLaunchState.message || `Using native module ${nativeAvailability.moduleName}.`}
+        </Text>
+        <Text style={styles.statusText}>Status: {nativeLaunchState.status || "idle"}</Text>
 
-      {nativeLaunchState.status === "launching" ? (
-        <ActivityIndicator size="large" color="#2563EB" />
-      ) : null}
+        {isLaunching ? <ActivityIndicator size="large" color="#2563EB" /> : null}
 
-      <TouchableOpacity style={styles.secondaryBtn} onPress={launchNativeSession} activeOpacity={0.9}>
-        <Text style={styles.secondaryBtnText}>Launch Native AR</Text>
-      </TouchableOpacity>
-
-      {sessionUrl ? (
         <TouchableOpacity
-          style={[styles.secondaryBtn, styles.secondaryBtnMuted]}
-          onPress={() => setForceWebFallback(true)}
+          style={[styles.secondaryBtn, isLaunching && styles.secondaryBtnDisabled]}
+          onPress={launchNativeSession}
           activeOpacity={0.9}
+          disabled={isLaunching}
         >
-          <Text style={styles.secondaryBtnText}>Use Web Fallback</Text>
+          <Text style={styles.secondaryBtnText}>Launch Native AR</Text>
         </TouchableOpacity>
-      ) : null}
-    </View>
-  );
-
-  const shouldShowNativePanel =
-    shouldUseNative &&
-    (nativeLaunchState.status === "launching" ||
-      nativeLaunchState.status === "launched" ||
-      nativeLaunchState.status === "failed");
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -172,56 +127,10 @@ export default function TryOnARScreen({ navigation, route }) {
         <Text style={styles.headerTitle} numberOfLines={1}>
           Try-On AR
         </Text>
-        <TouchableOpacity
-          onPress={() => setForceWebFallback((prev) => !prev)}
-          style={styles.iconBtn}
-          activeOpacity={0.85}
-        >
-          <Ionicons
-            name={forceWebFallback ? "globe-outline" : "phone-portrait-outline"}
-            size={18}
-            color="#111827"
-          />
-        </TouchableOpacity>
+        <View style={styles.iconBtn} />
       </View>
 
-      {shouldShowNativePanel ? (
-        renderNativeLaunchState()
-      ) : !sessionUrl ? (
-        renderUnsupported()
-      ) : hasError ? (
-        renderError()
-      ) : (
-        <View style={styles.webWrap}>
-          <WebView
-            source={{ uri: sessionUrl }}
-            style={styles.web}
-            originWhitelist={["*"]}
-            javaScriptEnabled
-            domStorageEnabled
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            setSupportMultipleWindows={false}
-            mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
-            onLoadStart={() => {
-              setIsLoading(true);
-              setHasError(false);
-            }}
-            onLoadEnd={() => setIsLoading(false)}
-            onError={() => {
-              setIsLoading(false);
-              setHasError(true);
-            }}
-          />
-
-          {isLoading ? (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#2563EB" />
-              <Text style={styles.loadingText}>Starting AR session...</Text>
-            </View>
-          ) : null}
-        </View>
-      )}
+      {canUseNative ? renderNativeLaunchState() : renderUnavailable()}
     </SafeAreaView>
   );
 }
@@ -250,26 +159,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#111827",
   },
-  webWrap: {
-    flex: 1,
-    overflow: "hidden",
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
-    backgroundColor: "#000",
-  },
-  web: { flex: 1, backgroundColor: "#000" },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.45)",
-    gap: 10,
-  },
-  loadingText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "800",
-  },
   centerWrap: {
     flex: 1,
     paddingHorizontal: 20,
@@ -290,6 +179,12 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     fontWeight: "700",
   },
+  statusText: {
+    textAlign: "center",
+    fontSize: 12,
+    color: "#111827",
+    fontWeight: "900",
+  },
   secondaryBtn: {
     marginTop: 8,
     minHeight: 42,
@@ -299,12 +194,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#2563EB",
   },
+  secondaryBtnDisabled: {
+    opacity: 0.6,
+  },
   secondaryBtnText: {
     fontSize: 13,
     color: "#fff",
     fontWeight: "900",
-  },
-  secondaryBtnMuted: {
-    backgroundColor: "#111827",
   },
 });
