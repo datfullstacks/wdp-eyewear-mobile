@@ -11,6 +11,7 @@ import {
 } from "../services/checkoutService";
 import { addMyAddressApi, getMyAddressesApi } from "../services/userService";
 import { validatePromotionApi } from "../services/promotionService";
+import { Ionicons } from "@expo/vector-icons";
 
 const SHIPPING_METHODS = [
   { id: "standard", label: "Giao tiêu chuẩn", eta: "2-4 ngày làm việc", price: 25000 },
@@ -173,7 +174,7 @@ export default function CheckoutScreen({ navigation, route }) {
           });
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         if (!active) return;
         setAddressLoading(false);
@@ -527,8 +528,16 @@ export default function CheckoutScreen({ navigation, route }) {
       <View style={styles.container}>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Thanh toán</Text>
-            <Text style={styles.headerStep}>1/2 giao hàng</Text>
+            <View style={styles.headerLeft}>
+              <TouchableOpacity
+                onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
+                activeOpacity={0.85}
+                style={styles.iconBtn}
+              >
+                <Ionicons name="chevron-back" size={22} color="#111827" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Thanh toán</Text>
+            </View>
           </View>
 
           <View style={styles.card}>
@@ -837,7 +846,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
-
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
   header: {
     paddingVertical: 8,
     flexDirection: "row",
@@ -845,7 +854,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerTitle: { fontSize: 18, fontWeight: "900", color: "#111827" },
-  headerStep: { fontSize: 13, fontWeight: "800", color: "#2563EB" },
 
   card: {
     marginTop: 12,

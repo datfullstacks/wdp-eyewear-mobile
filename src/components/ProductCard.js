@@ -71,9 +71,6 @@ export default function ProductCard({ item, onPress }) {
   // ✅ Dùng hàm check đa trường
   const isOutOfStock = checkOutOfStock(item);
 
-  // Debug: bỏ comment dòng dưới nếu muốn kiểm tra
-  // console.log("[ProductCard] item stock debug:", item?.name, { stockStatus: item?.stockStatus, totalStock: item?.totalStock, stock: item?.stock, isOutOfStock });
-
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
 

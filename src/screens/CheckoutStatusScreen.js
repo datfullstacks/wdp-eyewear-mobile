@@ -1,9 +1,19 @@
 ﻿import React, { useEffect, useMemo, useState, useRef } from "react";
 import { CART_TYPES, useCartStore } from "../store/cartStore";
-import { Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  Image,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/apiClient";
+import { cancelOrderApi } from "../services/orderService";
 
 const PAYMENT_STATUS_META = {
   PENDING_QR: {
@@ -53,6 +63,7 @@ const ORDER_STEPS = [
 ];
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
+
 const SEPAY_FALLBACK_ACCOUNT_NUMBER =
   process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NUMBER ||
   process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_ID ||
@@ -79,13 +90,16 @@ const isDataImageUrl = (value) => /^data:image\/[a-z0-9.+-]+;base64,/i.test(valu
 
 const toTextValue = (value) => {
   if (value == null) return null;
+
   if (typeof value === "string") {
     const trimmed = value.trim();
     return trimmed.length ? trimmed : null;
   }
+
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
+
   if (typeof value === "object") {
     if (typeof value.text === "string" && value.text.trim()) {
       return value.text.trim();
@@ -96,6 +110,7 @@ const toTextValue = (value) => {
     if (typeof value.content === "string" && value.content.trim()) {
       return value.content.trim();
     }
+
     try {
       const serialized = JSON.stringify(value);
       return serialized === "{}" ? null : serialized;
@@ -103,6 +118,7 @@ const toTextValue = (value) => {
       return null;
     }
   }
+
   return String(value);
 };
 
@@ -130,44 +146,54 @@ const firstQrImageUrl = (...values) => {
 
 const buildSepayQrUrl = ({ accountNumber, bankName, amount, description }) => {
   if (!accountNumber || !bankName) return null;
+
   const params = [
     `acc=${encodeURIComponent(accountNumber)}`,
     `bank=${encodeURIComponent(bankName)}`,
   ];
+
   if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
     params.push(`amount=${Math.round(amount)}`);
   }
+
   if (description) {
     params.push(`des=${encodeURIComponent(description)}`);
   }
+
   return `https://qr.sepay.vn/img?${params.join("&")}`;
 };
 
 const buildQrImageSource = (uri) => {
   const text = toTextValue(uri);
   if (!text) return null;
+
   if (/^https?:\/\/qr\.sepay\.vn\//i.test(text)) {
     return {
       uri: text,
       headers: {
-        // sepay image endpoint may return 403 without browser-like UA
         "User-Agent": "Mozilla/5.0",
       },
     };
   }
+
   return { uri: text };
 };
 
 const buildAddressLines = (addr) => {
   if (!addr) return [];
+
   const lines = [];
   if (addr.line1) lines.push(addr.line1);
+
   const line2 = [addr.line2, addr.ward, addr.district, addr.province]
     .filter(Boolean)
     .join(", ");
+
   if (line2) lines.push(line2);
+
   const country = addr.country || "VN";
   if (country) lines.push(country === "VN" ? "Việt Nam" : country);
+
   return lines;
 };
 
@@ -183,6 +209,7 @@ const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) =
   if (typeof status === "string" && PAYMENT_STATUS_META[status]) return status;
 
   const normalized = String(status || "").trim().toLowerCase();
+
   if (normalized === "paid") return "PAID";
   if (normalized === "failed") return "FAILED";
   if (normalized === "refunded") return "REFUNDED";
@@ -197,10 +224,13 @@ const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) =
 
 const normalizeOrderStatus = (status) => {
   const normalized = String(status || "").trim().toLowerCase();
+
   if (normalized === "pending" || normalized === "confirmed") return "CONFIRMED";
   if (normalized === "processing") return "PACKING";
   if (normalized === "shipped") return "SHIPPING";
   if (normalized === "delivered") return "DELIVERED";
+  if (normalized === "cancelled" || normalized === "canceled") return "CANCELLED";
+
   return String(status || "CONFIRMED").toUpperCase();
 };
 
@@ -209,6 +239,7 @@ const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
   const localPayment = localOrder.payment || {};
   const serverPayment = serverOrder.payment || {};
   const nextPaymentStatus = serverPayment.status || serverOrder.paymentStatus || localPayment.status;
+
   const inferredPaidAt =
     String(nextPaymentStatus || "").toLowerCase() === "paid"
       ? serverOrder.updatedAt || serverOrder.createdAt || localPayment.paidAt || null
@@ -314,13 +345,11 @@ const DEMO_ORDER = {
 const normalizeOrder = (raw) => {
   const breakdown = raw?.breakdown || {};
   const subtotal = breakdown.subtotal ?? raw?.subtotal ?? raw?.total ?? 0;
-  const discountAmount =
-    breakdown.discountAmount ?? raw?.discountAmount ?? raw?.discount ?? 0;
+  const discountAmount = breakdown.discountAmount ?? raw?.discountAmount ?? raw?.discount ?? 0;
   const shippingFee = breakdown.shippingFee ?? raw?.shippingFee ?? 0;
   const total = breakdown.total ?? raw?.total ?? 0;
   const payNow = breakdown.payNow ?? raw?.payNow ?? 0;
-  const payLater =
-    breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
+  const payLater = breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
 
   const payment = raw?.payment || {};
   const paymentMethod = normalizePaymentMethod(payment.method || raw?.paymentMethod, payNow);
@@ -328,6 +357,7 @@ const normalizeOrder = (raw) => {
     payNow,
     method: paymentMethod,
   });
+
   const paymentCode = firstTextValue(
     payment.paymentCode,
     payment.transactionId,
@@ -335,11 +365,15 @@ const normalizeOrder = (raw) => {
     payment.payment_code,
     payment.transaction_code
   );
+
   const paymentContent =
-    firstTextValue(payment.content, payment.payload, payment.paymentContent, payment.text) || paymentCode;
+    firstTextValue(payment.content, payment.payload, payment.paymentContent, payment.text) ||
+    paymentCode;
+
   const paymentAmount = payment.amount ?? payNow;
   const paymentCreatedAt = payment.createdAt || raw?.createdAt || null;
   const paymentPaidAt = payment.paidAt || raw?.paidAt || null;
+
   const paymentLink = firstTextValue(
     payment.paymentUrl,
     payment.payment_url,
@@ -350,6 +384,7 @@ const normalizeOrder = (raw) => {
     payment.url,
     payment.link
   );
+
   const qrCandidate = firstQrImageUrl(
     payment.qrUrl,
     payment.qr_url,
@@ -374,6 +409,7 @@ const normalizeOrder = (raw) => {
       payment.content,
       payment.payment_content
     ) || paymentContent || paymentCode;
+
   const paymentAccountNumber = firstTextValue(
     payment.bankAccountNumber,
     payment.accountNumber,
@@ -392,6 +428,7 @@ const normalizeOrder = (raw) => {
     raw?.bank_account_id,
     paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NUMBER : null
   );
+
   const paymentBankName = firstTextValue(
     payment.bankName,
     payment.bank,
@@ -402,6 +439,7 @@ const normalizeOrder = (raw) => {
     raw?.bank_name,
     paymentMethod === "SEPAY" ? SEPAY_FALLBACK_BANK_NAME : null
   );
+
   const paymentAccountName = firstTextValue(
     payment.bankAccountName,
     payment.bank_account_name,
@@ -409,35 +447,41 @@ const normalizeOrder = (raw) => {
     raw?.bank_account_name,
     paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NAME : null
   );
-  const providerQrUrl = paymentMethod === "SEPAY" ? buildSepayQrUrl({
-    accountNumber: paymentAccountNumber,
-    bankName: paymentBankName,
-    amount: paymentAmount,
-    description: paymentDescription,
-  }) : null;
-  const vnpayQrUrl =
-    paymentMethod === "VNPAY" && paymentLink ? makeQrUrl(paymentLink) : null;
+
+  const providerQrUrl =
+    paymentMethod === "SEPAY"
+      ? buildSepayQrUrl({
+          accountNumber: paymentAccountNumber,
+          bankName: paymentBankName,
+          amount: paymentAmount,
+          description: paymentDescription,
+        })
+      : null;
+
+  const vnpayQrUrl = paymentMethod === "VNPAY" && paymentLink ? makeQrUrl(paymentLink) : null;
+
   const genericFallbackQrUrl =
     payNow > 0 && paymentMethod !== "SEPAY" && paymentMethod !== "VNPAY"
       ? makeQrUrl(paymentLink || paymentContent || paymentCode)
       : null;
+
   const qrUrl = firstQrImageUrl(qrCandidate, providerQrUrl, vnpayQrUrl, genericFallbackQrUrl);
   const bankAccountIdValue = firstTextValue(payment.bankAccountId, payment.bank_account_id);
 
   const rawAddress = raw?.shippingAddress || raw?.address || null;
   const address = rawAddress
     ? {
-      fullName: rawAddress.fullName || rawAddress.name || "",
-      phone: rawAddress.phone || "",
-      email: rawAddress.email || "",
-      line1: rawAddress.line1 || rawAddress.line || "",
-      line2: rawAddress.line2 || "",
-      ward: rawAddress.ward || "",
-      district: rawAddress.district || "",
-      province: rawAddress.province || "",
-      country: rawAddress.country || "VN",
-      note: rawAddress.note || "",
-    }
+        fullName: rawAddress.fullName || rawAddress.name || "",
+        phone: rawAddress.phone || "",
+        email: rawAddress.email || "",
+        line1: rawAddress.line1 || rawAddress.line || "",
+        line2: rawAddress.line2 || "",
+        ward: rawAddress.ward || "",
+        district: rawAddress.district || "",
+        province: rawAddress.province || "",
+        country: rawAddress.country || "VN",
+        note: rawAddress.note || "",
+      }
     : null;
 
   return {
@@ -476,10 +520,11 @@ const normalizeOrder = (raw) => {
 export default function CheckoutStatusScreen({ navigation, route }) {
   const initialOrder = route?.params?.order || null;
   const cartType =
-    route?.params?.cartType === CART_TYPES.PREORDER
-      ? CART_TYPES.PREORDER
-      : CART_TYPES.ORDER;
+    route?.params?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
+
   const [serverOrder, setServerOrder] = useState(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+
   const clearCart = useCartStore((s) => s.clear);
   const clearedRef = useRef(false);
 
@@ -489,14 +534,20 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   }, [initialOrder, serverOrder]);
 
   const order = useMemo(() => normalizeOrder(rawOrder), [rawOrder]);
+
   const pollOrderId = useMemo(() => {
-    const id = rawOrder?.orderId || rawOrder?._id || rawOrder?.id;
+    const id = rawOrder?._id || rawOrder?.id || rawOrder?.orderId;
     if (!id) return null;
     return String(id);
   }, [rawOrder]);
 
   const [paymentStatus, setPaymentStatus] = useState(order.payment.status);
   const [paidAt, setPaidAt] = useState(order.payment.paidAt || null);
+
+  useEffect(() => {
+    setPaymentStatus(order.payment.status);
+    setPaidAt(order.payment.paidAt || null);
+  }, [order.payment.status, order.payment.paidAt]);
 
   useEffect(() => {
     if (!pollOrderId || pollOrderId === "OD--" || /^OD\d+$/i.test(pollOrderId)) {
@@ -528,26 +579,31 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     };
   }, [pollOrderId]);
 
-  useEffect(() => {
-    setPaymentStatus(order.payment.status);
-    setPaidAt(order.payment.paidAt || null);
-  }, [order.payment.status, order.payment.paidAt]);
-
   const paymentMeta = PAYMENT_STATUS_META[paymentStatus] || PAYMENT_STATUS_META.PENDING_QR;
+
   const activeStepIndex = Math.max(
     0,
     ORDER_STEPS.findIndex((s) => s.key === order.status)
   );
+
   const isPaymentSettled = paymentStatus === "PAID" || paymentStatus === "REFUNDED";
-  const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled;
-  const qrImageSource = useMemo(() => buildQrImageSource(order.payment.qrUrl), [order.payment.qrUrl]);
+  const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled && paymentStatus === "PENDING_QR";
+  const qrImageSource = useMemo(
+    () => buildQrImageSource(order.payment.qrUrl),
+    [order.payment.qrUrl]
+  );
   const canOpenPaymentUrl = Boolean(order.payment.paymentUrl) && !isPaymentSettled;
+
   const paymentMethodLabel =
     order.payment.method === "VNPAY"
       ? "VNPay"
       : order.payment.method === "SEPAY"
         ? "SePay"
         : order.payment.method || "QR";
+
+  const normalizedOrderStatus = String(order.status || "").toUpperCase();
+  const canCancelOrder =
+    !isPaymentSettled && !["DELIVERED", "CANCELLED"].includes(normalizedOrderStatus);
 
   const navigateToTab = (tabName, screenName) => {
     navigation.navigate("Tabs", {
@@ -566,6 +622,70 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
   const handleViewOrderDetail = () => navigateToTab("OrdersTab", "Orders");
 
+  const handleCancelPayment = () => {
+    const orderId =
+      rawOrder?._id ||
+      rawOrder?.id ||
+      initialOrder?._id ||
+      initialOrder?.id ||
+      rawOrder?.orderId ||
+      initialOrder?.orderId ||
+      null;
+
+    if (!orderId || orderId === "OD--" || /^OD\d+$/i.test(String(orderId))) {
+      Alert.alert("Không thể hủy", "Thiếu orderId hợp lệ.");
+      return;
+    }
+
+    Alert.alert(
+      "Hủy thanh toán?",
+      "Bạn chắc chắn muốn hủy thanh toán và hủy đơn hàng này? Thao tác không thể hoàn tác.",
+      [
+        { text: "Không", style: "cancel" },
+        {
+          text: "Hủy đơn",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setIsCancelling(true);
+
+              await cancelOrderApi(orderId);
+
+              setServerOrder((prev) => ({
+                ...(prev || rawOrder || {}),
+                status: "cancelled",
+                payment: {
+                  ...((prev || rawOrder || {}).payment || {}),
+                  status: "FAILED",
+                },
+              }));
+
+              Alert.alert("Thành công", "Đã hủy thanh toán và hủy đơn hàng.", [
+                {
+                  text: "OK",
+                  onPress: () => {
+                    navigation.navigate("Tabs", {
+                      screen: "OrdersTab",
+                      params: { screen: "Orders" },
+                    });
+                  },
+                },
+              ]);
+            } catch (err) {
+              const data = err?.response?.data || {};
+              Alert.alert(
+                "Hủy thất bại",
+                data?.message || data?.error || err?.message || "Không thể hủy đơn."
+              );
+            } finally {
+              setIsCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
@@ -583,7 +703,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.card}>
-          <Text style={styles.title}>Đơn hàng {order.orderId}</Text>
+          <Text style={styles.title}>Đơn hàng {order.payment.paymentCode}</Text>
           <Text style={styles.subText}>Tạo lúc {formatDateTime(order.createdAt)}</Text>
           <View style={[styles.statusPill, { backgroundColor: paymentMeta.bg }]}>
             <Text style={[styles.statusText, { color: paymentMeta.color }]}>{paymentMeta.label}</Text>
@@ -595,23 +715,28 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>QR thanh toán {paymentMethodLabel}</Text>
             <Text style={styles.mutedText}>Quét mã để đặt cọc và hoàn tất đơn đặt trước.</Text>
+
             <View style={styles.qrWrap}>
               {qrImageSource ? <Image source={qrImageSource} style={styles.qrImage} /> : null}
             </View>
+
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Số tiền cần chuyển</Text>
               <Text style={styles.metaValue}>{formatVND(order.payment.amount)}</Text>
             </View>
+
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Mã thanh toán</Text>
               <Text style={styles.metaValue}>{order.payment.paymentCode || "--"}</Text>
             </View>
+
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Nội dung</Text>
               <Text style={styles.metaValue}>
                 {order.payment.content || order.payment.paymentCode || order.payment.description || "--"}
               </Text>
             </View>
+
             {order.payment.bankAccountNumber || order.payment.bankAccountId ? (
               <View style={styles.rowBetween}>
                 <Text style={styles.metaLabel}>Tài khoản nhận</Text>
@@ -620,16 +745,38 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 </Text>
               </View>
             ) : null}
+
             {order.payment.bankName ? (
               <View style={styles.rowBetween}>
                 <Text style={styles.metaLabel}>Ngân hàng</Text>
                 <Text style={styles.metaValue}>{order.payment.bankName}</Text>
               </View>
             ) : null}
+
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Thời gian tạo</Text>
               <Text style={styles.metaValue}>{formatDateTime(order.payment.createdAt)}</Text>
             </View>
+
+            {canCancelOrder ? (
+              <View style={styles.actionSection}>
+                <Text style={styles.sectionTitle}>Thao tác</Text>
+                <Text style={styles.mutedText}>
+                  Nếu bạn không muốn tiếp tục thanh toán, có thể hủy đơn hàng này.
+                </Text>
+
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.cancelBtn, { marginTop: 12 }]}
+                  activeOpacity={0.85}
+                  disabled={isCancelling}
+                  onPress={handleCancelPayment}
+                >
+                  <Text style={styles.cancelBtnText}>
+                    {isCancelling ? "Đang hủy..." : "Hủy thanh toán"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         ) : canOpenPaymentUrl ? (
           <View style={styles.card}>
@@ -637,6 +784,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <Text style={styles.mutedText}>
               Không có ảnh QR hợp lệ từ hệ thống. Vui lòng mở link thanh toán.
             </Text>
+
             <TouchableOpacity
               style={[styles.actionBtn, styles.actionBtnPrimary, { marginTop: 12 }]}
               activeOpacity={0.85}
@@ -644,15 +792,30 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             >
               <Text style={[styles.actionText, styles.actionTextPrimary]}>Mở link thanh toán</Text>
             </TouchableOpacity>
+
+            {canCancelOrder ? (
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.cancelBtn, { marginTop: 10 }]}
+                activeOpacity={0.85}
+                disabled={isCancelling}
+                onPress={handleCancelPayment}
+              >
+                <Text style={styles.cancelBtnText}>
+                  {isCancelling ? "Đang hủy..." : "Hủy thanh toán"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Thông tin thanh toán</Text>
+
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Phương thức</Text>
             <Text style={styles.metaValue}>{order.payment.method || "--"}</Text>
           </View>
+
           {order.totals.payNow > 0 ? (
             <>
               <View style={styles.rowBetween}>
@@ -665,10 +828,12 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               </View>
             </>
           ) : null}
+
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Trạng thái</Text>
             <Text style={styles.metaValue}>{paymentMeta.label}</Text>
           </View>
+
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Thời gian giao dịch</Text>
             <Text style={styles.metaValue}>{formatDateTime(paidAt)}</Text>
@@ -681,6 +846,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <Text style={styles.mutedText}>
               Đơn hàng đã được ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết đơn.
             </Text>
+
             <View style={styles.actionRow}>
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionBtnGhost]}
@@ -689,6 +855,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               >
                 <Text style={[styles.actionText, styles.actionTextGhost]}>Mua tiếp</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionBtnPrimary]}
                 activeOpacity={0.85}
@@ -702,19 +869,24 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
+
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Tạm tính</Text>
             <Text style={styles.metaValue}>{formatVND(order.totals.subtotal)}</Text>
           </View>
+
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Giảm giá</Text>
             <Text style={styles.metaValue}>-{formatVND(order.totals.discountAmount)}</Text>
           </View>
+
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Phí vận chuyển</Text>
             <Text style={styles.metaValue}>{formatVND(order.totals.shippingFee)}</Text>
           </View>
+
           <View style={styles.divider} />
+
           <View style={styles.rowBetween}>
             <Text style={styles.totalLabel}>Tổng cộng</Text>
             <Text style={styles.totalValue}>{formatVND(order.totals.total)}</Text>
@@ -725,9 +897,9 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
           <Text style={styles.addressName}>{order.address?.fullName || "--"}</Text>
           <Text style={styles.addressMeta}>{order.address?.phone || "--"}</Text>
-          {order.address?.email ? (
-            <Text style={styles.addressMeta}>{order.address.email}</Text>
-          ) : null}
+
+          {order.address?.email ? <Text style={styles.addressMeta}>{order.address.email}</Text> : null}
+
           {buildAddressLines(order.address).map((line, idx) => (
             <Text key={`${line}-${idx}`} style={styles.addressMeta}>
               {line}
@@ -737,20 +909,23 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Tiến trình đơn hàng</Text>
+
           <View style={styles.timeline}>
             {ORDER_STEPS.map((step, idx) => {
               const active = idx <= activeStepIndex;
               const isLast = idx === ORDER_STEPS.length - 1;
+
               return (
                 <View key={step.key} style={styles.stepRow}>
                   <View style={styles.stepLeft}>
                     <View style={[styles.stepDot, active && styles.stepDotActive]} />
-                    {!isLast ? (
-                      <View style={[styles.stepLine, active && styles.stepLineActive]} />
-                    ) : null}
+                    {!isLast ? <View style={[styles.stepLine, active && styles.stepLineActive]} /> : null}
                   </View>
+
                   <View style={styles.stepContent}>
-                    <Text style={[styles.stepTitle, active && styles.stepTitleActive]}>{step.label}</Text>
+                    <Text style={[styles.stepTitle, active && styles.stepTitleActive]}>
+                      {step.label}
+                    </Text>
                     <Text style={styles.stepDesc}>{step.desc}</Text>
                   </View>
                 </View>
@@ -765,6 +940,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F7FB" },
+
   header: {
     paddingHorizontal: 12,
     paddingTop: 6,
@@ -775,7 +951,13 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
   headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   content: { paddingHorizontal: 16, paddingBottom: 20 },
 
@@ -790,6 +972,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+
   title: { fontSize: 16, fontWeight: "900", color: "#111827" },
   subText: { marginTop: 6, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
   descText: { marginTop: 8, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
@@ -816,10 +999,30 @@ const styles = StyleSheet.create({
   },
   qrImage: { width: 180, height: 180, borderRadius: 12 },
 
-  rowBetween: { marginTop: 10, flexDirection: "row", justifyContent: "space-between" },
+  rowBetween: {
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
   metaLabel: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
-  metaValue: { fontSize: 12.5, fontWeight: "900", color: "#111827", flexShrink: 1, textAlign: "right" },
+  metaValue: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: "#111827",
+    textAlign: "right",
+  },
+
+  actionSection: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#EEF2F7",
+  },
+
   actionRow: { marginTop: 12, flexDirection: "row", gap: 10 },
+
   actionBtn: {
     flex: 1,
     height: 42,
@@ -833,9 +1036,21 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   actionBtnPrimary: { backgroundColor: "#2563EB" },
+
   actionText: { fontSize: 13, fontWeight: "900" },
   actionTextGhost: { color: "#111827" },
   actionTextPrimary: { color: "#FFFFFF" },
+
+  cancelBtn: {
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+  },
+  cancelBtnText: {
+    color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "900",
+  },
 
   divider: { height: 1, backgroundColor: "#EEF2F7", marginVertical: 10 },
   totalLabel: { fontSize: 13.5, fontWeight: "900", color: "#111827" },

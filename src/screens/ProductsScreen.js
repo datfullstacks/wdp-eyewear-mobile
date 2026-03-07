@@ -101,7 +101,7 @@ export default function ProductsScreen({ navigation }) {
   // Xử lý params từ navigation (khi nhấn vào category từ HomeScreen)
   useEffect(() => {
     const params = route?.params || {};
-    
+
     // Nếu có autoApplyFilter thì mới xử lý
     if (params.autoApplyFilter) {
       // Reset các filter type khác
@@ -109,7 +109,7 @@ export default function ProductsScreen({ navigation }) {
       setTypeLens(false);
       setTypeSunglasses(false);
       setTypeAccessory(false);
-      
+
       // Áp dụng filter theo category được chọn
       switch (params.filterType) {
         case 'frame':
@@ -127,7 +127,7 @@ export default function ProductsScreen({ navigation }) {
         default:
           break;
       }
-      
+
       // Nếu có query từ params thì set
       if (params.q) {
         setQuery(params.q);
@@ -251,7 +251,7 @@ export default function ProductsScreen({ navigation }) {
     if (typeLens) activeTypes.push("LENS");
     if (typeSunglasses) activeTypes.push("SUNGLASSES");
     if (typeAccessory) activeTypes.push("ACCESSORY");
-    
+
     if (activeTypes.length > 0) {
       arr = arr.filter((p) => activeTypes.includes(p.type?.toUpperCase()));
     }
@@ -335,7 +335,7 @@ export default function ProductsScreen({ navigation }) {
           <TouchableOpacity
             onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
             activeOpacity={0.85}
-            style={styles.iconBtn} 
+            style={styles.iconBtn}
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
@@ -361,7 +361,7 @@ export default function ProductsScreen({ navigation }) {
         data={data}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         columnWrapperStyle={{ gap: GAP }}
         ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
         contentContainerStyle={styles.listContent}
@@ -496,7 +496,10 @@ export default function ProductsScreen({ navigation }) {
         title="Bộ lọc"
         onClose={() => setFilterOpen(false)}
       >
-        <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 14 }}>
+        <ScrollView
+          showsVerticalScrollIndicator={true}
+          contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24, gap: 14 }}
+        >
           {/* TYPE */}
           <View style={{ gap: 8 }}>
             <Text style={styles.groupTitle}>Loại</Text>
@@ -700,7 +703,7 @@ export default function ProductsScreen({ navigation }) {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </BottomSheet>
     </SafeAreaView>
   );
