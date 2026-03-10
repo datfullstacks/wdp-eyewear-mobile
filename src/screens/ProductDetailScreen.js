@@ -10,6 +10,8 @@ import {
   FlatList,
   TextInput,
   Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,6 +25,7 @@ import { CART_TYPES, useCartStore } from "../store/cartStore";
 import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
 import { useAuthStore } from "../store/authStore";
+import ProductModelViewer from "../components/ProductModelViewer";
 
 /* -------------------- helpers -------------------- */
 
@@ -233,6 +236,8 @@ export default function ProductDetailScreen({ navigation, route }) {
   const { products } = useProducts();
   const [specsOpen, setSpecsOpen] = useState(true);
 
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   const requireLogin = () => {
     Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để sử dụng tính năng này.", [
       { text: "Hủy", style: "cancel" },
@@ -360,6 +365,16 @@ export default function ProductDetailScreen({ navigation, route }) {
       null
     );
   }, [variantAssets, product?.media?.tryOn?.assets, product?.media?.assets, product?.model3D?.defaultAsset]);
+
+  const model3DUrl = useMemo(() => {
+    return (
+      image3DAsset?.ar?.glbUrl ||
+      image3DAsset?.url ||
+      product?.model3D?.glbUrl ||
+      product?.tryOn?.glbUrl ||
+      ""
+    );
+  }, [image3DAsset, product]);
 
   const has3DAsset = Boolean(image3DAsset);
 
@@ -644,6 +659,8 @@ export default function ProductDetailScreen({ navigation, route }) {
           mediaMode={mediaMode}
           onChangeMediaMode={setMediaMode}
           has3D={has3DAsset}
+          model3DUrl={model3DUrl}
+          onOpenPreview={() => setPreviewOpen(true)}
         />
 
         <InfoCard product={product} discountPct={discountPct} isVariantOut={isVariantOut} variantStock={variantStock} />
@@ -726,7 +743,13 @@ export default function ProductDetailScreen({ navigation, route }) {
         ) : null}
 
         <RelatedList navigation={navigation} related={related} />
-
+        <HeroPreviewModal
+          visible={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          mediaMode={mediaMode}
+          image={mainImage}
+          model3DUrl={model3DUrl}
+        />
         <View style={{ height: 18 }} />
       </ScrollView>
     </SafeAreaView>
@@ -789,6 +812,8 @@ function Hero({
   mediaMode = "2d",
   onChangeMediaMode,
   has3D,
+  model3DUrl,
+  onOpenPreview,
 }) {
   const isOutOfStock = isVariantOut;
 
@@ -811,16 +836,51 @@ function Hero({
           </View>
         ) : null}
 
-        <TouchableOpacity activeOpacity={0.85} onPress={onToggleFav} style={styles.favBtnOnImage}>
-          <Ionicons name={fav ? "heart" : "heart-outline"} size={20} color="#EF4444" />
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onToggleFav}
+          style={styles.favBtnOnImage}
+        >
+          <Ionicons
+            name={fav ? "heart" : "heart-outline"}
+            size={20}
+            color="#EF4444"
+          />
         </TouchableOpacity>
 
-        {image ? (
-          <Image
-            source={{ uri: image }}
-            style={[styles.heroImage, isOutOfStock && styles.heroImageDisabled]}
-            resizeMode="contain"
-          />
+        {mediaMode === "3d" && has3D && model3DUrl ? (
+          <View style={[styles.heroImage, isOutOfStock && styles.heroImageDisabled]}>
+            <ProductModelViewer
+              glbUrl={model3DUrl}
+              scale={[4.5, 4.5, 4.5]}
+              position={[0, -10, 0]}
+              cameraZ={95}
+              style={styles.heroModelViewer}
+            />
+          </View>
+        ) : image ? (
+          <TouchableOpacity
+            activeOpacity={0.95}
+            onPress={onOpenPreview}
+            style={styles.heroImage}
+          >
+            <Image
+              source={{ uri: image }}
+              style={[styles.heroImage, isOutOfStock && styles.heroImageDisabled]}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
+        ) : null}
+
+        {mediaMode === "3d" && has3D && model3DUrl ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={onOpenPreview}
+            style={styles.expand3DBtn}
+          >
+            <Ionicons name="expand-outline" size={16} color="#111827" />
+            <Text style={styles.expand3DBtnText}>Phóng to</Text>
+          </TouchableOpacity>
         ) : null}
 
         {product.type === "FRAME" && has3D && !isOutOfStock ? (
@@ -828,18 +888,35 @@ function Hero({
             <TouchableOpacity
               activeOpacity={0.9}
               onPress={() => onChangeMediaMode?.("2d")}
-              style={[styles.modeSwitchItem, mediaMode === "2d" && styles.modeSwitchItemActive]}
+              style={[
+                styles.modeSwitchItem,
+                mediaMode === "2d" && styles.modeSwitchItemActive,
+              ]}
             >
-              <Text style={[styles.modeSwitchText, mediaMode === "2d" && styles.modeSwitchTextActive]}>
+              <Text
+                style={[
+                  styles.modeSwitchText,
+                  mediaMode === "2d" && styles.modeSwitchTextActive,
+                ]}
+              >
                 2D
               </Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               activeOpacity={0.9}
               onPress={() => onChangeMediaMode?.("3d")}
-              style={[styles.modeSwitchItem, mediaMode === "3d" && styles.modeSwitchItemActive]}
+              style={[
+                styles.modeSwitchItem,
+                mediaMode === "3d" && styles.modeSwitchItemActive,
+              ]}
             >
-              <Text style={[styles.modeSwitchText, mediaMode === "3d" && styles.modeSwitchTextActive]}>
+              <Text
+                style={[
+                  styles.modeSwitchText,
+                  mediaMode === "3d" && styles.modeSwitchTextActive,
+                ]}
+              >
                 3D
               </Text>
             </TouchableOpacity>
@@ -847,6 +924,58 @@ function Hero({
         ) : null}
       </View>
     </Card>
+  );
+}
+
+function HeroPreviewModal({
+  visible,
+  onClose,
+  mediaMode,
+  image,
+  model3DUrl,
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      hardwareAccelerated
+    >
+      <View style={styles.previewOverlay}>
+        <Pressable style={styles.previewBackdrop} onPress={onClose} />
+
+        <View style={styles.previewContentWrap} pointerEvents="box-none">
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={onClose}
+            style={styles.previewCloseBtn}
+          >
+            <Ionicons name="close" size={22} color="#111827" />
+          </TouchableOpacity>
+
+          <View style={styles.previewCard}>
+            {mediaMode === "3d" && model3DUrl ? (
+              <ProductModelViewer
+                key={`preview-3d-${model3DUrl}-${visible ? "open" : "close"}`}
+                glbUrl={model3DUrl}
+                scale={[3.8, 3.8, 3.8]}
+                cameraZ={135}
+                position={[0, -2, 0]}
+                style={styles.previewModelViewer}
+              />
+            ) : image ? (
+              <Image
+                source={{ uri: image }}
+                style={styles.previewImage}
+                resizeMode="contain"
+              />
+            ) : null}
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1435,6 +1564,7 @@ const styles = StyleSheet.create({
     padding: 4,
     elevation: 3,
   },
+
   modeSwitchItem: {
     minWidth: 46,
     height: 30,
@@ -1583,4 +1713,77 @@ const styles = StyleSheet.create({
   accTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
   accBody: { paddingBottom: 14 },
   accText: { fontSize: 13, fontWeight: "700", color: "#4B5563", lineHeight: 18 },
+
+  expand3DBtn: {
+    position: "absolute",
+    left: 10,
+    top: 10,
+    zIndex: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  expand3DBtnText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#111827",
+  },
+
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+  },
+
+  previewBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+
+  previewContentWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 24,
+    zIndex: 2,
+  },
+
+  previewCard: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  previewImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  previewCloseBtn: {
+    position: "absolute",
+    top: 50,
+    right: 18,
+    zIndex: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  heroModelViewer: {
+    width: "100%",
+    height: "100%",
+  },
+  previewModelViewer: {
+    width: "100%",
+    height: "100%",
+  },
 });

@@ -39,7 +39,8 @@
       "expo-secure-store",
       "expo-dev-client",
       "./plugins/withWdpTryOnAndroid",
-      "./plugins/withWdpTryOnIos"
+      "./plugins/withWdpTryOnIos",
+      "expo-asset"
     ]
   }
 }

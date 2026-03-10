@@ -357,21 +357,21 @@ function buildTryOnMeta(media = {}) {
   ).trim();
   const translation = String(
     tryOn?.prefab?.translation ??
-      tryOn?.translation ??
-      tryOn?.modelTranslation ??
-      tryOn?.banubaTranslation ??
-      ""
+    tryOn?.translation ??
+    tryOn?.modelTranslation ??
+    tryOn?.banubaTranslation ??
+    ""
   ).trim();
   const gravity = String(tryOn?.prefab?.gravity ?? tryOn?.gravity ?? "").trim();
   const cut = String(tryOn?.prefab?.cut ?? tryOn?.cut ?? "").trim();
   const usePhysics =
     typeof tryOn?.prefab?.usePhysics === "boolean"
-        ? tryOn.prefab.usePhysics
+      ? tryOn.prefab.usePhysics
       : typeof tryOn?.usePhysics === "boolean"
         ? tryOn.usePhysics
         : undefined;
   const colliders = Array.isArray(tryOn?.prefab?.colliders)
-      ? tryOn.prefab.colliders
+    ? tryOn.prefab.colliders
     : Array.isArray(tryOn?.colliders)
       ? tryOn.colliders
       : [];
@@ -502,8 +502,11 @@ export function mapApiProductToUi(product) {
 
   const { colors, sizes, colorDots } = buildVariantsMeta(variants, assets, variantAssetsById);
 
+  // const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
+  // const tryOn = withDemoTryOn(buildTryOnMeta(product?.media || {}), uiType);
   const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
   const tryOn = withDemoTryOn(buildTryOnMeta(product?.media || {}), uiType);
+  const default3DAsset = pick3DAsset(assets);
 
   const apiId = product?._id || product?.id || null;
 
@@ -538,9 +541,19 @@ export function mapApiProductToUi(product) {
     colors,
     sizes,
     qtyLimits: { min: 1, max: 99 },
+    // model3D: {
+    //   enabled: has3D,
+    //   defaultAsset: pick3DAsset(assets),
+    //   glbUrl:
+    //     tryOn?.glbUrl ||
+    //     pick3DAsset(assets)?.ar?.glbUrl ||
+    //     pick3DAsset(assets)?.url ||
+    //     "",
+    // },
     model3D: {
       enabled: has3D,
-      defaultAsset: pick3DAsset(assets),
+      defaultAsset: default3DAsset,
+      glbUrl: tryOn?.glbUrl || default3DAsset?.ar?.glbUrl || default3DAsset?.url || "",
     },
     media: {
       assets,
