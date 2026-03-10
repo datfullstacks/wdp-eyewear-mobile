@@ -9,9 +9,20 @@ import {
   fetchCheckoutQuote,
   createCheckout,
 } from "../services/checkoutService";
-import { addMyAddressApi, getMyAddressesApi } from "../services/userService";
+import {
+  addMyAddressApi,
+  getMyAddressesApi,
+  updateMyAddressApi,
+  setDefaultMyAddressApi,
+} from "../services/userService";
 import { validatePromotionApi } from "../services/promotionService";
 import { Ionicons } from "@expo/vector-icons";
+import { Picker } from "@react-native-picker/picker";
+import {
+  getProvinces,
+  getDistrictsByProvinceCode,
+  getWardsByDistrictCode,
+} from "vn-provinces";
 
 const SHIPPING_METHODS = [
   { id: "standard", label: "Giao tiêu chuẩn", eta: "2-4 ngày làm việc", price: 25000 },
@@ -22,30 +33,36 @@ const PAYMENT_METHODS = [
   { id: "sepay", label: "SePay (QR)", desc: "Quét QR SePay để thanh toán" },
 ];
 
-const PREORDER_PAYMENT_METHODS = PAYMENT_METHODS;
 const API_CART_TYPE = {
   [CART_TYPES.ORDER]: "ready_stock",
   [CART_TYPES.PREORDER]: "pre_order",
 };
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value) + "đ";
+
 const pickValue = (...values) => {
   for (const value of values) {
     if (value !== undefined && value !== null && value !== "") return value;
   }
   return null;
 };
+
 const EMPTY_ADDRESS = {
+  _id: "",
   fullName: "",
   phone: "",
   email: "",
   line1: "",
   line2: "",
   ward: "",
+  wardCode: "",
   district: "",
+  districtCode: "",
   province: "",
+  provinceCode: "",
   country: "VN",
   note: "",
+  isDefault: false,
 };
 
 const buildAddressLines = (addr) => {
@@ -63,13 +80,11 @@ export default function CheckoutScreen({ navigation, route }) {
   const initialQuote = route?.params?.quote || null;
   const initialQuoteMeta = route?.params?.quoteMeta || {};
 
-  // ✅ hidden note from cart pairing (NOT shown on UI)
   const autoNote = String(initialQuoteMeta.autoNote || "").trim();
 
   const [shippingId, setShippingId] = useState(initialQuoteMeta.shippingMethod || "standard");
   const [paymentId, setPaymentId] = useState(PAYMENT_METHODS[0]?.id || "sepay");
 
-  // ✅ user note only (UI)
   const [userNote, setUserNote] = useState("");
   const [voucherInput, setVoucherInput] = useState(String(initialQuoteMeta.voucherCode || ""));
   const [appliedVoucherCode, setAppliedVoucherCode] = useState(
@@ -90,7 +105,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
   const [address, setAddress] = useState(null);
   const [isEditingAddress, setIsEditingAddress] = useState(false);
-  const [draftAddress, setDraftAddress] = useState(EMPTY_ADDRESS);
+  const [draftAddress, setDraftAddress] = useState({ ...EMPTY_ADDRESS });
 
   const [quote, setQuote] = useState(initialQuote);
   const [skipInitialQuote, setSkipInitialQuote] = useState(Boolean(initialQuote));
@@ -98,6 +113,10 @@ export default function CheckoutScreen({ navigation, route }) {
   const [quoteError, setQuoteError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addressLoading, setAddressLoading] = useState(false);
+
+  const [provinces, setProvinces] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [wards, setWards] = useState([]);
 
   const quoteErrorMessage = useMemo(() => {
     const data = quoteError?.response?.data || {};
@@ -150,6 +169,10 @@ export default function CheckoutScreen({ navigation, route }) {
   }, [isHydrating, hydrate]);
 
   useEffect(() => {
+    setProvinces(getProvinces() || []);
+  }, []);
+
+  useEffect(() => {
     if (!token) return;
     let active = true;
     setAddressLoading(true);
@@ -159,22 +182,28 @@ export default function CheckoutScreen({ navigation, route }) {
         if (!active) return;
         const list = Array.isArray(data) ? data : [];
         const defaultAddress = list.find((a) => a?.isDefault) || list[0] || null;
+
         if (defaultAddress) {
           setAddress({
+            _id: defaultAddress._id || "",
             fullName: defaultAddress.fullName || "",
             phone: defaultAddress.phone || "",
             email: defaultAddress.email || "",
             line1: defaultAddress.line1 || "",
             line2: defaultAddress.line2 || "",
             ward: defaultAddress.ward || "",
+            wardCode: defaultAddress.wardCode || "",
             district: defaultAddress.district || "",
+            districtCode: defaultAddress.districtCode || "",
             province: defaultAddress.province || "",
+            provinceCode: defaultAddress.provinceCode || "",
             country: defaultAddress.country || "VN",
             note: defaultAddress.note || "",
+            isDefault: Boolean(defaultAddress.isDefault),
           });
         }
       })
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => {
         if (!active) return;
         setAddressLoading(false);
@@ -187,62 +216,205 @@ export default function CheckoutScreen({ navigation, route }) {
 
   useEffect(() => {
     if (!paymentMethods.find((m) => m.id === paymentId)) {
-      setPaymentId(paymentMethods[0]?.id || "cod");
+      setPaymentId(paymentMethods[0]?.id || "sepay");
     }
   }, [paymentMethods, paymentId]);
 
+  useEffect(() => {
+    if (!draftAddress.provinceCode) {
+      setDistricts([]);
+      setWards([]);
+      return;
+    }
+    setDistricts(getDistrictsByProvinceCode(draftAddress.provinceCode) || []);
+    setWards([]);
+  }, [draftAddress.provinceCode]);
+
+  useEffect(() => {
+    if (!draftAddress.districtCode) {
+      setWards([]);
+      return;
+    }
+    setWards(getWardsByDistrictCode(draftAddress.districtCode) || []);
+  }, [draftAddress.districtCode]);
+
+  const normalizeAddressWithCodes = (addr) => {
+    if (!addr) return { ...EMPTY_ADDRESS };
+
+    const provinceList = getProvinces() || [];
+    const matchedProvince =
+      provinceList.find((p) => String(p.code) === String(addr.provinceCode)) ||
+      provinceList.find((p) => p.name === addr.province);
+
+    const districtList = matchedProvince
+      ? getDistrictsByProvinceCode(matchedProvince.code) || []
+      : [];
+
+    const matchedDistrict =
+      districtList.find((d) => String(d.code) === String(addr.districtCode)) ||
+      districtList.find((d) => d.name === addr.district);
+
+    const wardList = matchedDistrict
+      ? getWardsByDistrictCode(matchedDistrict.code) || []
+      : [];
+
+    const matchedWard =
+      wardList.find((w) => String(w.code) === String(addr.wardCode)) ||
+      wardList.find((w) => w.name === addr.ward);
+
+    return {
+      ...EMPTY_ADDRESS,
+      ...addr,
+      _id: addr?._id || "",
+      isDefault: Boolean(addr?.isDefault),
+      provinceCode: matchedProvince?.code || addr.provinceCode || "",
+      province: matchedProvince?.name || addr.province || "",
+      districtCode: matchedDistrict?.code || addr.districtCode || "",
+      district: matchedDistrict?.name || addr.district || "",
+      wardCode: matchedWard?.code || addr.wardCode || "",
+      ward: matchedWard?.name || addr.ward || "",
+    };
+  };
+
+  const getDefaultAddressFromList = (list, fallback = null) => {
+    const safeList = Array.isArray(list) ? list : [];
+    const defaultAddress = safeList.find((a) => a?.isDefault) || safeList[0] || fallback || null;
+
+    if (!defaultAddress) return null;
+
+    return {
+      _id: defaultAddress._id || "",
+      fullName: defaultAddress.fullName || "",
+      phone: defaultAddress.phone || "",
+      email: defaultAddress.email || "",
+      line1: defaultAddress.line1 || "",
+      line2: defaultAddress.line2 || "",
+      ward: defaultAddress.ward || "",
+      wardCode: defaultAddress.wardCode || "",
+      district: defaultAddress.district || "",
+      districtCode: defaultAddress.districtCode || "",
+      province: defaultAddress.province || "",
+      provinceCode: defaultAddress.provinceCode || "",
+      country: defaultAddress.country || "VN",
+      note: defaultAddress.note || "",
+      isDefault: Boolean(defaultAddress.isDefault),
+    };
+  };
+
+  const refreshAndSelectDefaultAddress = async (fallbackAddress = null) => {
+    const refreshed = await getMyAddressesApi();
+    const selected = getDefaultAddressFromList(refreshed, fallbackAddress);
+    setAddress(selected);
+    return selected;
+  };
+
   const startEditAddress = (preset) => {
-    setDraftAddress(preset ?? address ?? EMPTY_ADDRESS);
+    setDraftAddress(normalizeAddressWithCodes(preset ?? address ?? { ...EMPTY_ADDRESS }));
     setIsEditingAddress(true);
   };
 
   const cancelEditAddress = () => {
-    setDraftAddress(address ?? EMPTY_ADDRESS);
+    setDraftAddress(normalizeAddressWithCodes(address ?? { ...EMPTY_ADDRESS }));
     setIsEditingAddress(false);
   };
 
   const saveEditAddress = async () => {
     const cleaned = {
+      _id: draftAddress._id || "",
       fullName: draftAddress.fullName.trim(),
       phone: draftAddress.phone.trim(),
       email: draftAddress.email.trim(),
       line1: draftAddress.line1.trim(),
       line2: draftAddress.line2.trim(),
       ward: draftAddress.ward.trim(),
+      wardCode: draftAddress.wardCode || "",
       district: draftAddress.district.trim(),
+      districtCode: draftAddress.districtCode || "",
       province: draftAddress.province.trim(),
+      provinceCode: draftAddress.provinceCode || "",
       country: draftAddress.country?.trim() || "VN",
       note: draftAddress.note.trim(),
     };
+
     const hasValue = Boolean(
-      cleaned.fullName || cleaned.phone || cleaned.line1 || cleaned.ward || cleaned.district || cleaned.province
+      cleaned.fullName ||
+        cleaned.phone ||
+        cleaned.line1 ||
+        cleaned.ward ||
+        cleaned.district ||
+        cleaned.province
     );
+
     if (!hasValue) {
       setAddress(null);
       setIsEditingAddress(false);
       return;
     }
 
+    if (!cleaned.fullName || !cleaned.phone || !cleaned.line1 || !cleaned.district || !cleaned.province) {
+      Alert.alert("Địa chỉ", "Vui lòng nhập đầy đủ họ tên, số điện thoại, địa chỉ, quận/huyện và tỉnh/thành phố.");
+      return;
+    }
+
     try {
       if (token) {
-        const updated = await addMyAddressApi(cleaned);
-        const list = Array.isArray(updated) ? updated : [];
-        const selected = list.find((a) => a?.isDefault) || list[list.length - 1] || cleaned;
-        setAddress({
-          fullName: selected.fullName || "",
-          phone: selected.phone || "",
-          email: selected.email || "",
-          line1: selected.line1 || "",
-          line2: selected.line2 || "",
-          ward: selected.ward || "",
-          district: selected.district || "",
-          province: selected.province || "",
-          country: selected.country || "VN",
-          note: selected.note || "",
-        });
+        const isEditingExisting = Boolean(cleaned._id);
+
+        const response = isEditingExisting
+          ? await updateMyAddressApi(cleaned._id, cleaned)
+          : await addMyAddressApi(cleaned);
+
+        const list = Array.isArray(response) ? response : [];
+
+        let selected =
+          (isEditingExisting
+            ? list.find((a) => String(a?._id) === String(cleaned._id))
+            : list.find(
+                (a) =>
+                  a?.fullName === cleaned.fullName &&
+                  a?.phone === cleaned.phone &&
+                  a?.line1 === cleaned.line1 &&
+                  a?.district === cleaned.district &&
+                  a?.province === cleaned.province
+              )) ||
+          list[list.length - 1] ||
+          cleaned;
+
+        const selectedId = selected?._id || cleaned._id;
+
+        if (selectedId) {
+          await setDefaultMyAddressApi(selectedId);
+        }
+
+        const selectedFallback = {
+          _id: selectedId || "",
+          fullName: selected.fullName || cleaned.fullName,
+          phone: selected.phone || cleaned.phone,
+          email: selected.email || cleaned.email,
+          line1: selected.line1 || cleaned.line1,
+          line2: selected.line2 || cleaned.line2,
+          ward: selected.ward || cleaned.ward,
+          wardCode: selected.wardCode || cleaned.wardCode,
+          district: selected.district || cleaned.district,
+          districtCode: selected.districtCode || cleaned.districtCode,
+          province: selected.province || cleaned.province,
+          provinceCode: selected.provinceCode || cleaned.provinceCode,
+          country: selected.country || cleaned.country || "VN",
+          note: selected.note || cleaned.note,
+          isDefault: true,
+        };
+
+        const nextAddress = await refreshAndSelectDefaultAddress(selectedFallback);
+        setDraftAddress(normalizeAddressWithCodes(nextAddress || selectedFallback));
       } else {
-        setAddress(cleaned);
+        const localAddress = {
+          ...cleaned,
+          isDefault: true,
+        };
+        setAddress(localAddress);
+        setDraftAddress(normalizeAddressWithCodes(localAddress));
       }
+
       setIsEditingAddress(false);
     } catch (err) {
       const data = err?.response?.data || {};
@@ -254,13 +426,18 @@ export default function CheckoutScreen({ navigation, route }) {
   const hasAddress = Boolean(
     address?.fullName || address?.phone || address?.line1 || address?.ward || address?.district || address?.province
   );
+
   const addressComplete = Boolean(
-    address?.fullName && address?.phone && address?.line1 && address?.ward && address?.district && address?.province
+    address?.fullName &&
+      address?.phone &&
+      address?.line1 &&
+      address?.district &&
+      address?.province
   );
 
-  // ✅ quote update (do NOT include autoNote / userNote in quote)
   useEffect(() => {
     let active = true;
+
     if (!checkoutItems.length) {
       setQuote(null);
       return undefined;
@@ -279,7 +456,6 @@ export default function CheckoutScreen({ navigation, route }) {
       shippingAddress: addressComplete ? address : null,
       voucherCode: appliedVoucherCode || undefined,
       cartType: API_CART_TYPE[cartType] || "ready_stock",
-      // note intentionally omitted
     });
 
     setQuoteLoading(true);
@@ -319,6 +495,7 @@ export default function CheckoutScreen({ navigation, route }) {
   const applyVoucher = async () => {
     if (isApplyingVoucher) return;
     const code = String(voucherInput || "").trim().toUpperCase();
+
     if (!code) {
       setAppliedVoucherCode("");
       setVoucherMeta(null);
@@ -357,6 +534,7 @@ export default function CheckoutScreen({ navigation, route }) {
         voucherCode: code,
         cartType: API_CART_TYPE[cartType] || "ready_stock",
       });
+
       const refreshedQuote = await fetchCheckoutQuote(quotePayload);
       setQuote(refreshedQuote);
       setQuoteError(null);
@@ -376,21 +554,22 @@ export default function CheckoutScreen({ navigation, route }) {
 
   const checkoutOrder = async () => {
     if (isSubmitting || !checkoutItems.length) return;
+
     if (!addressComplete) {
       Alert.alert("Thiếu địa chỉ", "Vui lòng nhập đầy đủ thông tin giao hàng.");
       return;
     }
 
-    // ✅ merge hidden auto note + user note (user note appended)
     const mergedNote = [autoNote, String(userNote || "").trim()].filter(Boolean).join("\n");
 
     try {
       setIsSubmitting(true);
+
       const payload = buildCheckoutPayload({
         items: checkoutItems,
         shippingMethod: shippingId,
         shippingAddress: addressComplete ? address : null,
-        note: mergedNote || undefined, // ✅ only send if any
+        note: mergedNote || undefined,
         shippingFee: shippingMethodFee,
         discountAmount: typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
         voucherCode: appliedVoucherCode || undefined,
@@ -405,6 +584,7 @@ export default function CheckoutScreen({ navigation, route }) {
       const serverPayment = data?.payment || data?.paymentInstructions || data?.paymentInstruction || {};
       const fallbackMethod = "SEPAY";
       const fallbackStatus = "PENDING_QR";
+
       const orderPayment = {
         ...serverPayment,
         method:
@@ -484,6 +664,7 @@ export default function CheckoutScreen({ navigation, route }) {
         createdAt: pickValue(serverPayment.createdAt, data?.createdAt, now) || now,
         paidAt: pickValue(serverPayment.paidAt, data?.paidAt, null),
       };
+
       const orderPayload = {
         orderId,
         createdAt: now,
@@ -543,12 +724,17 @@ export default function CheckoutScreen({ navigation, route }) {
           <View style={styles.card}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
-              <TouchableOpacity activeOpacity={0.85} disabled={isEditingAddress} onPress={() => startEditAddress(address)}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                disabled={isEditingAddress}
+                onPress={() => startEditAddress(address)}
+              >
                 <Text style={[styles.linkText, isEditingAddress && styles.linkDisabled]}>
                   {isEditingAddress ? "Đang chỉnh sửa" : hasAddress ? "Thay đổi" : "Thêm"}
                 </Text>
               </TouchableOpacity>
             </View>
+
             {addressLoading ? <Text style={styles.addressMeta}>Đang tải địa chỉ...</Text> : null}
 
             {isEditingAddress ? (
@@ -614,43 +800,121 @@ export default function CheckoutScreen({ navigation, route }) {
                 </View>
 
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Phường / Xã</Text>
-                  <TextInput
-                    style={styles.fieldInput}
-                    placeholder="Nhập phường/xã"
-                    placeholderTextColor="#9CA3AF"
-                    value={draftAddress.ward}
-                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, ward: value }))}
-                  />
+                  <Text style={styles.fieldLabel}>Tỉnh / Thành phố</Text>
+                  <View style={styles.pickerBox}>
+                    <Picker
+                      selectedValue={draftAddress.provinceCode}
+                      onValueChange={(value) => {
+                        if (!value) {
+                          setDraftAddress((prev) => ({
+                            ...prev,
+                            provinceCode: "",
+                            province: "",
+                            districtCode: "",
+                            district: "",
+                            wardCode: "",
+                            ward: "",
+                          }));
+                          return;
+                        }
+
+                        const selected = provinces.find((p) => String(p.code) === String(value));
+                        setDraftAddress((prev) => ({
+                          ...prev,
+                          provinceCode: value,
+                          province: selected?.name || "",
+                          districtCode: "",
+                          district: "",
+                          wardCode: "",
+                          ward: "",
+                        }));
+                      }}
+                    >
+                      <Picker.Item label="Chọn tỉnh / thành phố" value="" />
+                      {provinces.map((p) => (
+                        <Picker.Item key={String(p.code)} label={p.name} value={p.code} />
+                      ))}
+                    </Picker>
+                  </View>
                 </View>
 
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>Quận / Huyện</Text>
-                  <TextInput
-                    style={styles.fieldInput}
-                    placeholder="Nhập quận/huyện"
-                    placeholderTextColor="#9CA3AF"
-                    value={draftAddress.district}
-                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, district: value }))}
-                  />
+                  <View style={styles.pickerBox}>
+                    <Picker
+                      enabled={!!draftAddress.provinceCode}
+                      selectedValue={draftAddress.districtCode}
+                      onValueChange={(value) => {
+                        if (!value) {
+                          setDraftAddress((prev) => ({
+                            ...prev,
+                            districtCode: "",
+                            district: "",
+                            wardCode: "",
+                            ward: "",
+                          }));
+                          return;
+                        }
+
+                        const selected = districts.find((d) => String(d.code) === String(value));
+                        setDraftAddress((prev) => ({
+                          ...prev,
+                          districtCode: value,
+                          district: selected?.name || "",
+                          wardCode: "",
+                          ward: "",
+                        }));
+                      }}
+                    >
+                      <Picker.Item label="Chọn quận / huyện" value="" />
+                      {districts.map((d) => (
+                        <Picker.Item key={String(d.code)} label={d.name} value={d.code} />
+                      ))}
+                    </Picker>
+                  </View>
                 </View>
 
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Tỉnh / Thành phố</Text>
-                  <TextInput
-                    style={styles.fieldInput}
-                    placeholder="Nhập tỉnh/thành phố"
-                    placeholderTextColor="#9CA3AF"
-                    value={draftAddress.province}
-                    onChangeText={(value) => setDraftAddress((prev) => ({ ...prev, province: value }))}
-                  />
+                  <Text style={styles.fieldLabel}>Phường / Xã</Text>
+                  <View style={styles.pickerBox}>
+                    <Picker
+                      enabled={!!draftAddress.districtCode}
+                      selectedValue={draftAddress.wardCode}
+                      onValueChange={(value) => {
+                        if (!value) {
+                          setDraftAddress((prev) => ({ ...prev, wardCode: "", ward: "" }));
+                          return;
+                        }
+
+                        const selected = wards.find((w) => String(w.code) === String(value));
+                        setDraftAddress((prev) => ({
+                          ...prev,
+                          wardCode: value,
+                          ward: selected?.name || "",
+                        }));
+                      }}
+                    >
+                      <Picker.Item label="Chọn phường / xã" value="" />
+                      {wards.map((w) => (
+                        <Picker.Item key={String(w.code)} label={w.name} value={w.code} />
+                      ))}
+                    </Picker>
+                  </View>
                 </View>
 
                 <View style={styles.addressActions}>
-                  <TouchableOpacity style={[styles.actionBtn, styles.actionBtnGhost]} activeOpacity={0.85} onPress={cancelEditAddress}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionBtnGhost]}
+                    activeOpacity={0.85}
+                    onPress={cancelEditAddress}
+                  >
                     <Text style={[styles.actionText, styles.actionTextGhost]}>Hủy</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.actionBtn, styles.actionBtnPrimary]} activeOpacity={0.85} onPress={saveEditAddress}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionBtnPrimary]}
+                    activeOpacity={0.85}
+                    onPress={saveEditAddress}
+                  >
                     <Text style={[styles.actionText, styles.actionTextPrimary]}>Lưu</Text>
                   </TouchableOpacity>
                 </View>
@@ -672,7 +936,11 @@ export default function CheckoutScreen({ navigation, route }) {
                   <Text style={styles.addressEmpty}>Chưa có địa chỉ giao hàng</Text>
                 )}
 
-                <TouchableOpacity activeOpacity={0.9} style={styles.addAddressBtn} onPress={() => startEditAddress(EMPTY_ADDRESS)}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  style={styles.addAddressBtn}
+                  onPress={() => startEditAddress({ ...EMPTY_ADDRESS })}
+                >
                   <Text style={styles.addAddressText}>+ Thêm địa chỉ</Text>
                 </TouchableOpacity>
               </>
@@ -706,6 +974,7 @@ export default function CheckoutScreen({ navigation, route }) {
                 );
               })}
             </View>
+
             {hasPreorder ? (
               <View style={styles.noticeBox}>
                 <Text style={styles.noticeText}>
@@ -722,6 +991,7 @@ export default function CheckoutScreen({ navigation, route }) {
               {(() => {
                 const activeMethod = paymentMethods.find((m) => m.id === paymentId) || paymentMethods[0];
                 if (!activeMethod) return null;
+
                 return (
                   <View style={[styles.radioItem, styles.radioItemActive]}>
                     <View style={[styles.radioDot, styles.radioDotActive]}>
@@ -767,6 +1037,7 @@ export default function CheckoutScreen({ navigation, route }) {
                 <Text style={styles.voucherBtnText}>{isApplyingVoucher ? "Đang áp..." : "Áp dụng"}</Text>
               </TouchableOpacity>
             </View>
+
             {appliedVoucherCode ? (
               <Text style={styles.voucherHint}>
                 Đã áp dụng: {appliedVoucherCode}
@@ -775,7 +1046,6 @@ export default function CheckoutScreen({ navigation, route }) {
             ) : null}
           </View>
 
-          {/* ✅ UI note: user only */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Ghi chú đơn hàng (không bắt buộc)</Text>
             <TextInput
@@ -831,7 +1101,7 @@ export default function CheckoutScreen({ navigation, route }) {
             activeOpacity={0.9}
             style={[styles.continueBtn, (isSubmitting || !addressComplete) && styles.continueBtnDisabled]}
             onPress={checkoutOrder}
-            disabled={isSubmitting || !checkoutItems.length}
+            disabled={isSubmitting || !checkoutItems.length || !addressComplete}
           >
             <Text style={styles.continueText}>{isSubmitting ? "Đang tạo đơn..." : "Tiếp tục"}</Text>
           </TouchableOpacity>
@@ -1033,4 +1303,20 @@ const styles = StyleSheet.create({
   },
   continueBtnDisabled: { opacity: 0.6 },
   continueText: { fontSize: 14, fontWeight: "900", color: "#FFFFFF" },
+
+  pickerBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+  },
+
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

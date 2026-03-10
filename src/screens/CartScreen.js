@@ -143,8 +143,10 @@ export default function CartScreen({ navigation, route }) {
   );
 
   const discount = 0;
-  const shipping = cartItems.length > 0 ? 30000 : 0;
+  // const shipping = cartItems.length > 0 ? 30000 : 0;
+  const shipping = 0;
   const total = Math.max(0, subtotal - discount + shipping);
+
 
   const checkoutItems = useMemo(() => {
     const built = buildCheckoutItems(cartItems);
@@ -416,10 +418,10 @@ export default function CartScreen({ navigation, route }) {
                 <Text style={styles.sumLabel}>Giảm giá</Text>
                 <Text style={styles.sumValue}>-{formatVND(discount)}</Text>
               </View>
-              <View style={styles.sumRow}>
+              {/* <View style={styles.sumRow}>
                 <Text style={styles.sumLabel}>Phí vận chuyển</Text>
                 <Text style={styles.sumValue}>{formatVND(shipping)}</Text>
-              </View>
+              </View> */}
               <View style={styles.sumDivider} />
               <View style={styles.sumRow}>
                 <Text style={styles.sumTotalLabel}>Tổng cần thanh toán</Text>
