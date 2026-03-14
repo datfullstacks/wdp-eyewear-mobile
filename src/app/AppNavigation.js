@@ -1,4 +1,4 @@
-// navigation/AppNavigation.js
+﻿// navigation/AppNavigation.js
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   CommonActions,
@@ -141,24 +141,11 @@ function MainTabs({ navigation }) {
         },
         tabBarIcon: ({ color, focused }) => {
           let iconName = "home-outline";
-<<<<<<< HEAD
           if (route.name === "HomeTab") iconName = focused ? "home" : "home-outline";
           if (route.name === "ProductsTab") iconName = focused ? "cube" : "cube-outline";
           if (route.name === "FavTab") iconName = focused ? "heart" : "heart-outline";
           if (route.name === "NotificationTab") iconName = focused ? "notifications" : "notifications-outline";
           if (route.name === "ProfileTab") iconName = focused ? "person" : "person-outline";
-=======
-          if (route.name === "HomeTab")
-            iconName = focused ? "home" : "home-outline";
-          if (route.name === "ProductsTab")
-            iconName = focused ? "cube" : "cube-outline";
-          if (route.name === "FavTab")
-            iconName = focused ? "heart" : "heart-outline";
-          if (route.name === "OrdersTab")
-            iconName = focused ? "clipboard" : "clipboard-outline";
-          if (route.name === "ProfileTab")
-            iconName = focused ? "person" : "person-outline";
->>>>>>> 57cef57062283df4d740f1dea6db1f1e4c901b51
           return <Ionicons name={iconName} size={22} color={color} />;
         },
       })}
@@ -212,24 +199,17 @@ function MainTabs({ navigation }) {
       />
 
       <Tab.Screen
-<<<<<<< HEAD
         name="NotificationTab"
         component={NotificationsStackScreen}
         options={{ tabBarLabel: "Thông báo" }}
         listeners={({ navigation }) => ({
-=======
-        name="OrdersTab"
-        component={OrdersStackScreen}
-        options={{ tabBarLabel: "Đơn hàng" }}
-        listeners={{
->>>>>>> 57cef57062283df4d740f1dea6db1f1e4c901b51
           tabPress: (e) => {
             if (!token) {
               e.preventDefault();
               navigation.navigate("Login");
             }
           },
-        }}
+        })}
       />
 
       <Tab.Screen
@@ -262,13 +242,10 @@ export default function AppNavigation() {
   const setCartUser = useCartStore((s) => s.setUser);
   const isHydratingCart = useCartStore((s) => s.isHydrating);
 
-<<<<<<< HEAD
   // 1) hydrate auth trước
-=======
   const setFavUser = useFavoriteStore((s) => s.setUser);
   const isHydratingFav = useFavoriteStore((s) => s.isHydrating);
 
->>>>>>> 57cef57062283df4d740f1dea6db1f1e4c901b51
   useEffect(() => {
     hydrateAuth();
   }, [hydrateAuth]);
@@ -279,9 +256,8 @@ export default function AppNavigation() {
     }
   }, [isHydratingAuth, userKey, setCartUser]);
 
-<<<<<<< HEAD
   if (isHydratingAuth || isHydratingCart) return null;
-=======
+
   const handlePushNavigation = useCallback((payload) => {
     const notificationId = String(payload?.id || "").trim();
     if (notificationId) {
@@ -358,7 +334,6 @@ export default function AppNavigation() {
   }, [authToken, authUser, isHydratingAuth]);
 
   if (isHydratingAuth || isHydratingCart || isHydratingFav) return null;
->>>>>>> 57cef57062283df4d740f1dea6db1f1e4c901b51
 
   return (
     <NavigationContainer
