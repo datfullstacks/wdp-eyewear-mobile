@@ -3,6 +3,38 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+// @generated begin wdp-tryon-android-env - expo prebuild (DO NOT MODIFY) sync-440f8c7925104266acd4e92c0261d234812f7f0c
+def banubaEnabled = ((System.getenv("BANUBA_ENABLED") ?: findProperty("BANUBA_ENABLED") ?: "false")).toBoolean()
+def banubaRequiredMinSdk = 26
+def baseMinSdk = rootProject.ext.minSdkVersion as int
+def resolvedMinSdk = banubaEnabled ? Math.max(baseMinSdk, banubaRequiredMinSdk) : baseMinSdk
+def banubaAndroidSdkVersion =
+    System.getenv("BANUBA_ANDROID_SDK_VERSION")
+        ?: findProperty("BANUBA_ANDROID_SDK_VERSION")
+        ?: "1.17.7"
+def banubaAndroidMinimal = ((System.getenv("BANUBA_ANDROID_MINIMAL") ?: findProperty("BANUBA_ANDROID_MINIMAL") ?: "false")).toBoolean()
+def banubaAndroidSdkDependency =
+    System.getenv("BANUBA_ANDROID_SDK_DEPENDENCY")
+        ?: findProperty("BANUBA_ANDROID_SDK_DEPENDENCY")
+        ?: "com.banuba.sdk:banuba_sdk:1.17.7"
+def banubaAndroidSdkDependenciesRaw =
+    System.getenv("BANUBA_ANDROID_SDK_DEPENDENCIES")
+        ?: findProperty("BANUBA_ANDROID_SDK_DEPENDENCIES")
+        ?: ""
+def banubaAndroidSdkDependencies = banubaAndroidSdkDependenciesRaw
+    .split(",")
+    .collect { it.trim() }
+    .findAll { !it.isEmpty() }
+if (banubaAndroidMinimal && banubaAndroidSdkDependencies.isEmpty()) {
+    banubaAndroidSdkDependencies = [
+        "com.banuba.sdk:sdk_api:${banubaAndroidSdkVersion}",
+        "com.banuba.sdk:face_tracker:${banubaAndroidSdkVersion}"
+    ]
+}
+if (banubaAndroidSdkDependencies.isEmpty()) {
+    banubaAndroidSdkDependencies = [banubaAndroidSdkDependency]
+}
+// @generated end wdp-tryon-android-env
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -81,24 +113,6 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
-def propOrEnv = { String key, String fallback = "" ->
-    def fromProperty = findProperty(key)
-    if (fromProperty != null && fromProperty.toString().trim()) return fromProperty.toString().trim()
-    def fromEnv = System.getenv(key)
-    if (fromEnv != null && fromEnv.toString().trim()) return fromEnv.toString().trim()
-    return fallback
-}
-
-def banubaEnabled = propOrEnv('BANUBA_ENABLED', 'false').toBoolean()
-def banubaSdkVersion = propOrEnv('BANUBA_SDK_VERSION', '1.17.+')
-def banubaLicenseToken = propOrEnv('BANUBA_LICENSE_TOKEN')
-def banubaMinSdkVersion = 26
-def escapeBuildConfigValue = { value ->
-    value
-        .replace('\\', '\\\\')
-        .replace('"', '\\"')
-}
-
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -108,14 +122,20 @@ android {
     namespace 'com.wdp.eyewear'
     defaultConfig {
         applicationId 'com.wdp.eyewear'
-        minSdkVersion Math.max((rootProject.ext.minSdkVersion as int), banubaMinSdkVersion)
+        minSdkVersion rootProject.ext.minSdkVersion
+// @generated begin wdp-tryon-android-min-sdk - expo prebuild (DO NOT MODIFY) sync-0abd2387b69eb2520b72a973666f64ff706643eb
+        minSdkVersion resolvedMinSdk
+// @generated end wdp-tryon-android-min-sdk
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
-        buildConfigField "String", "BANUBA_LICENSE_TOKEN", "\"${escapeBuildConfigValue(banubaLicenseToken)}\""
+// @generated begin wdp-tryon-android-build-config - expo prebuild (DO NOT MODIFY) sync-4b65fb7987fc2b070ff10f0bfc70dfbc860926d0
         buildConfigField "boolean", "BANUBA_ENABLED", "${banubaEnabled}"
+        buildConfigField "String", "BANUBA_ANDROID_SDK_DEPENDENCY", "\"${banubaAndroidSdkDependency}\""
+        buildConfigField "String", "BANUBA_ANDROID_SDK_DEPENDENCIES", "\"${banubaAndroidSdkDependencies.join(",")}\""
+// @generated end wdp-tryon-android-build-config
     }
     signingConfigs {
         debug {
@@ -171,15 +191,24 @@ android {
         }
     }
 }
+// @generated begin wdp-tryon-android-effects-copy - expo prebuild (DO NOT MODIFY) sync-ddbba3e5ff8caee7f4c7f0877e422b7cd058e198
+def banubaEffectsSrcDir = new File(projectRoot, "effects")
+def banubaEffectsDstDir = file("$projectDir/src/main/assets/bnb-resources/effects")
+
+tasks.register("copyBanubaEffects", Copy) {
+    onlyIf { banubaEnabled && banubaEffectsSrcDir.exists() }
+    from(banubaEffectsSrcDir)
+    into(banubaEffectsDstDir)
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("copyBanubaEffects")
+}
+// @generated end wdp-tryon-android-effects-copy
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
-
-    implementation("com.banuba.sdk:sdk_api:${banubaSdkVersion}")
-    implementation("com.banuba.sdk:face_tracker:${banubaSdkVersion}")
-    implementation("com.banuba.sdk:background:${banubaSdkVersion}")
-    implementation("com.banuba.sdk:effect_player:${banubaSdkVersion}")
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
@@ -199,6 +228,14 @@ dependencies {
         }
     }
 
+// @generated begin wdp-tryon-android-deps - expo prebuild (DO NOT MODIFY) sync-de6d3a05965f206410e275210e841dc39ec14e9c
+    if (banubaEnabled) {
+        banubaAndroidSdkDependencies.each { dependencyNotation ->
+            implementation(dependencyNotation)
+        }
+    }
+
+// @generated end wdp-tryon-android-deps
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {

@@ -17,29 +17,24 @@ allprojects {
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
-
-    def propOrEnv = { String key, String fallback = "" ->
-      def fromProperty = findProperty(key)
-      if (fromProperty != null && fromProperty.toString().trim()) return fromProperty.toString().trim()
-      def fromEnv = System.getenv(key)
-      if (fromEnv != null && fromEnv.toString().trim()) return fromEnv.toString().trim()
-      return fallback
-    }
-
-    def banubaMavenUrl = propOrEnv("BANUBA_MAVEN_URL", "https://nexus.banuba.net/repository/maven-releases")
-    def banubaMavenUser = propOrEnv("BANUBA_MAVEN_USER")
-    def banubaMavenPassword = propOrEnv("BANUBA_MAVEN_PASSWORD")
-
-    maven {
-      name = "banuba-nexus"
-      url = uri(banubaMavenUrl)
-      if (banubaMavenUser && banubaMavenPassword) {
-        credentials {
-          username = banubaMavenUser
-          password = banubaMavenPassword
+// @generated begin wdp-tryon-android-maven - expo prebuild (DO NOT MODIFY) sync-7756899f0484db6f8df367c2e086555ccb17131b
+    def banubaAndroidMavenUrl = System.getenv("BANUBA_ANDROID_MAVEN_URL") ?: findProperty("BANUBA_ANDROID_MAVEN_URL")
+    def banubaAndroidMavenUsername =
+        System.getenv("BANUBA_ANDROID_MAVEN_USERNAME") ?: findProperty("BANUBA_ANDROID_MAVEN_USERNAME") ?: "sdk-banuba"
+    def banubaAndroidMavenPassword =
+        System.getenv("BANUBA_ANDROID_MAVEN_PASSWORD") ?: findProperty("BANUBA_ANDROID_MAVEN_PASSWORD")
+    if (banubaAndroidMavenUrl) {
+      maven {
+        url banubaAndroidMavenUrl
+        if (banubaAndroidMavenPassword) {
+          credentials {
+            username banubaAndroidMavenUsername
+            password banubaAndroidMavenPassword
+          }
         }
       }
     }
+// @generated end wdp-tryon-android-maven
   }
 }
 

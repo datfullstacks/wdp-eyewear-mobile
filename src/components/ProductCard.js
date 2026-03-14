@@ -1,41 +1,40 @@
-﻿import React from "react";
+﻿import React, { useEffect, useState } from "react";
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFavoriteStore } from "../store/favoriteStore";
 import { useNavigation } from "@react-navigation/native";
 import { useAuthStore } from "../store/authStore";
+import { addMyFavoriteApi, removeMyFavoriteApi } from "../services/userService";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v) + "đ";
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
 
-// ✅ Nhận diện hết hàng từ nhiều kiểu field khác nhau
 const checkOutOfStock = (item) => {
   if (!item) return false;
-
-  // Kiểu string status
   if (item.stockStatus === "OUT_OF_STOCK") return true;
   if (item.stockStatus === "out_of_stock") return true;
-
-  // Kiểu số
   if (typeof item.totalStock === "number" && item.totalStock <= 0) return true;
   if (typeof item.stock === "number" && item.stock <= 0) return true;
-
-  // Kiểu boolean
   if (item.isAvailable === false) return true;
   if (item.inStock === false) return true;
-
-  // Kiểu preOrder enabled + hết stock
   if (item.preOrder?.enabled === true && typeof item.totalStock === "number" && item.totalStock <= 0) return true;
-
   return false;
 };
 
-export default function ProductCard({ item, onPress }) {
+export default function ProductCard({
+  item,
+  onPress,
+  initialFav = false,
+  onFavoriteChanged,
+}) {
   const navigation = useNavigation();
   const token = useAuthStore((s) => s.token);
-  const toggleFav = useFavoriteStore((s) => s.toggle);
+  const [fav, setFav] = useState(Boolean(initialFav));
+
+  useEffect(() => {
+    setFav(Boolean(initialFav));
+  }, [initialFav]);
 
   const requireLogin = () => {
     Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để thêm yêu thích.", [
@@ -44,11 +43,11 @@ export default function ProductCard({ item, onPress }) {
     ]);
   };
 
-  const fav = useFavoriteStore((s) => s.ids.includes(item?.id));
-
-  const handleFavPress = () => {
+  const handleFavPress = async () => {
     if (!token) return requireLogin();
     if (!item?.id) return;
+
+    const productId = String(item.id);
 
     if (fav) {
       Alert.alert(
@@ -56,24 +55,45 @@ export default function ProductCard({ item, onPress }) {
         `Bạn muốn bỏ "${item?.name ?? "sản phẩm"}" khỏi danh sách yêu thích?`,
         [
           { text: "Hủy", style: "cancel" },
-          { text: "Bỏ", style: "destructive", onPress: () => toggleFav(item) },
+          {
+            text: "Bỏ",
+            style: "destructive",
+            onPress: async () => {
+              const prev = fav;
+              setFav(false);
+              onFavoriteChanged?.(false, item);
+
+              try {
+                await removeMyFavoriteApi(productId);
+              } catch {
+                setFav(prev);
+                onFavoriteChanged?.(true, item);
+              }
+            },
+          },
         ]
       );
     } else {
-      toggleFav(item);
-      Alert.alert("Đã thêm yêu thích", `"${item?.name ?? "Sản phẩm"}" đã được thêm vào yêu thích.`);
+      const prev = fav;
+      setFav(true);
+      onFavoriteChanged?.(true, item);
+
+      try {
+        await addMyFavoriteApi(productId);
+        Alert.alert("Đã thêm yêu thích", `"${item?.name ?? "Sản phẩm"}" đã được thêm vào yêu thích.`);
+      } catch {
+        setFav(prev);
+        onFavoriteChanged?.(false, item);
+      }
     }
   };
 
   const img = item?.image || item?.posterUrl || FALLBACK_IMG;
   const brand = item?.brand ? String(item.brand) : null;
-
-  // ✅ Dùng hàm check đa trường
   const isOutOfStock = checkOutOfStock(item);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
-
       <View style={styles.media}>
         <Image source={{ uri: img }} style={[styles.image, isOutOfStock && styles.imageDisabled]} />
 
@@ -124,7 +144,10 @@ export default function ProductCard({ item, onPress }) {
             {(item?.color || []).slice(0, 3).map((c, idx) => (
               <View
                 key={`${c}-${idx}`}
-                style={[styles.dot, { backgroundColor: String(c).toLowerCase(), opacity: isOutOfStock ? 0.4 : 1 }]}
+                style={[
+                  styles.dot,
+                  { backgroundColor: String(c).toLowerCase(), opacity: isOutOfStock ? 0.4 : 1 },
+                ]}
               />
             ))}
           </View>
@@ -148,7 +171,6 @@ const styles = StyleSheet.create({
     elevation: 3,
     marginBottom: 8,
   },
-
   media: { position: "relative" },
   image: { width: "100%", height: IMAGE_H },
   imageDisabled: { opacity: 0.5 },
@@ -250,11 +272,4 @@ const styles = StyleSheet.create({
 
   dots: { flexDirection: "row", gap: 4 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-
-  outOfStockHint: {
-    marginTop: 4,
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#EF4444",
-  },
 });

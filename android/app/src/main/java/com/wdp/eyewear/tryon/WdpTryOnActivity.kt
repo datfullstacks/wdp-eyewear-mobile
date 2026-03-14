@@ -3,16 +3,10 @@ package com.wdp.eyewear.tryon
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.util.TypedValue
-import android.view.Surface
-import android.view.Gravity
-import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -37,19 +31,11 @@ class WdpTryOnActivity : AppCompatActivity() {
   }
 
   private lateinit var surfaceView: SurfaceView
-  private lateinit var loadingOverlay: LinearLayout
-  private lateinit var loadingLabel: TextView
-
-  private val mainHandler = Handler(Looper.getMainLooper())
+  private lateinit var statusLabel: TextView
 
   private var sdkManagerClass: Class<*>? = null
   private var sdkManager: Any? = null
   private var sessionStarted = false
-  private var cameraPermissionGranted = false
-  private var surfaceReady = false
-  private var surfaceFormat = 0
-  private var surfaceWidth = 0
-  private var surfaceHeight = 0
 
   private val productId: String by lazy {
     intent?.getStringExtra(EXTRA_PRODUCT_ID)?.trim().orEmpty()
@@ -84,11 +70,6 @@ class WdpTryOnActivity : AppCompatActivity() {
     super.onDestroy()
   }
 
-  override fun onResume() {
-    super.onResume()
-    mainHandler.postDelayed({ maybeStartNativeTryOn() }, 300)
-  }
-
   override fun onRequestPermissionsResult(
     requestCode: Int,
     permissions: Array<out String>,
@@ -99,9 +80,7 @@ class WdpTryOnActivity : AppCompatActivity() {
 
     val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
     if (granted) {
-      cameraPermissionGranted = true
-      showLoading("Dang khoi dong camera...")
-      mainHandler.postDelayed({ maybeStartNativeTryOn() }, 450)
+      startNativeTryOn()
     } else {
       finishFailure(
         code = "E_CAMERA_PERMISSION_DENIED",
@@ -115,33 +94,6 @@ class WdpTryOnActivity : AppCompatActivity() {
     root.setBackgroundColor(0xFF000000.toInt())
 
     surfaceView = SurfaceView(this)
-    surfaceView.holder.addCallback(
-      object : SurfaceHolder.Callback {
-        override fun surfaceCreated(holder: SurfaceHolder) {
-          surfaceReady = holder.surface?.isValid == true
-          surfaceWidth = holder.surfaceFrame?.width() ?: surfaceView.width
-          surfaceHeight = holder.surfaceFrame?.height() ?: surfaceView.height
-          dispatchSurfaceCreated(holder)
-          maybeStartNativeTryOn()
-        }
-
-        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-          surfaceFormat = format
-          surfaceWidth = width
-          surfaceHeight = height
-          surfaceReady = holder.surface?.isValid == true && width > 0 && height > 0
-          dispatchSurfaceChanged(format, width, height)
-          maybeStartNativeTryOn()
-        }
-
-        override fun surfaceDestroyed(holder: SurfaceHolder) {
-          surfaceReady = false
-          surfaceWidth = 0
-          surfaceHeight = 0
-          dispatchSurfaceDestroyed()
-        }
-      }
-    )
     root.addView(
       surfaceView,
       FrameLayout.LayoutParams(
@@ -150,86 +102,39 @@ class WdpTryOnActivity : AppCompatActivity() {
       )
     )
 
-    loadingLabel = TextView(this).apply {
+    statusLabel = TextView(this).apply {
       setTextColor(0xFFFFFFFF.toInt())
-      textSize = 14f
-      gravity = Gravity.CENTER
-      text = "Dang khoi dong AR..."
+      textSize = 12f
+      setPadding(24, 20, 24, 20)
+      setBackgroundColor(0x66000000)
+      text =
+        buildString {
+          append("Banuba AR session")
+          append("\nProduct: ")
+          append(if (productName.isNotEmpty()) productName else "N/A")
+          append("\nProduct ID: ")
+          append(if (productId.isNotEmpty()) productId else "N/A")
+        }
     }
 
-    loadingOverlay =
-      LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-        setBackgroundColor(0xCC000000.toInt())
-        setPadding(32, 32, 32, 32)
-        addView(
-          loadingLabel,
-          LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-          )
-        )
-      }
-    root.addView(
-      loadingOverlay,
+    val statusParams =
       FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.MATCH_PARENT,
-        FrameLayout.LayoutParams.MATCH_PARENT
+        FrameLayout.LayoutParams.WRAP_CONTENT
       )
-    )
+    root.addView(statusLabel, statusParams)
 
     val closeButton =
-      TextView(this).apply {
-        text = "X"
-        gravity = Gravity.CENTER
-        setTextColor(0xFFFFFFFF.toInt())
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-        background =
-          createRoundedDrawable(
-            fillColor = 0x77000000,
-            strokeColor = 0x22FFFFFF,
-            cornerRadiusDp = 18f,
-          )
-        elevation = dp(6).toFloat()
+      Button(this).apply {
+        text = "Close"
         setOnClickListener {
           finishCancelled("Native try-on closed by user.")
         }
       }
-    root.addView(
-      closeButton,
-      FrameLayout.LayoutParams(dp(52), dp(52)).apply {
-        gravity = Gravity.TOP or Gravity.START
-        topMargin = dp(20)
-        leftMargin = dp(20)
-      }
-    )
-
-    val bottomScrim =
-      LinearLayout(this).apply {
-        gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-        setPadding(dp(20), dp(24), dp(20), dp(30))
-        background =
-          GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0x00000000, 0x99000000.toInt())
-          )
-      }
 
     val doneButton =
-      TextView(this).apply {
-        text = "Use This Look"
-        gravity = Gravity.CENTER
-        setTextColor(0xFF0F172A.toInt())
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-        setPadding(dp(28), dp(16), dp(28), dp(16))
-        background =
-          createRoundedDrawable(
-            fillColor = 0xFFF8FAFC.toInt(),
-            strokeColor = 0x40FFFFFF,
-            cornerRadiusDp = 24f,
-          )
-        elevation = dp(8).toFloat()
+      Button(this).apply {
+        text = "Done"
         setOnClickListener {
           finishSuccess(
             status = "completed",
@@ -238,54 +143,51 @@ class WdpTryOnActivity : AppCompatActivity() {
         }
       }
 
-    bottomScrim.addView(
-      doneButton,
-      LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.WRAP_CONTENT,
-        LinearLayout.LayoutParams.WRAP_CONTENT
-      )
-    )
+    val actions =
+      LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(24, 16, 24, 24)
+        addView(
+          closeButton,
+          LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        addView(
+          doneButton,
+          LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            leftMargin = 12
+          }
+        )
+      }
 
-    root.addView(
-      bottomScrim,
+    val actionParams =
       FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.MATCH_PARENT,
         FrameLayout.LayoutParams.WRAP_CONTENT
       ).apply {
-        gravity = Gravity.BOTTOM
+        gravity = android.view.Gravity.BOTTOM
       }
-    )
+    root.addView(actions, actionParams)
 
     setContentView(root)
   }
 
   private fun ensureCameraPermissionAndStart() {
-    cameraPermissionGranted =
+    val hasCameraPermission =
       ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
         PackageManager.PERMISSION_GRANTED
-    if (cameraPermissionGranted) {
-      showLoading("Dang khoi dong camera...")
-      maybeStartNativeTryOn()
+    if (hasCameraPermission) {
+      startNativeTryOn()
       return
     }
 
-    showLoading("Can quyen camera de thu kinh...")
     requestPermissions(
       arrayOf(Manifest.permission.CAMERA),
       CAMERA_PERMISSION_REQUEST_CODE
     )
   }
 
-  private fun maybeStartNativeTryOn() {
-    if (sessionStarted || !cameraPermissionGranted || !surfaceReady) return
-    if (surfaceWidth <= 0 || surfaceHeight <= 0) return
-    startNativeTryOn()
-  }
-
   private fun startNativeTryOn() {
     if (sessionStarted) return
-
-    showLoading("Dang tai camera va effect...")
 
     if (sdkKey.isEmpty()) {
       finishFailure(
@@ -340,16 +242,15 @@ class WdpTryOnActivity : AppCompatActivity() {
       val managerInstance = managerCtor.newInstance(this)
       sdkManager = managerInstance
 
-      configureTryOnCamera(managerClass, managerInstance)
-      dispatchSurfaceCreated(surfaceView.holder)
-      dispatchSurfaceChanged(surfaceFormat, surfaceWidth, surfaceHeight)
+      managerClass.getMethod("attachSurface", SurfaceView::class.java)
+        .invoke(managerInstance, surfaceView)
       managerClass.getMethod("openCamera").invoke(managerInstance)
       managerClass.getMethod("effectPlayerPlay").invoke(managerInstance)
       managerClass.getMethod("loadEffect", String::class.java, Boolean::class.javaPrimitiveType!!)
         .invoke(managerInstance, normalizeBanubaPath(effectPath), false)
 
       sessionStarted = true
-      mainHandler.postDelayed({ hideLoading() }, 1200)
+      updateStatus("Effect: $effectPath")
     } catch (error: Throwable) {
       stopSession()
       if (fallbackUrl.isNotEmpty()) {
@@ -366,7 +267,6 @@ class WdpTryOnActivity : AppCompatActivity() {
   }
 
   private fun stopSession() {
-    mainHandler.removeCallbacksAndMessages(null)
     val managerInstance = sdkManager ?: return
     val managerClass = sdkManagerClass ?: managerInstance.javaClass
     invokeNoArg(managerClass, managerInstance, "effectPlayerPause")
@@ -378,23 +278,25 @@ class WdpTryOnActivity : AppCompatActivity() {
     sessionStarted = false
   }
 
-  private fun showLoading(message: String) {
-    if (!::loadingOverlay.isInitialized || !::loadingLabel.isInitialized) return
-    loadingLabel.text = message
-    loadingOverlay.visibility = android.view.View.VISIBLE
-  }
-
-  private fun hideLoading() {
-    if (!::loadingOverlay.isInitialized) return
-    loadingOverlay.visibility = android.view.View.GONE
-  }
-
   private fun invokeNoArg(managerClass: Class<*>, managerInstance: Any, methodName: String) {
     try {
       managerClass.getMethod(methodName).invoke(managerInstance)
     } catch (_: Throwable) {
       // Ignore optional cleanup method failures.
     }
+  }
+
+  private fun updateStatus(extraLine: String) {
+    statusLabel.text =
+      buildString {
+        append("Banuba AR session")
+        append("\nProduct: ")
+        append(if (productName.isNotEmpty()) productName else "N/A")
+        append("\nProduct ID: ")
+        append(if (productId.isNotEmpty()) productId else "N/A")
+        append("\n")
+        append(extraLine)
+      }
   }
 
   private fun openFallbackAndFinish(message: String) {
@@ -452,104 +354,5 @@ class WdpTryOnActivity : AppCompatActivity() {
     val trimmed = value.trim()
     if (!trimmed.startsWith("file://", ignoreCase = true)) return trimmed
     return Uri.parse(trimmed).path?.trim().orEmpty()
-  }
-
-  private fun dispatchSurfaceCreated(holder: SurfaceHolder) {
-    val managerInstance = sdkManager ?: return
-    val managerClass = sdkManagerClass ?: managerInstance.javaClass
-    val surface = holder.surface ?: return
-    if (!surface.isValid) return
-
-    try {
-      managerClass
-        .getMethod("attachSurface", Surface::class.java)
-        .invoke(managerInstance, surface)
-    } catch (_: Throwable) {
-      try {
-        managerClass
-          .getMethod("attachSurface", SurfaceView::class.java)
-          .invoke(managerInstance, surfaceView)
-      } catch (_: Throwable) {
-        return
-      }
-    }
-
-    invokeNoArg(managerClass, managerInstance, "onSurfaceCreated")
-  }
-
-  private fun dispatchSurfaceChanged(format: Int, width: Int, height: Int) {
-    val managerInstance = sdkManager ?: return
-    val managerClass = sdkManagerClass ?: managerInstance.javaClass
-    if (width <= 0 || height <= 0) return
-
-    try {
-      managerClass
-        .getMethod(
-          "onSurfaceChanged",
-          Int::class.javaPrimitiveType!!,
-          Int::class.javaPrimitiveType!!,
-          Int::class.javaPrimitiveType!!
-        )
-        .invoke(managerInstance, format, width, height)
-    } catch (_: Throwable) {
-      // Ignore unsupported callback forwarding.
-    }
-  }
-
-  private fun dispatchSurfaceDestroyed() {
-    val managerInstance = sdkManager ?: return
-    val managerClass = sdkManagerClass ?: managerInstance.javaClass
-    invokeNoArg(managerClass, managerInstance, "onSurfaceDestroyed")
-  }
-
-  private fun configureTryOnCamera(managerClass: Class<*>, managerInstance: Any) {
-    try {
-      val facingClass = Class.forName("com.banuba.sdk.camera.Facing")
-      val frontFacing =
-        facingClass.enumConstants?.firstOrNull { (it as? Enum<*>)?.name == "FRONT" }
-
-      if (frontFacing != null) {
-        try {
-          managerClass
-            .getMethod("setCameraFacing", facingClass, Boolean::class.javaPrimitiveType!!)
-            .invoke(managerInstance, frontFacing, true)
-        } catch (_: Throwable) {
-          managerClass
-            .getMethod("setCameraFacing", facingClass)
-            .invoke(managerInstance, frontFacing)
-        }
-      }
-
-      managerClass
-        .getMethod("setRequireMirroring", Boolean::class.javaPrimitiveType!!)
-        .invoke(managerInstance, true)
-    } catch (_: Throwable) {
-      // Ignore optional camera configuration failures and continue with SDK defaults.
-    }
-  }
-
-  private fun createRoundedDrawable(
-    fillColor: Int,
-    strokeColor: Int,
-    cornerRadiusDp: Float,
-  ): GradientDrawable {
-    return GradientDrawable().apply {
-      shape = GradientDrawable.RECTANGLE
-      cornerRadius = dp(cornerRadiusDp).toFloat()
-      setColor(fillColor)
-      setStroke(dp(1), strokeColor)
-    }
-  }
-
-  private fun dp(value: Float): Int {
-    return TypedValue.applyDimension(
-      TypedValue.COMPLEX_UNIT_DIP,
-      value,
-      resources.displayMetrics
-    ).toInt()
-  }
-
-  private fun dp(value: Int): Int {
-    return dp(value.toFloat())
   }
 }
