@@ -28,8 +28,10 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
+        "POST_NOTIFICATIONS",
         "CAMERA",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "VIBRATE"
       ]
     },
     "web": {
@@ -40,7 +42,8 @@
       "expo-dev-client",
       "./plugins/withWdpTryOnAndroid",
       "./plugins/withWdpTryOnIos",
-      "expo-asset"
+      "expo-asset",
+      "expo-notifications"
     ]
   }
 }

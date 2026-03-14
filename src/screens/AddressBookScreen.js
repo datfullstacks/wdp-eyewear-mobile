@@ -18,12 +18,12 @@ import {
   setDefaultMyAddressApi,
   updateMyAddressApi,
 } from "../services/userService";
-import { Picker } from "@react-native-picker/picker";
 import {
-  getProvinces,
-  getDistrictsByProvinceCode,
-  getWardsByDistrictCode,
-} from "vn-provinces";
+  getDistrictsApi,
+  getProvincesApi,
+  getWardsApi,
+} from "../services/locationService";
+import { Picker } from "@react-native-picker/picker";
 
 const EMPTY_FORM = {
   _id: "",
@@ -36,9 +36,9 @@ const EMPTY_FORM = {
   ward: "",
   wardCode: "",
   district: "",
-  districtCode: "",
+  districtId: "",
   province: "",
-  provinceCode: "",
+  provinceId: "",
   country: "VN",
   note: "",
 };
@@ -53,7 +53,10 @@ function AddressCard({ item, onSetDefault, onDelete, onEdit }) {
             <Text style={styles.defaultBadgeText}>Mặc định</Text>
           </View>
         ) : (
-          <TouchableOpacity activeOpacity={0.85} onPress={() => onSetDefault(item?._id)}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => onSetDefault(item?._id)}
+          >
             <Text style={styles.linkText}>Thiết lập mặc định</Text>
           </TouchableOpacity>
         )}
@@ -85,7 +88,9 @@ function AddressCard({ item, onSetDefault, onDelete, onEdit }) {
 
       <Text style={styles.meta}>
         <Text style={styles.metaLabel}>Địa chỉ: </Text>
-        {[item?.ward, item?.district, item?.province].filter(Boolean).join(", ") || "--"}
+        {[item?.ward, item?.district, item?.province]
+          .filter(Boolean)
+          .join(", ") || "--"}
       </Text>
 
       <View style={styles.actions}>
@@ -93,7 +98,10 @@ function AddressCard({ item, onSetDefault, onDelete, onEdit }) {
           <Text style={styles.editText}>Sửa</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity activeOpacity={0.85} onPress={() => onDelete(item?._id)}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => onDelete(item?._id)}
+        >
           <Text style={styles.deleteText}>Xóa</Text>
         </TouchableOpacity>
       </View>
@@ -114,33 +122,74 @@ export default function AddressBookScreen({ navigation }) {
   const [wards, setWards] = useState([]);
 
   useEffect(() => {
-    setProvinces(getProvinces() || []);
+    let active = true;
+    getProvincesApi()
+      .then((data) => {
+        if (!active) return;
+        setProvinces(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProvinces([]);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (!form.provinceCode) {
+    if (!form.provinceId) {
       setDistricts([]);
       setWards([]);
       return;
     }
-    setDistricts(getDistrictsByProvinceCode(form.provinceCode) || []);
-    setWards([]);
-  }, [form.provinceCode]);
+    let active = true;
+    getDistrictsApi(form.provinceId)
+      .then((data) => {
+        if (!active) return;
+        setDistricts(Array.isArray(data) ? data : []);
+        setWards([]);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDistricts([]);
+        setWards([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.provinceId]);
 
   useEffect(() => {
-    if (!form.districtCode) {
+    if (!form.districtId) {
       setWards([]);
       return;
     }
-    setWards(getWardsByDistrictCode(form.districtCode) || []);
-  }, [form.districtCode]);
+    let active = true;
+    getWardsApi(form.districtId)
+      .then((data) => {
+        if (!active) return;
+        setWards(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setWards([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.districtId]);
 
   const loadData = useCallback(async () => {
     try {
       const data = await getMyAddressesApi();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Không tải được địa chỉ";
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Không tải được địa chỉ";
       Alert.alert("Địa chỉ", message);
     } finally {
       setLoading(false);
@@ -158,50 +207,57 @@ export default function AddressBookScreen({ navigation }) {
     setIsEditing(false);
   };
 
-  const normalizeAddressWithCodes = (addr) => {
-    if (!addr) return { ...EMPTY_FORM };
+  const hydrateAddressForm = useCallback(
+    async (addr) => {
+      if (!addr) return { ...EMPTY_FORM };
 
-    const provinceList = getProvinces() || [];
-    const matchedProvince =
-      provinceList.find((p) => String(p.code) === String(addr.provinceCode)) ||
-      provinceList.find((p) => p.name === addr.province);
+      const provinceList =
+        provinces.length > 0 ? provinces : await getProvincesApi();
+      const matchedProvince =
+        provinceList.find((p) => String(p.id) === String(addr.provinceId)) ||
+        provinceList.find((p) => p.name === addr.province);
 
-    const districtList = matchedProvince
-      ? getDistrictsByProvinceCode(matchedProvince.code) || []
-      : [];
+      const districtList = matchedProvince?.id
+        ? await getDistrictsApi(matchedProvince.id)
+        : [];
 
-    const matchedDistrict =
-      districtList.find((d) => String(d.code) === String(addr.districtCode)) ||
-      districtList.find((d) => d.name === addr.district);
+      const matchedDistrict =
+        districtList.find((d) => String(d.id) === String(addr.districtId)) ||
+        districtList.find((d) => d.name === addr.district);
 
-    const wardList = matchedDistrict
-      ? getWardsByDistrictCode(matchedDistrict.code) || []
-      : [];
+      const wardList = matchedDistrict?.id
+        ? await getWardsApi(matchedDistrict.id)
+        : [];
 
-    const matchedWard =
-      wardList.find((w) => String(w.code) === String(addr.wardCode)) ||
-      wardList.find((w) => w.name === addr.ward);
+      const matchedWard =
+        wardList.find((w) => String(w.code) === String(addr.wardCode)) ||
+        wardList.find((w) => w.name === addr.ward);
 
-    return {
-      ...EMPTY_FORM,
-      ...addr,
-      _id: addr?._id || "",
-      provinceCode: matchedProvince?.code || addr.provinceCode || "",
-      province: matchedProvince?.name || addr.province || "",
-      districtCode: matchedDistrict?.code || addr.districtCode || "",
-      district: matchedDistrict?.name || addr.district || "",
-      wardCode: matchedWard?.code || addr.wardCode || "",
-      ward: matchedWard?.name || addr.ward || "",
-    };
-  };
+      setDistricts(districtList);
+      setWards(wardList);
+
+      return {
+        ...EMPTY_FORM,
+        ...addr,
+        _id: addr?._id || "",
+        provinceId: matchedProvince?.id || String(addr.provinceId || ""),
+        province: matchedProvince?.name || addr.province || "",
+        districtId: matchedDistrict?.id || String(addr.districtId || ""),
+        district: matchedDistrict?.name || addr.district || "",
+        wardCode: matchedWard?.code || addr.wardCode || "",
+        ward: matchedWard?.name || addr.ward || "",
+      };
+    },
+    [provinces],
+  );
 
   const startCreate = () => {
     resetForm();
     setShowForm(true);
   };
 
-  const startEdit = (item) => {
-    const normalized = normalizeAddressWithCodes(item);
+  const startEdit = async (item) => {
+    const normalized = await hydrateAddressForm(item);
     setForm(normalized);
     setShowForm(true);
     setIsEditing(true);
@@ -214,12 +270,16 @@ export default function AddressBookScreen({ navigation }) {
       !form.fullName.trim() ||
       !form.phone.trim() ||
       !form.line1.trim() ||
+      !form.ward.trim() ||
+      !form.wardCode ||
       !form.district.trim() ||
-      !form.province.trim()
+      !form.districtId ||
+      !form.province.trim() ||
+      !form.provinceId
     ) {
       Alert.alert(
         "Địa chỉ",
-        "Vui lòng nhập đầy đủ họ tên, số điện thoại, địa chỉ, quận/huyện và tỉnh/thành phố."
+        "Vui lòng nhập đầy đủ họ tên, số điện thoại, địa chỉ và chọn tỉnh/thành phố, quận/huyện, phường/xã hợp lệ.",
       );
       return;
     }
@@ -237,9 +297,9 @@ export default function AddressBookScreen({ navigation }) {
         ward: form.ward.trim(),
         wardCode: form.wardCode || "",
         district: form.district.trim(),
-        districtCode: form.districtCode || "",
+        districtId: form.districtId ? Number(form.districtId) : undefined,
         province: form.province.trim(),
-        provinceCode: form.provinceCode || "",
+        provinceId: form.provinceId ? Number(form.provinceId) : undefined,
         country: form.country || "VN",
         note: form.note?.trim?.() || "",
       };
@@ -275,7 +335,9 @@ export default function AddressBookScreen({ navigation }) {
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       const message =
-        err?.response?.data?.message || err?.message || "Không thiết lập lại mặc định được";
+        err?.response?.data?.message ||
+        err?.message ||
+        "Không thiết lập lại mặc định được";
       Alert.alert("Địa chỉ", message);
     }
   };
@@ -296,7 +358,10 @@ export default function AddressBookScreen({ navigation }) {
               setShowForm(false);
             }
           } catch (err) {
-            const message = err?.response?.data?.message || err?.message || "Không xóa được địa chỉ";
+            const message =
+              err?.response?.data?.message ||
+              err?.message ||
+              "Không xóa được địa chỉ";
             Alert.alert("Địa chỉ", message);
           }
         },
@@ -318,7 +383,11 @@ export default function AddressBookScreen({ navigation }) {
           }
         }}
       >
-        <Ionicons name={showForm ? "remove-circle-outline" : "add-circle-outline"} size={18} color="#2563EB" />
+        <Ionicons
+          name={showForm ? "remove-circle-outline" : "add-circle-outline"}
+          size={18}
+          color="#2563EB"
+        />
         <Text style={styles.addNewBtnText}>
           {showForm ? "Ẩn form địa chỉ" : "Thêm địa chỉ mới"}
         </Text>
@@ -326,7 +395,9 @@ export default function AddressBookScreen({ navigation }) {
 
       {showForm ? (
         <View style={styles.formCard}>
-          <Text style={styles.formTitle}>{isEditing ? "Cập nhật địa chỉ" : "Thêm địa chỉ mới"}</Text>
+          <Text style={styles.formTitle}>
+            {isEditing ? "Cập nhật địa chỉ" : "Thêm địa chỉ mới"}
+          </Text>
 
           <TextInput
             style={styles.input}
@@ -369,14 +440,14 @@ export default function AddressBookScreen({ navigation }) {
           <Text style={styles.pickerLabel}>Tỉnh / Thành phố *</Text>
           <View style={styles.pickerWrap}>
             <Picker
-              selectedValue={form.provinceCode}
+              selectedValue={form.provinceId}
               onValueChange={(value) => {
                 if (!value) {
                   setForm((p) => ({
                     ...p,
-                    provinceCode: "",
+                    provinceId: "",
                     province: "",
-                    districtCode: "",
+                    districtId: "",
                     district: "",
                     wardCode: "",
                     ward: "",
@@ -384,12 +455,14 @@ export default function AddressBookScreen({ navigation }) {
                   return;
                 }
 
-                const selected = provinces.find((p) => String(p.code) === String(value));
+                const selected = provinces.find(
+                  (p) => String(p.id) === String(value),
+                );
                 setForm((prev) => ({
                   ...prev,
-                  provinceCode: value,
+                  provinceId: value,
                   province: selected?.name || "",
-                  districtCode: "",
+                  districtId: "",
                   district: "",
                   wardCode: "",
                   ward: "",
@@ -398,7 +471,11 @@ export default function AddressBookScreen({ navigation }) {
             >
               <Picker.Item label="Chọn tỉnh / thành phố" value="" />
               {provinces.map((p) => (
-                <Picker.Item key={String(p.code)} label={p.name} value={p.code} />
+                <Picker.Item
+                  key={String(p.id)}
+                  label={p.name}
+                  value={String(p.id)}
+                />
               ))}
             </Picker>
           </View>
@@ -406,13 +483,13 @@ export default function AddressBookScreen({ navigation }) {
           <Text style={styles.pickerLabel}>Quận / Huyện *</Text>
           <View style={styles.pickerWrap}>
             <Picker
-              enabled={!!form.provinceCode}
-              selectedValue={form.districtCode}
+              enabled={!!form.provinceId}
+              selectedValue={form.districtId}
               onValueChange={(value) => {
                 if (!value) {
                   setForm((p) => ({
                     ...p,
-                    districtCode: "",
+                    districtId: "",
                     district: "",
                     wardCode: "",
                     ward: "",
@@ -420,10 +497,12 @@ export default function AddressBookScreen({ navigation }) {
                   return;
                 }
 
-                const selected = districts.find((d) => String(d.code) === String(value));
+                const selected = districts.find(
+                  (d) => String(d.id) === String(value),
+                );
                 setForm((prev) => ({
                   ...prev,
-                  districtCode: value,
+                  districtId: value,
                   district: selected?.name || "",
                   wardCode: "",
                   ward: "",
@@ -432,7 +511,11 @@ export default function AddressBookScreen({ navigation }) {
             >
               <Picker.Item label="Chọn quận / huyện" value="" />
               {districts.map((d) => (
-                <Picker.Item key={String(d.code)} label={d.name} value={d.code} />
+                <Picker.Item
+                  key={String(d.id)}
+                  label={d.name}
+                  value={String(d.id)}
+                />
               ))}
             </Picker>
           </View>
@@ -440,7 +523,7 @@ export default function AddressBookScreen({ navigation }) {
           <Text style={styles.pickerLabel}>Phường / Xã</Text>
           <View style={styles.pickerWrap}>
             <Picker
-              enabled={!!form.districtCode}
+              enabled={!!form.districtId}
               selectedValue={form.wardCode}
               onValueChange={(value) => {
                 if (!value) {
@@ -448,7 +531,9 @@ export default function AddressBookScreen({ navigation }) {
                   return;
                 }
 
-                const selected = wards.find((w) => String(w.code) === String(value));
+                const selected = wards.find(
+                  (w) => String(w.code) === String(value),
+                );
                 setForm((prev) => ({
                   ...prev,
                   wardCode: value,
@@ -458,7 +543,11 @@ export default function AddressBookScreen({ navigation }) {
             >
               <Picker.Item label="Chọn phường / xã" value="" />
               {wards.map((w) => (
-                <Picker.Item key={String(w.code)} label={w.name} value={w.code} />
+                <Picker.Item
+                  key={String(w.code)}
+                  label={w.name}
+                  value={w.code}
+                />
               ))}
             </Picker>
           </View>
@@ -482,7 +571,11 @@ export default function AddressBookScreen({ navigation }) {
               disabled={submitting}
             >
               <Text style={styles.submitText}>
-                {submitting ? "Đang lưu..." : isEditing ? "Cập nhật" : "Lưu địa chỉ"}
+                {submitting
+                  ? "Đang lưu..."
+                  : isEditing
+                    ? "Cập nhật"
+                    : "Lưu địa chỉ"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -496,7 +589,9 @@ export default function AddressBookScreen({ navigation }) {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
-            onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
+            onPress={() =>
+              navigation?.canGoBack?.() ? navigation.goBack() : null
+            }
             activeOpacity={0.85}
             style={styles.iconBtn}
           >
@@ -719,7 +814,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   metaLabel: {
-  color: "#111827",
-  fontWeight: "900",
-},
+    color: "#111827",
+    fontWeight: "900",
+  },
 });

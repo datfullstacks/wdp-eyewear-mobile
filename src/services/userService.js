@@ -72,7 +72,10 @@ export async function addMyPaymentMethodApi(payload) {
 
 //Cập nhật phương thức thanh toán
 export async function updateMyPaymentMethodApi(methodId, payload) {
-  const res = await api.put(`/api/users/me/payment-methods/${methodId}`, payload);
+  const res = await api.put(
+    `/api/users/me/payment-methods/${methodId}`,
+    payload,
+  );
   return pickData(res) || [];
 }
 
@@ -84,7 +87,9 @@ export async function deleteMyPaymentMethodApi(methodId) {
 
 //Thiết lập phương thức thanh toán mặt định
 export async function setDefaultMyPaymentMethodApi(methodId) {
-  const res = await api.put(`/api/users/me/payment-methods/${methodId}/default`);
+  const res = await api.put(
+    `/api/users/me/payment-methods/${methodId}/default`,
+  );
   return pickData(res) || [];
 }
 
@@ -102,7 +107,10 @@ export async function addMyPrescriptionApi(payload) {
 
 //Cập nhật Prescription
 export async function updateMyPrescriptionApi(prescriptionId, payload) {
-  const res = await api.put(`/api/users/me/prescriptions/${prescriptionId}`, payload);
+  const res = await api.put(
+    `/api/users/me/prescriptions/${prescriptionId}`,
+    payload,
+  );
   return pickData(res) || [];
 }
 
@@ -114,7 +122,9 @@ export async function deleteMyPrescriptionApi(prescriptionId) {
 
 //Thiết lập Prescription mặt định
 export async function setDefaultMyPrescriptionApi(prescriptionId) {
-  const res = await api.put(`/api/users/me/prescriptions/${prescriptionId}/default`);
+  const res = await api.put(
+    `/api/users/me/prescriptions/${prescriptionId}/default`,
+  );
   return pickData(res) || [];
 }
 
@@ -126,12 +136,37 @@ export async function getMyNotificationsApi() {
 
 //Đánh dấu Notifications đã đọc
 export async function markMyNotificationAsReadApi(notificationId) {
-  const res = await api.put(`/api/users/me/notifications/${notificationId}/read`);
+  const res = await api.put(
+    `/api/users/me/notifications/${notificationId}/read`,
+  );
   return pickData(res) || [];
 }
 
 //Đánh dấu tất cả Notifications đã đọc
 export async function markAllMyNotificationsAsReadApi() {
   const res = await api.put("/api/users/me/notifications/read-all");
+  return pickData(res) || [];
+}
+
+export async function registerMyPushTokenApi(payload, authToken) {
+  const res = await api.post("/api/users/me/push-tokens", payload, {
+    headers: authToken
+      ? {
+          Authorization: `Bearer ${authToken}`,
+        }
+      : undefined,
+  });
+  return pickData(res) || [];
+}
+
+export async function unregisterMyPushTokenApi(token, authToken) {
+  const res = await api.delete("/api/users/me/push-tokens", {
+    data: { token },
+    headers: authToken
+      ? {
+          Authorization: `Bearer ${authToken}`,
+        }
+      : undefined,
+  });
   return pickData(res) || [];
 }
