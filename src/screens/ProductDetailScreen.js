@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 
-import { useFavoriteStore } from "../store/favoriteStore";
+import { addMyFavoriteApi, getMyFavoriteIdsApi, removeMyFavoriteApi } from "../services/userService";
 import { useProducts } from "../hooks/useProducts";
 import { getRelatedProducts, fetchProductById } from "../services/productService";
 import { CART_TYPES, useCartStore } from "../store/cartStore";
@@ -245,6 +245,29 @@ export default function ProductDetailScreen({ navigation, route }) {
     ]);
   };
 
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      if (!token || !product?.id) {
+        if (mounted) setFav(false);
+        return;
+      }
+
+      try {
+        const ids = await getMyFavoriteIdsApi();
+        const normalized = Array.isArray(ids) ? ids.map(String) : [];
+        if (mounted) setFav(normalized.includes(String(product.id)));
+      } catch {
+        if (mounted) setFav(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [token, product?.id]);
+
   const fallbackFromList = useMemo(() => {
     if (!passedId) return null;
     return products.find((p) => p.id === passedId) || null;
@@ -286,8 +309,9 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const addItem = useCartStore((s) => s.addItem);
 
-  const toggleFav = useFavoriteStore((s) => s.toggle);
-  const fav = useFavoriteStore((s) => s.ids.includes(product?.id));
+  // const toggleFav = useFavoriteStore((s) => s.toggle);
+  // const fav = useFavoriteStore((s) => s.ids.includes(product?.id));
+  const [fav, setFav] = useState(false);
 
   const discountPct = useMemo(() => {
     if (!product) return 0;
@@ -573,16 +597,30 @@ export default function ProductDetailScreen({ navigation, route }) {
     });
   };
 
-  const onToggleFav = () => {
+  const onToggleFav = async () => {
     if (!token) return requireLogin();
-    if (!product) return;
+    if (!product?.id) return;
+
+    const productId = String(product.id);
     const wasFav = fav;
-    toggleFav(product);
-    Toast.show({
-      type: "success",
-      text1: wasFav ? "Đã bỏ yêu thích" : "Đã thêm yêu thích",
-      text2: product.name,
-    });
+
+    setFav(!wasFav);
+
+    try {
+      if (wasFav) {
+        await removeMyFavoriteApi(productId);
+      } else {
+        await addMyFavoriteApi(productId);
+      }
+
+      Toast.show({
+        type: "success",
+        text1: wasFav ? "Đã bỏ yêu thích" : "Đã thêm yêu thích",
+        text2: product.name,
+      });
+    } catch {
+      setFav(wasFav);
+    }
   };
 
   const onOpenTryOn = useCallback(() => {

@@ -1,6 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import {
   Platform,
   Pressable,
@@ -11,6 +10,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
+
 import { useAuthStore } from "../store/authStore";
 import {
   getMyAddressesApi,
@@ -18,8 +19,6 @@ import {
   getMyPrescriptionsApi,
 } from "../services/userService";
 import { getMyOrdersApi } from "../services/orderService";
-
-// Remove AVATAR_URI constant
 
 const STAT_ACCENTS = {
   orders: { bg: "#EEF2FF", fg: "#4F46E5" },
@@ -80,15 +79,6 @@ function RowItem({ icon, title, subtitle, rightText, onPress, danger, accent }) 
   );
 }
 
-function Pill({ label, icon }) {
-  return (
-    <View style={styles.pill}>
-      {icon ? <Ionicons name={icon} size={14} color="#1F2A37" /> : null}
-      <Text style={styles.pillText}>{label}</Text>
-    </View>
-  );
-}
-
 function LoginRequired({ navigation }) {
   return (
     <View style={styles.lockScreen}>
@@ -114,14 +104,12 @@ function LoginRequired({ navigation }) {
           onPress={() => navigation.navigate("HomeTab")}
           style={({ pressed }) => [styles.lockLink, pressed && styles.pressed]}
         >
-          <Text style={styles.lockLinkText}>Quay về màng hình chính</Text>
+          <Text style={styles.lockLinkText}>Quay về màn hình chính</Text>
         </Pressable>
       </View>
     </View>
   );
 }
-
-/* -------------------- Header -------------------- */
 
 function ProfileHeader({ navigation, right }) {
   return (
@@ -141,18 +129,14 @@ function ProfileHeader({ navigation, right }) {
   );
 }
 
-/* -------------------- Text Avatar Component -------------------- */
-
-function TextAvatar({ name, size = 74, style }) {
-  // Get first letter of name, default to "?" if no name
+function TextAvatar({ name, style }) {
   const firstLetter = name?.trim()?.charAt(0)?.toUpperCase() || "?";
 
-  // Generate consistent color based on name
-  const getColorFromName = (name) => {
-    if (!name) return AVATAR_COLORS[0];
+  const getColorFromName = (value) => {
+    if (!value) return AVATAR_COLORS[0];
     let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < value.length; i++) {
+      hash = value.charCodeAt(i) + ((hash << 5) - hash);
     }
     const index = Math.abs(hash) % AVATAR_COLORS.length;
     return AVATAR_COLORS[index];
@@ -161,22 +145,33 @@ function TextAvatar({ name, size = 74, style }) {
   const backgroundColor = getColorFromName(name);
 
   return (
-    <View style={[
-      styles.avatarRing,
-      { backgroundColor: "#FFFFFF" },
-      style
-    ]}>
-      <View style={[
-        styles.textAvatar,
-        { backgroundColor, width: "100%", height: "100%" }
-      ]}>
+    <View style={[styles.avatarRing, { backgroundColor: "#FFFFFF" }, style]}>
+      <View
+        style={[
+          styles.textAvatar,
+          { backgroundColor, width: "100%", height: "100%" },
+        ]}
+      >
         <Text style={styles.textAvatarLetter}>{firstLetter}</Text>
       </View>
     </View>
   );
 }
 
-/* -------------------- Screen -------------------- */
+const normalizeFavoriteIds = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.favoriteIds)) return payload.favoriteIds;
+  return [];
+};
+
+const normalizeList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
 
 export default function ProfileScreen({ navigation }) {
   const token = useAuthStore((s) => s.token);
@@ -184,6 +179,7 @@ export default function ProfileScreen({ navigation }) {
   const isHydrating = useAuthStore((s) => s.isHydrating);
   const fetchMe = useAuthStore((s) => s.fetchMe);
   const logout = useAuthStore((s) => s.logout);
+
   const [stats, setStats] = useState({
     tier: "Member",
     points: 0,
@@ -199,41 +195,45 @@ export default function ProfileScreen({ navigation }) {
     }
   }, [token, user, isHydrating, fetchMe]);
 
-  useEffect(() => {
+  const loadStats = useCallback(async () => {
     if (!token) return;
-    let active = true;
 
-    const loadStats = async () => {
-      try {
-        const [ordersResult, favoriteIds, addresses, prescriptions] = await Promise.all([
+    try {
+      const [ordersResult, favoriteResult, addressesResult, prescriptionsResult] =
+        await Promise.all([
           getMyOrdersApi({ page: 1, limit: 100 }),
           getMyFavoriteIdsApi(),
           getMyAddressesApi(),
           getMyPrescriptionsApi(),
         ]);
-        if (!active) return;
 
-        const orders = Array.isArray(ordersResult?.items) ? ordersResult.items : [];
-        const pendingOrders = orders.filter((order) => {
-          const status = String(order?.status || "").toLowerCase();
-          return !["delivered", "cancelled", "returned"].includes(status);
-        }).length;
+      const orders = normalizeList(ordersResult);
+      const favoriteIds = normalizeFavoriteIds(favoriteResult);
+      const addressList = normalizeList(addressesResult);
+      const prescriptionList = normalizeList(prescriptionsResult);
 
-        setStats((prev) => ({
-          ...prev,
-          pendingOrders,
-          favorites: Array.isArray(favoriteIds) ? favoriteIds.length : 0,
-          addresses: Array.isArray(addresses) ? addresses.length : 0,
-          prescription: String(Array.isArray(prescriptions) ? prescriptions.length : 0),
-        }));
-      } catch { }
-    };
+      const pendingOrders = orders.filter((order) => {
+        const status = String(order?.status || "").toLowerCase();
+        return !["delivered", "cancelled", "returned"].includes(status);
+      }).length;
 
-    loadStats();
-    return () => {
-      active = false;
-    };
+      setStats((prev) => ({
+        ...prev,
+        pendingOrders,
+        favorites: favoriteIds.length,
+        addresses: addressList.length,
+        prescription: String(prescriptionList.length),
+      }));
+    } catch (err) {
+      console.log("loadStats error:", err);
+    }
   }, [token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadStats();
+    }, [loadStats])
+  );
 
   if (!token) {
     return (
@@ -270,7 +270,9 @@ export default function ProfileScreen({ navigation }) {
         />
 
         <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
-          <Text style={{ fontWeight: "800", color: "#111827" }}>Đang tải hồ sơ...</Text>
+          <Text style={{ fontWeight: "800", color: "#111827" }}>
+            Đang tải hồ sơ...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -283,7 +285,6 @@ export default function ProfileScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
 
-      {/* Header with back button */}
       <ProfileHeader
         navigation={navigation}
         right={
@@ -300,10 +301,9 @@ export default function ProfileScreen({ navigation }) {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile card */}
         <Card style={{ padding: 16 }}>
           <View style={styles.profileTop}>
-            <TextAvatar name={displayName} size={74} />
+            <TextAvatar name={displayName} />
 
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{displayName}</Text>
@@ -323,7 +323,11 @@ export default function ProfileScreen({ navigation }) {
                 pressed && styles.pressedSoft,
               ]}
             >
-              <Ionicons name="cube-outline" size={18} color={STAT_ACCENTS.orders.fg} />
+              <Ionicons
+                name="cube-outline"
+                size={18}
+                color={STAT_ACCENTS.orders.fg}
+              />
               <Text style={[styles.statValue, { color: STAT_ACCENTS.orders.fg }]}>
                 {stats.pendingOrders}
               </Text>
@@ -341,8 +345,14 @@ export default function ProfileScreen({ navigation }) {
                 pressed && styles.pressedSoft,
               ]}
             >
-              <Ionicons name="heart-outline" size={18} color={STAT_ACCENTS.favorites.fg} />
-              <Text style={[styles.statValue, { color: STAT_ACCENTS.favorites.fg }]}>
+              <Ionicons
+                name="heart-outline"
+                size={18}
+                color={STAT_ACCENTS.favorites.fg}
+              />
+              <Text
+                style={[styles.statValue, { color: STAT_ACCENTS.favorites.fg }]}
+              >
                 {stats.favorites}
               </Text>
               <Text style={styles.statLabel}>Yêu thích</Text>
@@ -359,8 +369,14 @@ export default function ProfileScreen({ navigation }) {
                 pressed && styles.pressedSoft,
               ]}
             >
-              <Ionicons name="location-outline" size={18} color={STAT_ACCENTS.addresses.fg} />
-              <Text style={[styles.statValue, { color: STAT_ACCENTS.addresses.fg }]}>
+              <Ionicons
+                name="location-outline"
+                size={18}
+                color={STAT_ACCENTS.addresses.fg}
+              />
+              <Text
+                style={[styles.statValue, { color: STAT_ACCENTS.addresses.fg }]}
+              >
                 {stats.addresses}
               </Text>
               <Text style={styles.statLabel}>Địa chỉ</Text>
@@ -377,7 +393,11 @@ export default function ProfileScreen({ navigation }) {
                 pressed && styles.pressedSoft,
               ]}
             >
-              <Ionicons name="reader-outline" size={18} color={STAT_ACCENTS.rx.fg} />
+              <Ionicons
+                name="reader-outline"
+                size={18}
+                color={STAT_ACCENTS.rx.fg}
+              />
               <Text style={[styles.statValue, { color: STAT_ACCENTS.rx.fg }]}>
                 {stats.prescription}
               </Text>
@@ -417,7 +437,7 @@ export default function ProfileScreen({ navigation }) {
           <RowItem
             icon="location-outline"
             title="Địa chỉ mặc định"
-            subtitle="Địa chỉ giao hàng mặt định"
+            subtitle="Địa chỉ giao hàng mặc định"
             rightText={`${stats.addresses}`}
             onPress={() => navigation.navigate("AddressBook")}
             accent={{ bg: "#ECFDF5", fg: "#059669" }}
@@ -572,8 +592,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   rowTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
-  rowSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "600", color: "#6B7280" },
-  rowRightText: { fontSize: 12, fontWeight: "800", color: "#6B7280", marginRight: 6 },
+  rowSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  rowRightText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#6B7280",
+    marginRight: 6,
+  },
   divider: { height: 1, backgroundColor: "rgba(17,24,39,0.06)", marginLeft: 62 },
 
   sectionHeader: {
@@ -633,13 +663,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   lockBtnText: { color: "#fff", fontWeight: "900" },
-  lockLink: { marginTop: 10, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 12 },
-  lockLinkText: { color: "#2563EB", fontWeight: "900" },
-  iconBtn: {
-    width: 36,
-    height: 36,
+  lockLink: {
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
   },
+  lockLinkText: { color: "#2563EB", fontWeight: "900" },
 });

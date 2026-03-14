@@ -1,6 +1,6 @@
 ﻿import { Ionicons } from "@expo/vector-icons";
-import { useRoute } from "@react-navigation/native";
-import { useEffect, useMemo, useState } from "react";
+import { useFocusEffect, useRoute } from "@react-navigation/native";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Dimensions,
   FlatList,
@@ -16,13 +16,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import ProductCard from "../components/ProductCard";
 import { useProducts } from "../hooks/useProducts";
+import { getMyFavoriteIdsApi } from "../services/userService";
+import { useAuthStore } from "../store/authStore";
 
 const { width } = Dimensions.get("window");
 const PAGE_PADDING = 16;
 const GAP = 12;
 const CARD_W = (width - PAGE_PADDING * 2 - GAP) / 2;
 
-// ===== Options =====
 const SORT_OPTIONS = [
   { key: "default", label: "Mặc định" },
   { key: "best", label: "Bán chạy" },
@@ -63,7 +64,7 @@ function BottomSheet({ visible, title, onClose, children }) {
       onRequestClose={onClose}
     >
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => { }}>
+        <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={10}>
@@ -79,10 +80,11 @@ function BottomSheet({ visible, title, onClose, children }) {
 
 export default function ProductsScreen({ navigation }) {
   const route = useRoute();
+  const token = useAuthStore((s) => s.token);
   const [query, setQuery] = useState("");
   const { products, isLoading, isError } = useProducts();
+  const [favoriteIds, setFavoriteIds] = useState([]);
 
-  // Các state filter
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [onlyPreorder, setOnlyPreorder] = useState(false);
   const [typeFrame, setTypeFrame] = useState(false);
@@ -98,44 +100,67 @@ export default function ProductsScreen({ navigation }) {
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
 
-  // Xử lý params từ navigation (khi nhấn vào category từ HomeScreen)
   useEffect(() => {
     const params = route?.params || {};
 
-    // Nếu có autoApplyFilter thì mới xử lý
     if (params.autoApplyFilter) {
-      // Reset các filter type khác
       setTypeFrame(false);
       setTypeLens(false);
       setTypeSunglasses(false);
       setTypeAccessory(false);
 
-      // Áp dụng filter theo category được chọn
       switch (params.filterType) {
-        case 'frame':
+        case "frame":
           setTypeFrame(true);
           break;
-        case 'lens':
+        case "lens":
           setTypeLens(true);
           break;
-        case 'sunglasses':
+        case "sunglasses":
           setTypeSunglasses(true);
           break;
-        case 'accessory':
+        case "accessory":
           setTypeAccessory(true);
           break;
         default:
           break;
       }
 
-      // Nếu có query từ params thì set
       if (params.q) {
         setQuery(params.q);
       }
     }
   }, [route?.params]);
 
-  // Cập nhật appliedChips để hiển thị đúng
+  const loadFavorites = useCallback(async () => {
+    if (!token) {
+      setFavoriteIds([]);
+      return;
+    }
+
+    try {
+      const ids = await getMyFavoriteIdsApi();
+      setFavoriteIds(Array.isArray(ids) ? ids.map(String) : []);
+    } catch {
+      setFavoriteIds([]);
+    }
+  }, [token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFavorites();
+    }, [loadFavorites])
+  );
+
+  const handleFavoriteChanged = useCallback((nextFav, changedItem) => {
+    const changedId = String(changedItem?.id);
+    setFavoriteIds((prev) =>
+      nextFav
+        ? Array.from(new Set([changedId, ...prev]))
+        : prev.filter((id) => id !== changedId)
+    );
+  }, []);
+
   const appliedChips = useMemo(() => {
     const out = [];
 
@@ -148,8 +173,9 @@ export default function ProductsScreen({ navigation }) {
     if (onlyPreorder) out.push({ key: "preorder", label: "Đặt trước" });
 
     const pr = PRICE_RANGES.find((x) => x.key === priceKey);
-    if (pr && pr.key !== "all")
+    if (pr && pr.key !== "all") {
       out.push({ key: `price_${pr.key}`, label: pr.label });
+    }
 
     if (brandFilter) {
       out.push({ key: `brand_${brandFilter}`, label: `Thương hiệu: ${brandFilter}` });
@@ -168,13 +194,25 @@ export default function ProductsScreen({ navigation }) {
     }
 
     const s = SORT_OPTIONS.find((x) => x.key === sortKey);
-    if (s && s.key !== "default")
+    if (s && s.key !== "default") {
       out.push({ key: `sort_${s.key}`, label: `Sắp xếp: ${s.label}` });
+    }
 
     return out;
-  }, [typeFrame, typeLens, typeSunglasses, typeAccessory, onlyInStock, onlyPreorder, priceKey, sortKey, brandFilter, colorFilters, sizeFilters]);
+  }, [
+    typeFrame,
+    typeLens,
+    typeSunglasses,
+    typeAccessory,
+    onlyInStock,
+    onlyPreorder,
+    priceKey,
+    sortKey,
+    brandFilter,
+    colorFilters,
+    sizeFilters,
+  ]);
 
-  // Cập nhật hàm removeChip
   const removeChip = (chipKey) => {
     switch (chipKey) {
       case "type_frame":
@@ -216,12 +254,10 @@ export default function ProductsScreen({ navigation }) {
         if (chipKey.startsWith("size_")) {
           const size = chipKey.replace("size_", "");
           setSizeFilters((prev) => prev.filter((s) => s !== size));
-          return;
         }
     }
   };
 
-  // Cập nhật clearAll
   const clearAll = () => {
     setOnlyInStock(false);
     setOnlyPreorder(false);
@@ -236,7 +272,6 @@ export default function ProductsScreen({ navigation }) {
     setSizeFilters([]);
   };
 
-  // Filter và sort data
   const data = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -245,7 +280,6 @@ export default function ProductsScreen({ navigation }) {
       return (p.name || "").toLowerCase().includes(q);
     });
 
-    // Filter theo type
     const activeTypes = [];
     if (typeFrame) activeTypes.push("FRAME");
     if (typeLens) activeTypes.push("LENS");
@@ -256,21 +290,21 @@ export default function ProductsScreen({ navigation }) {
       arr = arr.filter((p) => activeTypes.includes(p.type?.toUpperCase()));
     }
 
-    if (onlyInStock && !onlyPreorder)
+    if (onlyInStock && !onlyPreorder) {
       arr = arr.filter((p) => p.stockStatus === "IN_STOCK");
-    if (onlyPreorder && !onlyInStock)
+    }
+    if (onlyPreorder && !onlyInStock) {
       arr = arr.filter((p) => p.stockStatus === "PREORDER");
+    }
 
     const pr = PRICE_RANGES.find((x) => x.key === priceKey) || PRICE_RANGES[0];
     if (pr.min != null) arr = arr.filter((p) => (p.price ?? 0) >= pr.min);
     if (pr.max != null) arr = arr.filter((p) => (p.price ?? 0) <= pr.max);
 
-    // Brand filter
     if (brandFilter) {
       arr = arr.filter((p) => p.brand === brandFilter);
     }
 
-    // Color filter
     if (colorFilters.length > 0) {
       arr = arr.filter((p) => {
         if (!p.colors || p.colors.length === 0) return false;
@@ -278,7 +312,6 @@ export default function ProductsScreen({ navigation }) {
       });
     }
 
-    // Size filter
     if (sizeFilters.length > 0) {
       arr = arr.filter((p) => {
         if (!p.sizes || p.sizes.length === 0) return false;
@@ -359,22 +392,19 @@ export default function ProductsScreen({ navigation }) {
       <FlatList
         style={{ flex: 1 }}
         data={data}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => String(item.id)}
         numColumns={2}
-        showsVerticalScrollIndicator={true}
+        showsVerticalScrollIndicator
         columnWrapperStyle={{ gap: GAP }}
         ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <>
-            {/* Top controls */}
             <View style={styles.topBar}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.countText}>{data.length} sản phẩm</Text>
                 <Text style={styles.subText}>
-                  {sortKey === "default"
-                    ? "Theo bộ lọc hiện tại"
-                    : `Đang: ${sortLabel}`}
+                  {sortKey === "default" ? "Theo bộ lọc hiện tại" : `Đang: ${sortLabel}`}
                 </Text>
               </View>
 
@@ -397,7 +427,6 @@ export default function ProductsScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* Applied chips row */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -431,11 +460,14 @@ export default function ProductsScreen({ navigation }) {
           <View style={{ width: CARD_W }}>
             <ProductCard
               item={item}
-              onPress={() => navigation.navigate("ProductDetail", { item, id: item.apiId })}
+              initialFav={favoriteIds.includes(String(item.id))}
+              onFavoriteChanged={handleFavoriteChanged}
+              onPress={() =>
+                navigation.navigate("ProductDetail", { item, id: item.apiId })
+              }
             />
           </View>
         )}
-
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyTitle}>
@@ -454,7 +486,6 @@ export default function ProductsScreen({ navigation }) {
         ListFooterComponent={<View style={{ height: 16 }} />}
       />
 
-      {/* SORT SHEET */}
       <BottomSheet
         visible={sortOpen}
         title="Sắp xếp"
@@ -473,34 +504,25 @@ export default function ProductsScreen({ navigation }) {
                   setSortOpen(false);
                 }}
               >
-                <Text
-                  style={[
-                    styles.optionText,
-                    active && styles.optionTextActive,
-                  ]}
-                >
+                <Text style={[styles.optionText, active && styles.optionTextActive]}>
                   {opt.label}
                 </Text>
-                {active && (
-                  <Ionicons name="checkmark" size={18} color="#111827" />
-                )}
+                {active && <Ionicons name="checkmark" size={18} color="#111827" />}
               </TouchableOpacity>
             );
           })}
         </View>
       </BottomSheet>
 
-      {/* FILTER SHEET */}
       <BottomSheet
         visible={filterOpen}
         title="Bộ lọc"
         onClose={() => setFilterOpen(false)}
       >
         <ScrollView
-          showsVerticalScrollIndicator={true}
+          showsVerticalScrollIndicator
           contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24, gap: 14 }}
         >
-          {/* TYPE */}
           <View style={{ gap: 8 }}>
             <Text style={styles.groupTitle}>Loại</Text>
             <View style={styles.rowWrap}>
@@ -525,7 +547,6 @@ export default function ProductsScreen({ navigation }) {
             </View>
           </View>
 
-          {/* STOCK */}
           <View style={{ gap: 8 }}>
             <Text style={styles.groupTitle}>Trạng thái</Text>
             <View style={styles.rowWrap}>
@@ -550,7 +571,6 @@ export default function ProductsScreen({ navigation }) {
             </View>
           </View>
 
-          {/* PRICE */}
           <View style={{ gap: 8 }}>
             <Text style={styles.groupTitle}>Khoảng giá</Text>
             <View style={{ gap: 8 }}>
@@ -566,16 +586,13 @@ export default function ProductsScreen({ navigation }) {
                     <Text style={[styles.optionText, active && styles.optionTextActive]}>
                       {r.label}
                     </Text>
-                    {active && (
-                      <Ionicons name="checkmark" size={18} color="#111827" />
-                    )}
+                    {active && <Ionicons name="checkmark" size={18} color="#111827" />}
                   </TouchableOpacity>
                 );
               })}
             </View>
           </View>
 
-          {/* BRAND */}
           <View style={{ gap: 8 }}>
             <Text style={styles.groupTitle}>Thương hiệu</Text>
             <View style={{ gap: 8 }}>
@@ -591,16 +608,13 @@ export default function ProductsScreen({ navigation }) {
                     <Text style={[styles.optionText, active && styles.optionTextActive]}>
                       {brand}
                     </Text>
-                    {active && (
-                      <Ionicons name="checkmark" size={18} color="#111827" />
-                    )}
+                    {active && <Ionicons name="checkmark" size={18} color="#111827" />}
                   </TouchableOpacity>
                 );
               })}
             </View>
           </View>
 
-          {/* COLOR */}
           <View style={{ gap: 8 }}>
             <Text style={styles.groupTitle}>Màu sắc</Text>
             <View style={styles.colorFilterRow}>
@@ -618,9 +632,7 @@ export default function ProductsScreen({ navigation }) {
                     activeOpacity={0.85}
                     onPress={() => {
                       setColorFilters((prev) =>
-                        active
-                          ? prev.filter((c) => c !== color.id)
-                          : [...prev, color.id]
+                        active ? prev.filter((c) => c !== color.id) : [...prev, color.id]
                       );
                     }}
                     style={[
@@ -648,7 +660,6 @@ export default function ProductsScreen({ navigation }) {
             </View>
           </View>
 
-          {/* SIZE */}
           <View style={{ gap: 8 }}>
             <Text style={styles.groupTitle}>Kích thước</Text>
             <View style={styles.rowWrap}>
@@ -661,18 +672,11 @@ export default function ProductsScreen({ navigation }) {
                     activeOpacity={0.85}
                     onPress={() => {
                       setSizeFilters((prev) =>
-                        active
-                          ? prev.filter((s) => s !== size)
-                          : [...prev, size]
+                        active ? prev.filter((s) => s !== size) : [...prev, size]
                       );
                     }}
                   >
-                    <Text
-                      style={[
-                        styles.toggleText,
-                        active && styles.toggleTextActive,
-                      ]}
-                    >
+                    <Text style={[styles.toggleText, active && styles.toggleTextActive]}>
                       {size}
                     </Text>
                   </TouchableOpacity>
@@ -681,7 +685,6 @@ export default function ProductsScreen({ navigation }) {
             </View>
           </View>
 
-          {/* ACTIONS */}
           <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
             <TouchableOpacity
               style={[styles.actionBtn, { flex: 1, backgroundColor: "#FFFFFF" }]}
@@ -774,7 +777,13 @@ const styles = StyleSheet.create({
     maxWidth: 220,
   },
   appliedChipText: { fontSize: 12, fontWeight: "800", color: "#111827" },
-  chipX: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  chipX: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   clearAllBtn: { paddingHorizontal: 6, height: 34, justifyContent: "center" },
   clearAllText: { fontSize: 12, fontWeight: "800", color: "#EF4444" },
@@ -793,9 +802,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   emptyTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  emptySub: { fontSize: 12, fontWeight: "700", color: "#6B7280", textAlign: "center" },
+  emptySub: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    textAlign: "center",
+  },
 
-  // ===== Modal / Sheet =====
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",

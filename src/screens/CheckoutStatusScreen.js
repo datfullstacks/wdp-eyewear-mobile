@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState, useRef } from "react";
+﻿import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { CART_TYPES, useCartStore } from "../store/cartStore";
 import {
   Alert,
@@ -61,6 +61,15 @@ const ORDER_STEPS = [
   { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
   { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
 ];
+
+const TYPE_META = {
+  lens: { icon: "eye-outline", color: "#2563EB", bg: "#EFF6FF", label: "Tròng kính" },
+  contact_lens: { icon: "eye-outline", color: "#2563EB", bg: "#EFF6FF", label: "Kính áp tròng" },
+  frame: { icon: "glasses-outline", color: "#6B7280", bg: "#F3F4F6", label: "Gọng kính" },
+  sunglasses: { icon: "glasses-outline", color: "#B45309", bg: "#FFF7ED", label: "Kính mát" },
+  accessory: { icon: "grid-outline", color: "#6B7280", bg: "#F3F4F6", label: "Phụ kiện" },
+  service: { icon: "build-outline", color: "#15803D", bg: "#ECFDF5", label: "Dịch vụ" },
+};
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
 
@@ -327,8 +336,26 @@ const DEMO_ORDER = {
     country: "VN",
   },
   items: [
-    { name: "Gọng kính WDP", qty: 1, price: 1250000, preorder: true },
-    { name: "Tròng kính chống ánh xanh", qty: 1, price: 1200000, preorder: true },
+    {
+      _id: "demo-item-1",
+      productId: "demo-product-1",
+      name: "Gọng kính WDP",
+      type: "frame",
+      quantity: 1,
+      unitPrice: 1250000,
+      payLater: 0,
+      preOrder: true,
+    },
+    {
+      _id: "demo-item-2",
+      productId: "demo-product-2",
+      name: "Tròng kính chống ánh xanh",
+      type: "lens",
+      quantity: 1,
+      unitPrice: 1200000,
+      payLater: 0,
+      preOrder: true,
+    },
   ],
   payment: {
     method: "VNPAY",
@@ -348,8 +375,8 @@ const normalizeOrder = (raw) => {
   const discountAmount = breakdown.discountAmount ?? raw?.discountAmount ?? raw?.discount ?? 0;
   const shippingFee = breakdown.shippingFee ?? raw?.shippingFee ?? 0;
   const total = breakdown.total ?? raw?.total ?? 0;
-  const payNow = breakdown.payNow ?? raw?.payNow ?? 0;
-  const payLater = breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
+  const payNow = breakdown.payNow ?? raw?.payNow ?? raw?.payNowTotal ?? 0;
+  const payLater = breakdown.payLater ?? raw?.payLater ?? raw?.payLaterTotal ?? Math.max(0, total - payNow);
 
   const payment = raw?.payment || {};
   const paymentMethod = normalizePaymentMethod(payment.method || raw?.paymentMethod, payNow);
@@ -363,7 +390,8 @@ const normalizeOrder = (raw) => {
     payment.transactionId,
     payment.code,
     payment.payment_code,
-    payment.transaction_code
+    payment.transaction_code,
+    raw?.paymentCode
   );
 
   const paymentContent =
@@ -517,6 +545,112 @@ const normalizeOrder = (raw) => {
   };
 };
 
+const normalizeOrderItems = (items) => {
+  if (!Array.isArray(items)) return [];
+
+  return items.map((item, index) => ({
+    ...item,
+    id:
+      item?._id ||
+      item?.id ||
+      item?.productId ||
+      item?.product?._id ||
+      item?.product?.id ||
+      `order-item-${index}`,
+
+    apiId:
+      item?.productId ||
+      item?.product?._id ||
+      item?.product?.id ||
+      item?._id ||
+      item?.id ||
+      null,
+
+    name: item?.name || item?.product?.name || "Sản phẩm",
+
+    image:
+      item?.image ||
+      item?.thumbnail ||
+      item?.thumb ||
+      item?.product?.image ||
+      item?.product?.thumbnail ||
+      item?.product?.thumb ||
+      null,
+
+    type: item?.type || item?.product?.type || "product",
+
+    preorder: Boolean(item?.preOrder ?? item?.preorder ?? false),
+
+    qty: Number(item?.qty ?? item?.quantity ?? 1),
+
+    price: Number(item?.price ?? item?.unitPrice ?? item?.product?.price ?? 0),
+
+    payLater: Number(item?.payLater ?? 0),
+
+    variantOptions: item?.variantOptions || {},
+    customization: item?.customization || {},
+  }));
+};
+
+function OrderProductRow({ item, onPress }) {
+  const typeKey = String(item?.type || "").toLowerCase();
+  const typeMeta = TYPE_META[typeKey] || {
+    icon: "cube-outline",
+    color: "#6B7280",
+    bg: "#F3F4F6",
+    label: "Sản phẩm",
+  };
+
+  const hasImage = Boolean(item?.image);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onPress}
+      style={styles.orderItemRow}
+    >
+      <View style={styles.orderItemLeft}>
+        {hasImage ? (
+          <Image source={{ uri: item.image }} style={styles.itemThumb} />
+        ) : (
+          <View style={[styles.itemThumbIcon, { backgroundColor: typeMeta.bg }]}>
+            <Ionicons name={typeMeta.icon} size={20} color={typeMeta.color} />
+          </View>
+        )}
+
+        {item?.preorder ? (
+          <View style={styles.preorderItemBadge}>
+            <Ionicons name="time-outline" size={10} color="#15803D" />
+            <Text style={styles.preorderItemBadgeText}>Đặt trước</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.orderItemMid}>
+        <Text style={styles.orderItemName} numberOfLines={2}>
+          {item?.name || "Sản phẩm"}
+        </Text>
+
+        <View style={styles.orderItemMetaRow}>
+          <Text style={styles.orderItemQty}>x{item?.qty ?? 1}</Text>
+          <Text style={styles.orderItemPrice}>{formatVND(item?.price)}</Text>
+        </View>
+
+        {item?.payLater > 0 ? (
+          <View style={styles.payLaterBadge}>
+            <Ionicons name="card-outline" size={10} color="#B45309" />
+            <Text style={styles.payLaterText}>Còn {formatVND(item.payLater)}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.viewDetailBtn}>
+        <Ionicons name="chevron-forward" size={16} color="#2563EB" />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function CheckoutStatusScreen({ navigation, route }) {
   const initialOrder = route?.params?.order || null;
   const cartType =
@@ -534,6 +668,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   }, [initialOrder, serverOrder]);
 
   const order = useMemo(() => normalizeOrder(rawOrder), [rawOrder]);
+  const orderItems = useMemo(() => normalizeOrderItems(order.items), [order.items]);
 
   const pollOrderId = useMemo(() => {
     const id = rawOrder?._id || rawOrder?.id || rawOrder?.orderId;
@@ -611,6 +746,25 @@ export default function CheckoutStatusScreen({ navigation, route }) {
       params: screenName ? { screen: screenName } : undefined,
     });
   };
+
+  const handleOpenProductDetail = useCallback(
+    (item) => {
+      const id = item?.apiId || item?.id;
+      if (!id) return;
+
+      navigation.navigate("Tabs", {
+        screen: "ProductsTab",
+        params: {
+          screen: "ProductDetail",
+          params: {
+            item,
+            id,
+          },
+        },
+      });
+    },
+    [navigation]
+  );
 
   useEffect(() => {
     if (paymentStatus === "PAID" && !clearedRef.current) {
@@ -868,6 +1022,27 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         ) : null}
 
         <View style={styles.card}>
+          <View style={styles.productSectionHeader}>
+            <Text style={styles.sectionTitle}>Thông tin sản phẩm</Text>
+            <Text style={styles.productCountText}>{orderItems.length} sản phẩm</Text>
+          </View>
+
+          {orderItems.length > 0 ? (
+            <View style={styles.itemsList}>
+              {orderItems.map((item, idx) => (
+                <OrderProductRow
+                  key={`${item?.id || item?.apiId || "item"}-${idx}`}
+                  item={item}
+                  onPress={() => handleOpenProductDetail(item)}
+                />
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.mutedText}>Không có sản phẩm trong đơn hàng.</Text>
+          )}
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
 
           <View style={styles.rowBetween}>
@@ -1081,4 +1256,129 @@ const styles = StyleSheet.create({
   stepTitle: { fontSize: 13.5, fontWeight: "900", color: "#6B7280" },
   stepTitleActive: { color: "#111827" },
   stepDesc: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+
+  productSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  productCountText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#6B7280",
+  },
+
+  itemsList: {
+    gap: 10,
+  },
+
+  orderItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.02)",
+  },
+
+  orderItemLeft: {
+    position: "relative",
+  },
+
+  itemThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+  },
+
+  itemThumbIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  preorderItemBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: "#ECFDF5",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+  },
+
+  preorderItemBadgeText: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+
+  orderItemMid: {
+    flex: 1,
+  },
+
+  orderItemName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#111827",
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+
+  orderItemMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  orderItemQty: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+
+  orderItemPrice: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#2563EB",
+  },
+
+  payLaterBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: "#FFF7ED",
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+
+  payLaterText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#B45309",
+  },
+
+  viewDetailBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EFF6FF",
+  },
 });

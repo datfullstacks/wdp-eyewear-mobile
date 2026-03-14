@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "../store/authStore";
 import { useCartStore } from "../store/cartStore";
-import { useFavoriteStore } from "../store/favoriteStore";
+// import { useFavoriteStore } from "../store/favoriteStore";
 
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
@@ -81,10 +81,10 @@ function ProfileStackScreen() {
   );
 }
 
-function OrdersStackScreen() {
+function NotificationsStackScreen() {
   return (
     <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
-      <OrdersStack.Screen name="Orders" component={OrdersScreen} />
+      <OrdersStack.Screen name="Notifications" component={NotificationsScreen} />
     </OrdersStack.Navigator>
   );
 }
@@ -123,7 +123,7 @@ function MainTabs({ navigation }) {
           if (route.name === "HomeTab") iconName = focused ? "home" : "home-outline";
           if (route.name === "ProductsTab") iconName = focused ? "cube" : "cube-outline";
           if (route.name === "FavTab") iconName = focused ? "heart" : "heart-outline";
-          if (route.name === "OrdersTab") iconName = focused ? "clipboard" : "clipboard-outline";
+          if (route.name === "NotificationTab") iconName = focused ? "notifications" : "notifications-outline";
           if (route.name === "ProfileTab") iconName = focused ? "person" : "person-outline";
           return <Ionicons name={iconName} size={22} color={color} />;
         },
@@ -178,9 +178,9 @@ function MainTabs({ navigation }) {
       />
 
       <Tab.Screen
-        name="OrdersTab"
-        component={OrdersStackScreen}
-        options={{ tabBarLabel: "Đơn hàng" }}
+        name="NotificationTab"
+        component={NotificationsStackScreen}
+        options={{ tabBarLabel: "Thông báo" }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
             if (!token) {
@@ -217,10 +217,6 @@ export default function AppNavigation() {
   const setCartUser = useCartStore((s) => s.setUser);
   const isHydratingCart = useCartStore((s) => s.isHydrating);
 
-  // fav: setUser sẽ tự hydrate theo key user
-  const setFavUser = useFavoriteStore((s) => s.setUser);
-  const isHydratingFav = useFavoriteStore((s) => s.isHydrating);
-
   // 1) hydrate auth trước
   useEffect(() => {
     hydrateAuth();
@@ -230,11 +226,10 @@ export default function AppNavigation() {
   useEffect(() => {
     if (!isHydratingAuth) {
       setCartUser(userKey);
-      setFavUser(userKey);
     }
-  }, [isHydratingAuth, userKey, setCartUser, setFavUser]);
+  }, [isHydratingAuth, userKey, setCartUser]);
 
-  if (isHydratingAuth || isHydratingCart || isHydratingFav) return null;
+  if (isHydratingAuth || isHydratingCart) return null;
 
   return (
     <NavigationContainer>
