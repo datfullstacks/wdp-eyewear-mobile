@@ -309,8 +309,6 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const addItem = useCartStore((s) => s.addItem);
 
-  // const toggleFav = useFavoriteStore((s) => s.toggle);
-  // const fav = useFavoriteStore((s) => s.ids.includes(product?.id));
   const [fav, setFav] = useState(false);
 
   const discountPct = useMemo(() => {

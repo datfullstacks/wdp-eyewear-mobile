@@ -116,7 +116,6 @@ export default function HomeBanner({
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 12 },
 
   card: {
     height: 160,

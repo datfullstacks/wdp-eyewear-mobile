@@ -1,5 +1,5 @@
 // components/OrderCard.js
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   Image,
   StyleSheet,
@@ -131,7 +131,7 @@ function OrderItemRow({ orderItem, onEdit }) {
     icon: "cube-outline",
     color: "#6B7280",
     bg: "#F3F4F6",
-    label: "Sản phẩm"
+    label: "Sản phẩm",
   };
 
   const hasImage = Boolean(orderItem?.image);
@@ -195,7 +195,7 @@ export default function OrderCard({
   onEditItem,
   onCancel,
   onPress,
-  showEditButton = true
+  showEditButton = true,
 }) {
   const orderId = order?._id || order?.id || "--";
   const orderCode = order?.paymentCode;
@@ -208,9 +208,17 @@ export default function OrderCard({
   const canCancel = ["pending", "confirmed", "processing"].includes(statusKey) && !isPaid;
 
   const totalItems = orderItems.reduce((sum, item) => sum + (item?.qty || 1), 0);
+  const hasPreorder = orderItems.some((item) => item?.preorder);
 
-  // Kiểm tra xem có sản phẩm nào là preorder không
-  const hasPreorder = orderItems.some(item => item?.preorder);
+  const [visibleCount, setVisibleCount] = useState(2);
+
+  const visibleItems = useMemo(() => {
+    return orderItems.slice(0, visibleCount);
+  }, [orderItems, visibleCount]);
+
+  const remainingCount = Math.max(orderItems.length - visibleCount, 0);
+  const canExpand = remainingCount > 0;
+  const canCollapse = orderItems.length > 2 && visibleCount >= orderItems.length;
 
   return (
     <TouchableOpacity
@@ -247,7 +255,7 @@ export default function OrderCard({
 
           {orderItems.length > 0 && (
             <View style={styles.itemsList}>
-              {orderItems.slice(0, 2).map((item, idx) => (
+              {visibleItems.map((item, idx) => (
                 <OrderItemRow
                   key={orderId + "-" + idx}
                   orderItem={item}
@@ -255,18 +263,33 @@ export default function OrderCard({
                 />
               ))}
 
-              {orderItems.length > 2 && (
+              {canExpand && (
                 <TouchableOpacity
                   style={styles.viewMoreBtn}
+                  activeOpacity={0.8}
                   onPress={(e) => {
-                    e.stopPropagation();
-                    onPress?.();
+                    e?.stopPropagation?.();
+                    setVisibleCount((prev) => Math.min(prev + 2, orderItems.length));
                   }}
                 >
                   <Text style={styles.viewMoreText}>
-                    +{orderItems.length - 2} sản phẩm khác
+                    +{Math.min(2, remainingCount)} sản phẩm khác
                   </Text>
-                  <Ionicons name="chevron-forward" size={14} color="#2563EB" />
+                  <Ionicons name="chevron-down" size={14} color="#2563EB" />
+                </TouchableOpacity>
+              )}
+
+              {canCollapse && (
+                <TouchableOpacity
+                  style={styles.viewMoreBtn}
+                  activeOpacity={0.8}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    setVisibleCount(2);
+                  }}
+                >
+                  <Text style={styles.viewMoreText}>Thu gọn</Text>
+                  <Ionicons name="chevron-up" size={14} color="#2563EB" />
                 </TouchableOpacity>
               )}
             </View>
@@ -353,7 +376,7 @@ const styles = StyleSheet.create({
   orderCode: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#111827"
+    color: "#111827",
   },
 
   orderDateContainer: {
@@ -365,7 +388,7 @@ const styles = StyleSheet.create({
   orderDate: {
     fontSize: 12,
     fontWeight: "500",
-    color: "black"
+    color: "black",
   },
 
   badgeContainer: {
@@ -386,7 +409,7 @@ const styles = StyleSheet.create({
 
   statusBadgeText: {
     fontSize: 11.5,
-    fontWeight: "700"
+    fontWeight: "700",
   },
 
   preorderBadge: {
@@ -447,7 +470,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 12,
-    backgroundColor: "#F3F4F6"
+    backgroundColor: "#F3F4F6",
   },
 
   itemThumbIcon: {
@@ -480,7 +503,7 @@ const styles = StyleSheet.create({
   },
 
   orderItemMid: {
-    flex: 1
+    flex: 1,
   },
 
   orderItemName: {
@@ -542,7 +565,7 @@ const styles = StyleSheet.create({
   editItemBtnText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#2563EB"
+    color: "#2563EB",
   },
 
   viewMoreBtn: {
@@ -590,7 +613,7 @@ const styles = StyleSheet.create({
   paidTagText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#15803D"
+    color: "#15803D",
   },
 
   unpaidTag: {
@@ -607,7 +630,7 @@ const styles = StyleSheet.create({
   unpaidTagText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#B45309"
+    color: "#B45309",
   },
 
   footerRight: {
@@ -646,6 +669,6 @@ const styles = StyleSheet.create({
   totalValue: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#EF4444"
+    color: "#EF4444",
   },
 });

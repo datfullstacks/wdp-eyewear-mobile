@@ -880,22 +880,26 @@ const styles = StyleSheet.create({
 
   authText: { color: "#fff", fontWeight: "900", fontSize: 12 },
 
-  bannerShadowWrap: {
-    marginHorizontal: PAGE_PADDING,
-    borderRadius: 20,
-    backgroundColor: "#fff",
+bannerShadowWrap: {
+  marginHorizontal: PAGE_PADDING,
+  borderRadius: 20,
+  overflow: "hidden",
+  backgroundColor: "transparent",
 
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.08,
+  shadowRadius: 8,
+  elevation: 4,
+},
 
-  bannerContainer: {
-    borderRadius: 20,
-    overflow: "hidden",
-  },
+bannerContainer: {
+  borderRadius: 20,
+  overflow: "hidden",
+  margin: 0,
+  padding: 0,
+  backgroundColor: "transparent",
+},
 
   categoriesSection: {
     marginTop: 20,
@@ -907,21 +911,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  categoryCard: {
-    width: 100,
-    height: 100,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
-  },
+categoryCard: {
+  width: 100,
+  height: 100,
+  borderRadius: 20,
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  borderWidth: 1,
+  borderColor: "rgba(0,0,0,0.05)",
+},
 
   categoryText: {
     fontSize: 12,
