@@ -56,20 +56,27 @@ const PAYMENT_STATUS_META = {
 
 const ORDER_STEPS = [
   { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
-  { key: "AWAITING_STOCK", label: "Chờ hàng về", desc: "Đang chờ sản phẩm về kho" },
+  {
+    key: "AWAITING_STOCK",
+    label: "Chờ hàng về",
+    desc: "Đang chờ sản phẩm về kho",
+  },
   { key: "PACKING", label: "Đóng gói", desc: "Đơn hàng đang được đóng gói" },
   { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
   { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
 ];
 
-const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
+const formatVND = (value) =>
+  new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
 
 const SEPAY_FALLBACK_ACCOUNT_NUMBER =
   process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NUMBER ||
   process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_ID ||
   null;
-const SEPAY_FALLBACK_BANK_NAME = process.env.EXPO_PUBLIC_SEPAY_BANK_NAME || null;
-const SEPAY_FALLBACK_ACCOUNT_NAME = process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NAME || null;
+const SEPAY_FALLBACK_BANK_NAME =
+  process.env.EXPO_PUBLIC_SEPAY_BANK_NAME || null;
+const SEPAY_FALLBACK_ACCOUNT_NAME =
+  process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NAME || null;
 
 const formatDateTime = (value) => {
   if (!value) return "--";
@@ -81,12 +88,13 @@ const formatDateTime = (value) => {
 const makeQrUrl = (content) => {
   if (!content) return null;
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-    content
+    content,
   )}`;
 };
 
 const isHttpUrl = (value) => /^https?:\/\/.+/i.test(value);
-const isDataImageUrl = (value) => /^data:image\/[a-z0-9.+-]+;base64,/i.test(value);
+const isDataImageUrl = (value) =>
+  /^data:image\/[a-z0-9.+-]+;base64,/i.test(value);
 
 const toTextValue = (value) => {
   if (value == null) return null;
@@ -198,17 +206,25 @@ const buildAddressLines = (addr) => {
 };
 
 const normalizePaymentMethod = (value, payNow = 0) => {
-  const method = String(value || "").trim().toUpperCase();
+  const method = String(value || "")
+    .trim()
+    .toUpperCase();
   if (!method) return payNow > 0 ? "SEPAY" : "COD";
-  if (["VNPAY", "VNPAY_QR", "VNPAYQR", "VN_PAY"].includes(method)) return "VNPAY";
+  if (["VNPAY", "VNPAY_QR", "VNPAYQR", "VN_PAY"].includes(method))
+    return "VNPAY";
   if (["SEPAY", "SE_PAY"].includes(method)) return "SEPAY";
   return method;
 };
 
-const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) => {
+const normalizePaymentStatus = (
+  status,
+  { payNow = 0, method = "SEPAY" } = {},
+) => {
   if (typeof status === "string" && PAYMENT_STATUS_META[status]) return status;
 
-  const normalized = String(status || "").trim().toLowerCase();
+  const normalized = String(status || "")
+    .trim()
+    .toLowerCase();
 
   if (normalized === "paid") return "PAID";
   if (normalized === "failed") return "FAILED";
@@ -223,26 +239,48 @@ const normalizePaymentStatus = (status, { payNow = 0, method = "SEPAY" } = {}) =
 };
 
 const normalizeOrderStatus = (status) => {
-  const normalized = String(status || "").trim().toLowerCase();
+  const normalized = String(status || "")
+    .trim()
+    .toLowerCase();
 
-  if (normalized === "pending" || normalized === "confirmed") return "CONFIRMED";
+  if (normalized === "pending" || normalized === "confirmed")
+    return "CONFIRMED";
   if (normalized === "processing") return "PACKING";
   if (normalized === "shipped") return "SHIPPING";
   if (normalized === "delivered") return "DELIVERED";
-  if (normalized === "cancelled" || normalized === "canceled") return "CANCELLED";
+  if (normalized === "cancelled" || normalized === "canceled")
+    return "CANCELLED";
 
   return String(status || "CONFIRMED").toUpperCase();
+};
+
+const normalizeShippingMethod = (value) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "express") return "express";
+  return "standard";
+};
+
+const getShippingMethodLabel = (value) => {
+  const normalized = normalizeShippingMethod(value);
+  if (normalized === "express") return "Giao nhanh";
+  return "Giao tieu chuan";
 };
 
 const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
   const localBreakdown = localOrder.breakdown || {};
   const localPayment = localOrder.payment || {};
   const serverPayment = serverOrder.payment || {};
-  const nextPaymentStatus = serverPayment.status || serverOrder.paymentStatus || localPayment.status;
+  const nextPaymentStatus =
+    serverPayment.status || serverOrder.paymentStatus || localPayment.status;
 
   const inferredPaidAt =
     String(nextPaymentStatus || "").toLowerCase() === "paid"
-      ? serverOrder.updatedAt || serverOrder.createdAt || localPayment.paidAt || null
+      ? serverOrder.updatedAt ||
+        serverOrder.createdAt ||
+        localPayment.paidAt ||
+        null
       : localPayment.paidAt || null;
 
   return {
@@ -255,26 +293,44 @@ const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
       localOrder.orderId ||
       localOrder.id,
     code: serverOrder.code || localOrder.code,
+    shippingMethod:
+      serverOrder.shippingMethod ||
+      serverOrder.shipping_method ||
+      localOrder.shippingMethod ||
+      localOrder.shipping_method ||
+      null,
     breakdown: {
       subtotal: serverOrder.subtotal ?? localBreakdown.subtotal,
       shippingFee: serverOrder.shippingFee ?? localBreakdown.shippingFee,
-      discountAmount: serverOrder.discountAmount ?? localBreakdown.discountAmount,
+      discountAmount:
+        serverOrder.discountAmount ?? localBreakdown.discountAmount,
       total: serverOrder.total ?? localBreakdown.total,
-      payNow: serverOrder.payNowTotal ?? serverOrder.payNow ?? localBreakdown.payNow,
-      payLater: serverOrder.payLaterTotal ?? serverOrder.payLater ?? localBreakdown.payLater,
+      payNow:
+        serverOrder.payNowTotal ?? serverOrder.payNow ?? localBreakdown.payNow,
+      payLater:
+        serverOrder.payLaterTotal ??
+        serverOrder.payLater ??
+        localBreakdown.payLater,
     },
     payment: {
       ...localPayment,
       ...serverPayment,
-      method: serverPayment.method || serverOrder.paymentMethod || localPayment.method,
+      method:
+        serverPayment.method ||
+        serverOrder.paymentMethod ||
+        localPayment.method,
       status: nextPaymentStatus,
-      amount: serverPayment.amount ?? serverOrder.payNowTotal ?? localPayment.amount,
+      amount:
+        serverPayment.amount ?? serverOrder.payNowTotal ?? localPayment.amount,
       paymentCode:
         serverPayment.paymentCode ||
         serverPayment.code ||
         serverOrder.paymentCode ||
         localPayment.paymentCode,
-      content: serverPayment.content || serverOrder.paymentCode || localPayment.content,
+      content:
+        serverPayment.content ||
+        serverOrder.paymentCode ||
+        localPayment.content,
       bankAccountId:
         serverPayment.bankAccountId ||
         serverPayment.bank_account_id ||
@@ -328,7 +384,12 @@ const DEMO_ORDER = {
   },
   items: [
     { name: "Gọng kính WDP", qty: 1, price: 1250000, preorder: true },
-    { name: "Tròng kính chống ánh xanh", qty: 1, price: 1200000, preorder: true },
+    {
+      name: "Tròng kính chống ánh xanh",
+      qty: 1,
+      price: 1200000,
+      preorder: true,
+    },
   ],
   payment: {
     method: "VNPAY",
@@ -345,30 +406,42 @@ const DEMO_ORDER = {
 const normalizeOrder = (raw) => {
   const breakdown = raw?.breakdown || {};
   const subtotal = breakdown.subtotal ?? raw?.subtotal ?? raw?.total ?? 0;
-  const discountAmount = breakdown.discountAmount ?? raw?.discountAmount ?? raw?.discount ?? 0;
+  const discountAmount =
+    breakdown.discountAmount ?? raw?.discountAmount ?? raw?.discount ?? 0;
   const shippingFee = breakdown.shippingFee ?? raw?.shippingFee ?? 0;
   const total = breakdown.total ?? raw?.total ?? 0;
   const payNow = breakdown.payNow ?? raw?.payNow ?? 0;
-  const payLater = breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
+  const payLater =
+    breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
 
   const payment = raw?.payment || {};
-  const paymentMethod = normalizePaymentMethod(payment.method || raw?.paymentMethod, payNow);
-  const paymentStatus = normalizePaymentStatus(payment.status || raw?.paymentStatus, {
+  const paymentMethod = normalizePaymentMethod(
+    payment.method || raw?.paymentMethod,
     payNow,
-    method: paymentMethod,
-  });
+  );
+  const paymentStatus = normalizePaymentStatus(
+    payment.status || raw?.paymentStatus,
+    {
+      payNow,
+      method: paymentMethod,
+    },
+  );
 
   const paymentCode = firstTextValue(
     payment.paymentCode,
     payment.transactionId,
     payment.code,
     payment.payment_code,
-    payment.transaction_code
+    payment.transaction_code,
   );
 
   const paymentContent =
-    firstTextValue(payment.content, payment.payload, payment.paymentContent, payment.text) ||
-    paymentCode;
+    firstTextValue(
+      payment.content,
+      payment.payload,
+      payment.paymentContent,
+      payment.text,
+    ) || paymentCode;
 
   const paymentAmount = payment.amount ?? payNow;
   const paymentCreatedAt = payment.createdAt || raw?.createdAt || null;
@@ -382,7 +455,7 @@ const normalizeOrder = (raw) => {
     payment.payUrl,
     payment.pay_url,
     payment.url,
-    payment.link
+    payment.link,
   );
 
   const qrCandidate = firstQrImageUrl(
@@ -396,7 +469,7 @@ const normalizeOrder = (raw) => {
     payment.qrLink,
     payment.qr_link,
     raw?.qrUrl,
-    raw?.qr_url
+    raw?.qr_url,
   );
 
   const paymentDescription =
@@ -407,8 +480,10 @@ const normalizeOrder = (raw) => {
       payment.paymentNote,
       payment.payment_note,
       payment.content,
-      payment.payment_content
-    ) || paymentContent || paymentCode;
+      payment.payment_content,
+    ) ||
+    paymentContent ||
+    paymentCode;
 
   const paymentAccountNumber = firstTextValue(
     payment.bankAccountNumber,
@@ -426,7 +501,7 @@ const normalizeOrder = (raw) => {
     payment.bank_account_id,
     raw?.bankAccountId,
     raw?.bank_account_id,
-    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NUMBER : null
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NUMBER : null,
   );
 
   const paymentBankName = firstTextValue(
@@ -437,7 +512,7 @@ const normalizeOrder = (raw) => {
     payment.bank_code,
     raw?.bankName,
     raw?.bank_name,
-    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_BANK_NAME : null
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_BANK_NAME : null,
   );
 
   const paymentAccountName = firstTextValue(
@@ -445,7 +520,7 @@ const normalizeOrder = (raw) => {
     payment.bank_account_name,
     raw?.bankAccountName,
     raw?.bank_account_name,
-    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NAME : null
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NAME : null,
   );
 
   const providerQrUrl =
@@ -458,15 +533,24 @@ const normalizeOrder = (raw) => {
         })
       : null;
 
-  const vnpayQrUrl = paymentMethod === "VNPAY" && paymentLink ? makeQrUrl(paymentLink) : null;
+  const vnpayQrUrl =
+    paymentMethod === "VNPAY" && paymentLink ? makeQrUrl(paymentLink) : null;
 
   const genericFallbackQrUrl =
     payNow > 0 && paymentMethod !== "SEPAY" && paymentMethod !== "VNPAY"
       ? makeQrUrl(paymentLink || paymentContent || paymentCode)
       : null;
 
-  const qrUrl = firstQrImageUrl(qrCandidate, providerQrUrl, vnpayQrUrl, genericFallbackQrUrl);
-  const bankAccountIdValue = firstTextValue(payment.bankAccountId, payment.bank_account_id);
+  const qrUrl = firstQrImageUrl(
+    qrCandidate,
+    providerQrUrl,
+    vnpayQrUrl,
+    genericFallbackQrUrl,
+  );
+  const bankAccountIdValue = firstTextValue(
+    payment.bankAccountId,
+    payment.bank_account_id,
+  );
 
   const rawAddress = raw?.shippingAddress || raw?.address || null;
   const address = rawAddress
@@ -488,6 +572,9 @@ const normalizeOrder = (raw) => {
     orderId: raw?.orderId || raw?._id || raw?.code || raw?.id || "OD--",
     createdAt: raw?.createdAt || paymentCreatedAt,
     status: normalizeOrderStatus(raw?.status),
+    shippingMethod: normalizeShippingMethod(
+      raw?.shippingMethod || raw?.shipping_method,
+    ),
     address,
     items: raw?.items || [],
     totals: {
@@ -520,7 +607,9 @@ const normalizeOrder = (raw) => {
 export default function CheckoutStatusScreen({ navigation, route }) {
   const initialOrder = route?.params?.order || null;
   const cartType =
-    route?.params?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
+    route?.params?.cartType === CART_TYPES.PREORDER
+      ? CART_TYPES.PREORDER
+      : CART_TYPES.ORDER;
 
   const [serverOrder, setServerOrder] = useState(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -529,7 +618,8 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const clearedRef = useRef(false);
 
   const rawOrder = useMemo(() => {
-    if (initialOrder && serverOrder) return mergeOrderSnapshot(initialOrder, serverOrder);
+    if (initialOrder && serverOrder)
+      return mergeOrderSnapshot(initialOrder, serverOrder);
     return serverOrder || initialOrder || DEMO_ORDER;
   }, [initialOrder, serverOrder]);
 
@@ -550,7 +640,11 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   }, [order.payment.status, order.payment.paidAt]);
 
   useEffect(() => {
-    if (!pollOrderId || pollOrderId === "OD--" || /^OD\d+$/i.test(pollOrderId)) {
+    if (
+      !pollOrderId ||
+      pollOrderId === "OD--" ||
+      /^OD\d+$/i.test(pollOrderId)
+    ) {
       return undefined;
     }
 
@@ -565,7 +659,10 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         }
       } catch (error) {
         if (typeof __DEV__ !== "undefined" && __DEV__) {
-          console.log("order polling failed", error?.response?.data || error?.message || error);
+          console.log(
+            "order polling failed",
+            error?.response?.data || error?.message || error,
+          );
         }
       }
     };
@@ -579,20 +676,26 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     };
   }, [pollOrderId]);
 
-  const paymentMeta = PAYMENT_STATUS_META[paymentStatus] || PAYMENT_STATUS_META.PENDING_QR;
+  const paymentMeta =
+    PAYMENT_STATUS_META[paymentStatus] || PAYMENT_STATUS_META.PENDING_QR;
 
   const activeStepIndex = Math.max(
     0,
-    ORDER_STEPS.findIndex((s) => s.key === order.status)
+    ORDER_STEPS.findIndex((s) => s.key === order.status),
   );
 
-  const isPaymentSettled = paymentStatus === "PAID" || paymentStatus === "REFUNDED";
-  const shouldShowQr = Boolean(order.payment.qrUrl) && !isPaymentSettled && paymentStatus === "PENDING_QR";
+  const isPaymentSettled =
+    paymentStatus === "PAID" || paymentStatus === "REFUNDED";
+  const shouldShowQr =
+    Boolean(order.payment.qrUrl) &&
+    !isPaymentSettled &&
+    paymentStatus === "PENDING_QR";
   const qrImageSource = useMemo(
     () => buildQrImageSource(order.payment.qrUrl),
-    [order.payment.qrUrl]
+    [order.payment.qrUrl],
   );
-  const canOpenPaymentUrl = Boolean(order.payment.paymentUrl) && !isPaymentSettled;
+  const canOpenPaymentUrl =
+    Boolean(order.payment.paymentUrl) && !isPaymentSettled;
 
   const paymentMethodLabel =
     order.payment.method === "VNPAY"
@@ -600,10 +703,12 @@ export default function CheckoutStatusScreen({ navigation, route }) {
       : order.payment.method === "SEPAY"
         ? "SePay"
         : order.payment.method || "QR";
+  const shippingMethodLabel = getShippingMethodLabel(order.shippingMethod);
 
   const normalizedOrderStatus = String(order.status || "").toUpperCase();
   const canCancelOrder =
-    !isPaymentSettled && !["DELIVERED", "CANCELLED"].includes(normalizedOrderStatus);
+    !isPaymentSettled &&
+    !["DELIVERED", "CANCELLED"].includes(normalizedOrderStatus);
 
   const navigateToTab = (tabName, screenName) => {
     navigation.navigate("Tabs", {
@@ -675,14 +780,17 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               const data = err?.response?.data || {};
               Alert.alert(
                 "Hủy thất bại",
-                data?.message || data?.error || err?.message || "Không thể hủy đơn."
+                data?.message ||
+                  data?.error ||
+                  err?.message ||
+                  "Không thể hủy đơn.",
               );
             } finally {
               setIsCancelling(false);
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -691,7 +799,9 @@ export default function CheckoutStatusScreen({ navigation, route }) {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
-            onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
+            onPress={() =>
+              navigation?.canGoBack?.() ? navigation.goBack() : null
+            }
             activeOpacity={0.85}
             style={styles.iconBtn}
           >
@@ -701,39 +811,61 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+      >
         <View style={styles.card}>
           <Text style={styles.title}>Đơn hàng {order.payment.paymentCode}</Text>
-          <Text style={styles.subText}>Tạo lúc {formatDateTime(order.createdAt)}</Text>
-          <View style={[styles.statusPill, { backgroundColor: paymentMeta.bg }]}>
-            <Text style={[styles.statusText, { color: paymentMeta.color }]}>{paymentMeta.label}</Text>
+          <Text style={styles.subText}>
+            Tạo lúc {formatDateTime(order.createdAt)}
+          </Text>
+          <View
+            style={[styles.statusPill, { backgroundColor: paymentMeta.bg }]}
+          >
+            <Text style={[styles.statusText, { color: paymentMeta.color }]}>
+              {paymentMeta.label}
+            </Text>
           </View>
           <Text style={styles.descText}>{paymentMeta.desc}</Text>
         </View>
 
         {shouldShowQr ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>QR thanh toán {paymentMethodLabel}</Text>
-            <Text style={styles.mutedText}>Quét mã để đặt cọc và hoàn tất đơn đặt trước.</Text>
+            <Text style={styles.sectionTitle}>
+              QR thanh toán {paymentMethodLabel}
+            </Text>
+            <Text style={styles.mutedText}>
+              Quét mã để đặt cọc và hoàn tất đơn đặt trước.
+            </Text>
 
             <View style={styles.qrWrap}>
-              {qrImageSource ? <Image source={qrImageSource} style={styles.qrImage} /> : null}
+              {qrImageSource ? (
+                <Image source={qrImageSource} style={styles.qrImage} />
+              ) : null}
             </View>
 
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Số tiền cần chuyển</Text>
-              <Text style={styles.metaValue}>{formatVND(order.payment.amount)}</Text>
+              <Text style={styles.metaValue}>
+                {formatVND(order.payment.amount)}
+              </Text>
             </View>
 
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Mã thanh toán</Text>
-              <Text style={styles.metaValue}>{order.payment.paymentCode || "--"}</Text>
+              <Text style={styles.metaValue}>
+                {order.payment.paymentCode || "--"}
+              </Text>
             </View>
 
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Nội dung</Text>
               <Text style={styles.metaValue}>
-                {order.payment.content || order.payment.paymentCode || order.payment.description || "--"}
+                {order.payment.content ||
+                  order.payment.paymentCode ||
+                  order.payment.description ||
+                  "--"}
               </Text>
             </View>
 
@@ -741,7 +873,9 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               <View style={styles.rowBetween}>
                 <Text style={styles.metaLabel}>Tài khoản nhận</Text>
                 <Text style={styles.metaValue}>
-                  {order.payment.bankAccountNumber || order.payment.bankAccountId || "--"}
+                  {order.payment.bankAccountNumber ||
+                    order.payment.bankAccountId ||
+                    "--"}
                 </Text>
               </View>
             ) : null}
@@ -755,18 +889,25 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Thời gian tạo</Text>
-              <Text style={styles.metaValue}>{formatDateTime(order.payment.createdAt)}</Text>
+              <Text style={styles.metaValue}>
+                {formatDateTime(order.payment.createdAt)}
+              </Text>
             </View>
 
             {canCancelOrder ? (
               <View style={styles.actionSection}>
                 <Text style={styles.sectionTitle}>Thao tác</Text>
                 <Text style={styles.mutedText}>
-                  Nếu bạn không muốn tiếp tục thanh toán, có thể hủy đơn hàng này.
+                  Nếu bạn không muốn tiếp tục thanh toán, có thể hủy đơn hàng
+                  này.
                 </Text>
 
                 <TouchableOpacity
-                  style={[styles.actionBtn, styles.cancelBtn, { marginTop: 12 }]}
+                  style={[
+                    styles.actionBtn,
+                    styles.cancelBtn,
+                    { marginTop: 12 },
+                  ]}
                   activeOpacity={0.85}
                   disabled={isCancelling}
                   onPress={handleCancelPayment}
@@ -780,17 +921,25 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           </View>
         ) : canOpenPaymentUrl ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Thanh toán {paymentMethodLabel}</Text>
+            <Text style={styles.sectionTitle}>
+              Thanh toán {paymentMethodLabel}
+            </Text>
             <Text style={styles.mutedText}>
               Không có ảnh QR hợp lệ từ hệ thống. Vui lòng mở link thanh toán.
             </Text>
 
             <TouchableOpacity
-              style={[styles.actionBtn, styles.actionBtnPrimary, { marginTop: 12 }]}
+              style={[
+                styles.actionBtn,
+                styles.actionBtnPrimary,
+                { marginTop: 12 },
+              ]}
               activeOpacity={0.85}
               onPress={() => Linking.openURL(order.payment.paymentUrl)}
             >
-              <Text style={[styles.actionText, styles.actionTextPrimary]}>Mở link thanh toán</Text>
+              <Text style={[styles.actionText, styles.actionTextPrimary]}>
+                Mở link thanh toán
+              </Text>
             </TouchableOpacity>
 
             {canCancelOrder ? (
@@ -820,11 +969,15 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <>
               <View style={styles.rowBetween}>
                 <Text style={styles.metaLabel}>Đặt cọc</Text>
-                <Text style={styles.metaValue}>{formatVND(order.totals.payNow)}</Text>
+                <Text style={styles.metaValue}>
+                  {formatVND(order.totals.payNow)}
+                </Text>
               </View>
               <View style={styles.rowBetween}>
                 <Text style={styles.metaLabel}>Còn lại (COD)</Text>
-                <Text style={styles.metaValue}>{formatVND(order.totals.payLater)}</Text>
+                <Text style={styles.metaValue}>
+                  {formatVND(order.totals.payLater)}
+                </Text>
               </View>
             </>
           ) : null}
@@ -844,7 +997,8 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Thanh toán thành công!</Text>
             <Text style={styles.mutedText}>
-              Đơn hàng đã được ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết đơn.
+              Đơn hàng đã được ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết
+              đơn.
             </Text>
 
             <View style={styles.actionRow}>
@@ -853,7 +1007,9 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 activeOpacity={0.85}
                 onPress={handleContinueShopping}
               >
-                <Text style={[styles.actionText, styles.actionTextGhost]}>Mua tiếp</Text>
+                <Text style={[styles.actionText, styles.actionTextGhost]}>
+                  Mua tiếp
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -861,7 +1017,9 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 activeOpacity={0.85}
                 onPress={handleViewOrderDetail}
               >
-                <Text style={[styles.actionText, styles.actionTextPrimary]}>Xem chi tiết</Text>
+                <Text style={[styles.actionText, styles.actionTextPrimary]}>
+                  Xem chi tiết
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -871,34 +1029,51 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
 
           <View style={styles.rowBetween}>
+            <Text style={styles.metaLabel}>Phuong thuc giao hang</Text>
+            <Text style={styles.metaValue}>{shippingMethodLabel}</Text>
+          </View>
+
+          <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Tạm tính</Text>
-            <Text style={styles.metaValue}>{formatVND(order.totals.subtotal)}</Text>
+            <Text style={styles.metaValue}>
+              {formatVND(order.totals.subtotal)}
+            </Text>
           </View>
 
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Giảm giá</Text>
-            <Text style={styles.metaValue}>-{formatVND(order.totals.discountAmount)}</Text>
+            <Text style={styles.metaValue}>
+              -{formatVND(order.totals.discountAmount)}
+            </Text>
           </View>
 
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Phí vận chuyển</Text>
-            <Text style={styles.metaValue}>{formatVND(order.totals.shippingFee)}</Text>
+            <Text style={styles.metaValue}>
+              {formatVND(order.totals.shippingFee)}
+            </Text>
           </View>
 
           <View style={styles.divider} />
 
           <View style={styles.rowBetween}>
             <Text style={styles.totalLabel}>Tổng cộng</Text>
-            <Text style={styles.totalValue}>{formatVND(order.totals.total)}</Text>
+            <Text style={styles.totalValue}>
+              {formatVND(order.totals.total)}
+            </Text>
           </View>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
-          <Text style={styles.addressName}>{order.address?.fullName || "--"}</Text>
+          <Text style={styles.addressName}>
+            {order.address?.fullName || "--"}
+          </Text>
           <Text style={styles.addressMeta}>{order.address?.phone || "--"}</Text>
 
-          {order.address?.email ? <Text style={styles.addressMeta}>{order.address.email}</Text> : null}
+          {order.address?.email ? (
+            <Text style={styles.addressMeta}>{order.address.email}</Text>
+          ) : null}
 
           {buildAddressLines(order.address).map((line, idx) => (
             <Text key={`${line}-${idx}`} style={styles.addressMeta}>
@@ -918,12 +1093,26 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               return (
                 <View key={step.key} style={styles.stepRow}>
                   <View style={styles.stepLeft}>
-                    <View style={[styles.stepDot, active && styles.stepDotActive]} />
-                    {!isLast ? <View style={[styles.stepLine, active && styles.stepLineActive]} /> : null}
+                    <View
+                      style={[styles.stepDot, active && styles.stepDotActive]}
+                    />
+                    {!isLast ? (
+                      <View
+                        style={[
+                          styles.stepLine,
+                          active && styles.stepLineActive,
+                        ]}
+                      />
+                    ) : null}
                   </View>
 
                   <View style={styles.stepContent}>
-                    <Text style={[styles.stepTitle, active && styles.stepTitleActive]}>
+                    <Text
+                      style={[
+                        styles.stepTitle,
+                        active && styles.stepTitleActive,
+                      ]}
+                    >
                       {step.label}
                     </Text>
                     <Text style={styles.stepDesc}>{step.desc}</Text>
@@ -974,8 +1163,18 @@ const styles = StyleSheet.create({
   },
 
   title: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  subText: { marginTop: 6, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
-  descText: { marginTop: 8, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
+  subText: {
+    marginTop: 6,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  descText: {
+    marginTop: 8,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
 
   statusPill: {
     alignSelf: "flex-start",
@@ -987,7 +1186,12 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: "900" },
 
   sectionTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  mutedText: { marginTop: 6, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
+  mutedText: {
+    marginTop: 6,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
 
   qrWrap: {
     alignItems: "center",
@@ -1056,8 +1260,18 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 13.5, fontWeight: "900", color: "#111827" },
   totalValue: { fontSize: 14, fontWeight: "900", color: "#EF4444" },
 
-  addressName: { marginTop: 8, fontSize: 13.5, fontWeight: "900", color: "#111827" },
-  addressMeta: { marginTop: 6, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
+  addressName: {
+    marginTop: 8,
+    fontSize: 13.5,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  addressMeta: {
+    marginTop: 6,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
 
   timeline: { marginTop: 12 },
   stepRow: { flexDirection: "row", alignItems: "flex-start" },

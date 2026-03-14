@@ -15,15 +15,14 @@ export const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().token;
-    if (token) {
-      config.headers = config.headers || {};
+    config.headers = config.headers || {};
+    if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    config.headers = config.headers || {};
     config.headers.accept = "application/json";
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 api.interceptors.response.use(
@@ -32,5 +31,5 @@ api.interceptors.response.use(
     if (error?.response?.status === 401) {
     }
     return Promise.reject(error);
-  }
+  },
 );

@@ -1,6 +1,10 @@
-﻿// navigation/AppNavigation.js
-import React, { useEffect } from "react";
-import { NavigationContainer, CommonActions } from "@react-navigation/native";
+// navigation/AppNavigation.js
+import React, { useCallback, useEffect, useRef } from "react";
+import {
+  CommonActions,
+  NavigationContainer,
+  createNavigationContainerRef,
+} from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,6 +32,12 @@ import PaymentsScreen from "../screens/PaymentsScreen";
 import SupportScreen from "../screens/SupportScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import TryOnARScreen from "../screens/TryOnARScreen";
+import {
+  addPushNotificationResponseListener,
+  getInitialPushNotificationResponseAsync,
+  registerDeviceForPushNotificationsAsync,
+  unregisterStoredPushTokenAsync,
+} from "../services/pushNotificationService";
 
 const RootStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -38,6 +48,7 @@ const CartStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
 const FavoritesStack = createNativeStackNavigator();
 const OrdersStack = createNativeStackNavigator();
+const navigationRef = createNavigationContainerRef();
 
 function HomeStackScreen() {
   return (
@@ -52,7 +63,10 @@ function ProductsStackScreen() {
   return (
     <ProductsStack.Navigator screenOptions={{ headerShown: false }}>
       <ProductsStack.Screen name="Products" component={ProductsScreen} />
-      <ProductsStack.Screen name="ProductDetail" component={ProductDetailScreen} />
+      <ProductsStack.Screen
+        name="ProductDetail"
+        component={ProductDetailScreen}
+      />
     </ProductsStack.Navigator>
   );
 }
@@ -62,7 +76,10 @@ function CartStackScreen() {
     <CartStack.Navigator screenOptions={{ headerShown: false }}>
       <CartStack.Screen name="Cart" component={CartScreen} />
       <CartStack.Screen name="Checkout" component={CheckoutScreen} />
-      <CartStack.Screen name="CheckoutStatus" component={CheckoutStatusScreen} />
+      <CartStack.Screen
+        name="CheckoutStatus"
+        component={CheckoutStatusScreen}
+      />
     </CartStack.Navigator>
   );
 }
@@ -76,7 +93,10 @@ function ProfileStackScreen() {
       <ProfileStack.Screen name="Prescription" component={PrescriptionScreen} />
       <ProfileStack.Screen name="Payments" component={PaymentsScreen} />
       <ProfileStack.Screen name="Support" component={SupportScreen} />
-      <ProfileStack.Screen name="Notifications" component={NotificationsScreen} />
+      <ProfileStack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+      />
     </ProfileStack.Navigator>
   );
 }
@@ -89,13 +109,14 @@ function OrdersStackScreen() {
   );
 }
 
-
-// Favorites stack
 function FavoritesStackScreen() {
   return (
     <FavoritesStack.Navigator screenOptions={{ headerShown: false }}>
       <FavoritesStack.Screen name="Favorites" component={FavoritesScreen} />
-      <FavoritesStack.Screen name="ProductDetail" component={ProductDetailScreen} />
+      <FavoritesStack.Screen
+        name="ProductDetail"
+        component={ProductDetailScreen}
+      />
     </FavoritesStack.Navigator>
   );
 }
@@ -120,11 +141,16 @@ function MainTabs({ navigation }) {
         },
         tabBarIcon: ({ color, focused }) => {
           let iconName = "home-outline";
-          if (route.name === "HomeTab") iconName = focused ? "home" : "home-outline";
-          if (route.name === "ProductsTab") iconName = focused ? "cube" : "cube-outline";
-          if (route.name === "FavTab") iconName = focused ? "heart" : "heart-outline";
-          if (route.name === "OrdersTab") iconName = focused ? "clipboard" : "clipboard-outline";
-          if (route.name === "ProfileTab") iconName = focused ? "person" : "person-outline";
+          if (route.name === "HomeTab")
+            iconName = focused ? "home" : "home-outline";
+          if (route.name === "ProductsTab")
+            iconName = focused ? "cube" : "cube-outline";
+          if (route.name === "FavTab")
+            iconName = focused ? "heart" : "heart-outline";
+          if (route.name === "OrdersTab")
+            iconName = focused ? "clipboard" : "clipboard-outline";
+          if (route.name === "ProfileTab")
+            iconName = focused ? "person" : "person-outline";
           return <Ionicons name={iconName} size={22} color={color} />;
         },
       })}
@@ -133,14 +159,14 @@ function MainTabs({ navigation }) {
         name="HomeTab"
         component={HomeStackScreen}
         options={{ tabBarLabel: "Trang chủ" }}
-        listeners={({ navigation }) => ({
+        listeners={({ navigation: tabNavigation }) => ({
           tabPress: (e) => {
             e.preventDefault();
-            navigation.dispatch(
+            tabNavigation.dispatch(
               CommonActions.navigate({
                 name: "HomeTab",
                 params: { screen: "Home" },
-              })
+              }),
             );
           },
         })}
@@ -150,14 +176,14 @@ function MainTabs({ navigation }) {
         name="ProductsTab"
         component={ProductsStackScreen}
         options={{ tabBarLabel: "Sản phẩm" }}
-        listeners={({ navigation }) => ({
+        listeners={({ navigation: tabNavigation }) => ({
           tabPress: (e) => {
             e.preventDefault();
-            navigation.dispatch(
+            tabNavigation.dispatch(
               CommonActions.navigate({
                 name: "ProductsTab",
                 params: { screen: "Products" },
-              })
+              }),
             );
           },
         })}
@@ -181,14 +207,14 @@ function MainTabs({ navigation }) {
         name="OrdersTab"
         component={OrdersStackScreen}
         options={{ tabBarLabel: "Đơn hàng" }}
-        listeners={({ navigation }) => ({
+        listeners={{
           tabPress: (e) => {
             if (!token) {
               e.preventDefault();
               navigation.navigate("Login");
             }
           },
-        })}
+        }}
       />
 
       <Tab.Screen
@@ -212,21 +238,22 @@ export default function AppNavigation() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
   const isHydratingAuth = useAuthStore((s) => s.isHydrating);
   const userKey = useAuthStore((s) => s.userKey);
+  const authToken = useAuthStore((s) => s.token);
+  const authUser = useAuthStore((s) => s.user);
+  const previousAuthTokenRef = useRef(null);
+  const handledNotificationIdsRef = useRef(new Set());
+  const pendingNotificationPayloadRef = useRef(null);
 
-  // cart: setUser sẽ tự hydrate theo key user
   const setCartUser = useCartStore((s) => s.setUser);
   const isHydratingCart = useCartStore((s) => s.isHydrating);
 
-  // fav: setUser sẽ tự hydrate theo key user
   const setFavUser = useFavoriteStore((s) => s.setUser);
   const isHydratingFav = useFavoriteStore((s) => s.isHydrating);
 
-  // 1) hydrate auth trước
   useEffect(() => {
     hydrateAuth();
   }, [hydrateAuth]);
 
-  // 2) auth hydrate xong => set user cho cart + fav (tự hydrate đúng storage key)
   useEffect(() => {
     if (!isHydratingAuth) {
       setCartUser(userKey);
@@ -234,10 +261,95 @@ export default function AppNavigation() {
     }
   }, [isHydratingAuth, userKey, setCartUser, setFavUser]);
 
+  const handlePushNavigation = useCallback((payload) => {
+    const notificationId = String(payload?.id || "").trim();
+    if (notificationId) {
+      if (handledNotificationIdsRef.current.has(notificationId)) {
+        return;
+      }
+    }
+
+    if (!navigationRef.isReady()) {
+      pendingNotificationPayloadRef.current = payload;
+      return;
+    }
+
+    if (notificationId) {
+      handledNotificationIdsRef.current.add(notificationId);
+    }
+
+    const data = payload?.data || {};
+    const orderId = String(data?.data?.orderId ?? data?.orderId ?? "").trim();
+
+    if (orderId) {
+      navigationRef.navigate("Tabs", {
+        screen: "OrdersTab",
+        params: {
+          screen: "Orders",
+        },
+      });
+      return;
+    }
+
+    navigationRef.navigate("Tabs", {
+      screen: "ProfileTab",
+      params: {
+        screen: "Notifications",
+      },
+    });
+  }, []);
+
+  useEffect(() => {
+    const subscription =
+      addPushNotificationResponseListener(handlePushNavigation);
+
+    getInitialPushNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          handlePushNavigation(response);
+        }
+      })
+      .catch(() => null);
+
+    return () => {
+      subscription?.remove?.();
+    };
+  }, [handlePushNavigation]);
+
+  useEffect(() => {
+    const previousAuthToken = previousAuthTokenRef.current;
+    previousAuthTokenRef.current = authToken;
+
+    if (isHydratingAuth) {
+      return;
+    }
+
+    if (!authToken && previousAuthToken) {
+      unregisterStoredPushTokenAsync(previousAuthToken).catch(() => null);
+      return;
+    }
+
+    if (!authToken || !authUser) {
+      return;
+    }
+
+    registerDeviceForPushNotificationsAsync(authToken).catch(() => null);
+  }, [authToken, authUser, isHydratingAuth]);
+
   if (isHydratingAuth || isHydratingCart || isHydratingFav) return null;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => {
+        const pendingPayload = pendingNotificationPayloadRef.current;
+        if (!pendingPayload) {
+          return;
+        }
+        pendingNotificationPayloadRef.current = null;
+        handlePushNavigation(pendingPayload);
+      }}
+    >
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="Tabs" component={MainTabs} />
         <RootStack.Screen name="TryOnAR" component={TryOnARScreen} />
