@@ -614,8 +614,10 @@ export default function HomeScreen({ navigation }) {
             />
           </View>
 
-          <View style={styles.bannerContainer}>
-            <HomeBanner banners={BANNERS} autoPlay intervalMs={3000} />
+          <View style={styles.bannerShadowWrap}>
+            <View style={styles.bannerContainer}>
+              <HomeBanner banners={BANNERS} autoPlay intervalMs={3000} />
+            </View>
           </View>
 
           <View style={styles.categoriesSection}>
@@ -756,7 +758,7 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           <View style={{ paddingHorizontal: 20 }}>
-            <HomeFooter onChatPress={() => {}} onCallPress={() => {}} />
+            <HomeFooter onChatPress={() => { }} onCallPress={() => { }} />
           </View>
         </ScrollView>
       </Animated.View>
@@ -878,16 +880,21 @@ const styles = StyleSheet.create({
 
   authText: { color: "#fff", fontWeight: "900", fontSize: 12 },
 
-  bannerContainer: {
-    marginTop: 8,
+  bannerShadowWrap: {
     marginHorizontal: PAGE_PADDING,
     borderRadius: 20,
-    overflow: "hidden",
+    backgroundColor: "#fff",
+
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 4,
+  },
+
+  bannerContainer: {
+    borderRadius: 20,
+    overflow: "hidden",
   },
 
   categoriesSection: {
