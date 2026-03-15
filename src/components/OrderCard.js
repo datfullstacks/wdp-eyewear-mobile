@@ -125,7 +125,7 @@ function PreorderBadge() {
   );
 }
 
-function OrderItemRow({ orderItem, onEdit }) {
+function OrderItemRow({ orderItem }) {
   const typeKey = String(orderItem?.type || "").toLowerCase();
   const typeMeta = TYPE_META[typeKey] || {
     icon: "cube-outline",
@@ -174,28 +174,14 @@ function OrderItemRow({ orderItem, onEdit }) {
           </View>
         )}
       </View>
-
-      <TouchableOpacity
-        style={styles.editItemBtn}
-        activeOpacity={0.7}
-        onPress={(e) => {
-          e?.stopPropagation?.();
-          onEdit?.();
-        }}
-      >
-        <Ionicons name="create-outline" size={14} color="#2563EB" />
-        <Text style={styles.editItemBtnText}>Sửa</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 export default function OrderCard({
   order,
-  onEditItem,
   onCancel,
   onPress,
-  showEditButton = true,
 }) {
   const orderId = order?._id || order?.id || "--";
   const orderCode = order?.paymentCode;
@@ -259,7 +245,6 @@ export default function OrderCard({
                 <OrderItemRow
                   key={orderId + "-" + idx}
                   orderItem={item}
-                  onEdit={() => showEditButton && onEditItem?.(item, order)}
                 />
               ))}
 
@@ -548,24 +533,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     color: "#B45309",
-  },
-
-  editItemBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-  },
-
-  editItemBtnText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#2563EB",
   },
 
   viewMoreBtn: {

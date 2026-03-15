@@ -54,27 +54,6 @@ const PAYMENT_STATUS_META = {
   },
 };
 
-const ORDER_STEPS = [
-  { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
-  {
-    key: "AWAITING_STOCK",
-    label: "Chờ hàng về",
-    desc: "Đang chờ sản phẩm về kho",
-  },
-  { key: "PACKING", label: "Đóng gói", desc: "Đơn hàng đang được đóng gói" },
-  { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
-  { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
-];
-
-const TYPE_META = {
-  lens: { icon: "eye-outline", color: "#2563EB", bg: "#EFF6FF", label: "Tròng kính" },
-  contact_lens: { icon: "eye-outline", color: "#2563EB", bg: "#EFF6FF", label: "Kính áp tròng" },
-  frame: { icon: "glasses-outline", color: "#6B7280", bg: "#F3F4F6", label: "Gọng kính" },
-  sunglasses: { icon: "glasses-outline", color: "#B45309", bg: "#FFF7ED", label: "Kính mát" },
-  accessory: { icon: "grid-outline", color: "#6B7280", bg: "#F3F4F6", label: "Phụ kiện" },
-  service: { icon: "build-outline", color: "#15803D", bg: "#ECFDF5", label: "Dịch vụ" },
-};
-
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
 
 const SEPAY_FALLBACK_ACCOUNT_NUMBER =
@@ -96,7 +75,7 @@ const formatDateTime = (value) => {
 const makeQrUrl = (content) => {
   if (!content) return null;
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-    content,
+    content
   )}`;
 };
 
@@ -226,7 +205,7 @@ const normalizePaymentMethod = (value, payNow = 0) => {
 
 const normalizePaymentStatus = (
   status,
-  { payNow = 0, method = "SEPAY" } = {},
+  { payNow = 0, method = "SEPAY" } = {}
 ) => {
   if (typeof status === "string" && PAYMENT_STATUS_META[status]) return status;
 
@@ -286,9 +265,9 @@ const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
   const inferredPaidAt =
     String(nextPaymentStatus || "").toLowerCase() === "paid"
       ? serverOrder.updatedAt ||
-        serverOrder.createdAt ||
-        localPayment.paidAt ||
-        null
+      serverOrder.createdAt ||
+      localPayment.paidAt ||
+      null
       : localPayment.paidAt || null;
 
   return {
@@ -390,15 +369,6 @@ const DEMO_ORDER = {
     province: "TP. Hồ Chí Minh",
     country: "VN",
   },
-  items: [
-    { name: "Gọng kính WDP", qty: 1, price: 1250000, preorder: true },
-    {
-      name: "Tròng kính chống ánh xanh",
-      qty: 1,
-      price: 1200000,
-      preorder: true,
-    },
-  ],
   payment: {
     method: "VNPAY",
     status: "PENDING_QR",
@@ -419,19 +389,20 @@ const normalizeOrder = (raw) => {
   const shippingFee = breakdown.shippingFee ?? raw?.shippingFee ?? 0;
   const total = breakdown.total ?? raw?.total ?? 0;
   const payNow = breakdown.payNow ?? raw?.payNow ?? 0;
-  const payLater = breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
+  const payLater =
+    breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
 
   const payment = raw?.payment || {};
   const paymentMethod = normalizePaymentMethod(
     payment.method || raw?.paymentMethod,
-    payNow,
+    payNow
   );
   const paymentStatus = normalizePaymentStatus(
     payment.status || raw?.paymentStatus,
     {
       payNow,
       method: paymentMethod,
-    },
+    }
   );
 
   const paymentCode = firstTextValue(
@@ -439,7 +410,7 @@ const normalizeOrder = (raw) => {
     payment.transactionId,
     payment.code,
     payment.payment_code,
-    payment.transaction_code,
+    payment.transaction_code
   );
 
   const paymentContent =
@@ -447,7 +418,7 @@ const normalizeOrder = (raw) => {
       payment.content,
       payment.payload,
       payment.paymentContent,
-      payment.text,
+      payment.text
     ) || paymentCode;
 
   const paymentAmount = payment.amount ?? payNow;
@@ -462,7 +433,7 @@ const normalizeOrder = (raw) => {
     payment.payUrl,
     payment.pay_url,
     payment.url,
-    payment.link,
+    payment.link
   );
 
   const qrCandidate = firstQrImageUrl(
@@ -476,7 +447,7 @@ const normalizeOrder = (raw) => {
     payment.qrLink,
     payment.qr_link,
     raw?.qrUrl,
-    raw?.qr_url,
+    raw?.qr_url
   );
 
   const paymentDescription =
@@ -487,7 +458,7 @@ const normalizeOrder = (raw) => {
       payment.paymentNote,
       payment.payment_note,
       payment.content,
-      payment.payment_content,
+      payment.payment_content
     ) ||
     paymentContent ||
     paymentCode;
@@ -508,7 +479,7 @@ const normalizeOrder = (raw) => {
     payment.bank_account_id,
     raw?.bankAccountId,
     raw?.bank_account_id,
-    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NUMBER : null,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NUMBER : null
   );
 
   const paymentBankName = firstTextValue(
@@ -519,7 +490,7 @@ const normalizeOrder = (raw) => {
     payment.bank_code,
     raw?.bankName,
     raw?.bank_name,
-    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_BANK_NAME : null,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_BANK_NAME : null
   );
 
   const paymentAccountName = firstTextValue(
@@ -527,17 +498,17 @@ const normalizeOrder = (raw) => {
     payment.bank_account_name,
     raw?.bankAccountName,
     raw?.bank_account_name,
-    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NAME : null,
+    paymentMethod === "SEPAY" ? SEPAY_FALLBACK_ACCOUNT_NAME : null
   );
 
   const providerQrUrl =
     paymentMethod === "SEPAY"
       ? buildSepayQrUrl({
-          accountNumber: paymentAccountNumber,
-          bankName: paymentBankName,
-          amount: paymentAmount,
-          description: paymentDescription,
-        })
+        accountNumber: paymentAccountNumber,
+        bankName: paymentBankName,
+        amount: paymentAmount,
+        description: paymentDescription,
+      })
       : null;
 
   const vnpayQrUrl =
@@ -552,27 +523,28 @@ const normalizeOrder = (raw) => {
     qrCandidate,
     providerQrUrl,
     vnpayQrUrl,
-    genericFallbackQrUrl,
+    genericFallbackQrUrl
   );
+
   const bankAccountIdValue = firstTextValue(
     payment.bankAccountId,
-    payment.bank_account_id,
+    payment.bank_account_id
   );
 
   const rawAddress = raw?.shippingAddress || raw?.address || null;
   const address = rawAddress
     ? {
-        fullName: rawAddress.fullName || rawAddress.name || "",
-        phone: rawAddress.phone || "",
-        email: rawAddress.email || "",
-        line1: rawAddress.line1 || rawAddress.line || "",
-        line2: rawAddress.line2 || "",
-        ward: rawAddress.ward || "",
-        district: rawAddress.district || "",
-        province: rawAddress.province || "",
-        country: rawAddress.country || "VN",
-        note: rawAddress.note || "",
-      }
+      fullName: rawAddress.fullName || rawAddress.name || "",
+      phone: rawAddress.phone || "",
+      email: rawAddress.email || "",
+      line1: rawAddress.line1 || rawAddress.line || "",
+      line2: rawAddress.line2 || "",
+      ward: rawAddress.ward || "",
+      district: rawAddress.district || "",
+      province: rawAddress.province || "",
+      country: rawAddress.country || "VN",
+      note: rawAddress.note || "",
+    }
     : null;
 
   return {
@@ -580,10 +552,9 @@ const normalizeOrder = (raw) => {
     createdAt: raw?.createdAt || paymentCreatedAt,
     status: normalizeOrderStatus(raw?.status),
     shippingMethod: normalizeShippingMethod(
-      raw?.shippingMethod || raw?.shipping_method,
+      raw?.shippingMethod || raw?.shipping_method
     ),
     address,
-    items: raw?.items || [],
     totals: {
       subtotal,
       discountAmount,
@@ -611,112 +582,6 @@ const normalizeOrder = (raw) => {
   };
 };
 
-const normalizeOrderItems = (items) => {
-  if (!Array.isArray(items)) return [];
-
-  return items.map((item, index) => ({
-    ...item,
-    id:
-      item?._id ||
-      item?.id ||
-      item?.productId ||
-      item?.product?._id ||
-      item?.product?.id ||
-      `order-item-${index}`,
-
-    apiId:
-      item?.productId ||
-      item?.product?._id ||
-      item?.product?.id ||
-      item?._id ||
-      item?.id ||
-      null,
-
-    name: item?.name || item?.product?.name || "Sản phẩm",
-
-    image:
-      item?.image ||
-      item?.thumbnail ||
-      item?.thumb ||
-      item?.product?.image ||
-      item?.product?.thumbnail ||
-      item?.product?.thumb ||
-      null,
-
-    type: item?.type || item?.product?.type || "product",
-
-    preorder: Boolean(item?.preOrder ?? item?.preorder ?? false),
-
-    qty: Number(item?.qty ?? item?.quantity ?? 1),
-
-    price: Number(item?.price ?? item?.unitPrice ?? item?.product?.price ?? 0),
-
-    payLater: Number(item?.payLater ?? 0),
-
-    variantOptions: item?.variantOptions || {},
-    customization: item?.customization || {},
-  }));
-};
-
-function OrderProductRow({ item, onPress }) {
-  const typeKey = String(item?.type || "").toLowerCase();
-  const typeMeta = TYPE_META[typeKey] || {
-    icon: "cube-outline",
-    color: "#6B7280",
-    bg: "#F3F4F6",
-    label: "Sản phẩm",
-  };
-
-  const hasImage = Boolean(item?.image);
-
-  return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={onPress}
-      style={styles.orderItemRow}
-    >
-      <View style={styles.orderItemLeft}>
-        {hasImage ? (
-          <Image source={{ uri: item.image }} style={styles.itemThumb} />
-        ) : (
-          <View style={[styles.itemThumbIcon, { backgroundColor: typeMeta.bg }]}>
-            <Ionicons name={typeMeta.icon} size={20} color={typeMeta.color} />
-          </View>
-        )}
-
-        {item?.preorder ? (
-          <View style={styles.preorderItemBadge}>
-            <Ionicons name="time-outline" size={10} color="#15803D" />
-            <Text style={styles.preorderItemBadgeText}>Đặt trước</Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.orderItemMid}>
-        <Text style={styles.orderItemName} numberOfLines={2}>
-          {item?.name || "Sản phẩm"}
-        </Text>
-
-        <View style={styles.orderItemMetaRow}>
-          <Text style={styles.orderItemQty}>x{item?.qty ?? 1}</Text>
-          <Text style={styles.orderItemPrice}>{formatVND(item?.price)}</Text>
-        </View>
-
-        {item?.payLater > 0 ? (
-          <View style={styles.payLaterBadge}>
-            <Ionicons name="card-outline" size={10} color="#B45309" />
-            <Text style={styles.payLaterText}>Còn {formatVND(item.payLater)}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.viewDetailBtn}>
-        <Ionicons name="chevron-forward" size={16} color="#2563EB" />
-      </View>
-    </TouchableOpacity>
-  );
-}
-
 export default function CheckoutStatusScreen({ navigation, route }) {
   const initialOrder = route?.params?.order || null;
   const cartType =
@@ -737,7 +602,6 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   }, [initialOrder, serverOrder]);
 
   const order = useMemo(() => normalizeOrder(rawOrder), [rawOrder]);
-  const orderItems = useMemo(() => normalizeOrderItems(order.items), [order.items]);
 
   const pollOrderId = useMemo(() => {
     const id = rawOrder?._id || rawOrder?.id || rawOrder?.orderId;
@@ -775,7 +639,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         if (typeof __DEV__ !== "undefined" && __DEV__) {
           console.log(
             "order polling failed",
-            error?.response?.data || error?.message || error,
+            error?.response?.data || error?.message || error
           );
         }
       }
@@ -793,21 +657,19 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const paymentMeta =
     PAYMENT_STATUS_META[paymentStatus] || PAYMENT_STATUS_META.PENDING_QR;
 
-  const activeStepIndex = Math.max(
-    0,
-    ORDER_STEPS.findIndex((s) => s.key === order.status),
-  );
-
   const isPaymentSettled =
     paymentStatus === "PAID" || paymentStatus === "REFUNDED";
+
   const shouldShowQr =
     Boolean(order.payment.qrUrl) &&
     !isPaymentSettled &&
     paymentStatus === "PENDING_QR";
+
   const qrImageSource = useMemo(
     () => buildQrImageSource(order.payment.qrUrl),
-    [order.payment.qrUrl],
+    [order.payment.qrUrl]
   );
+
   const canOpenPaymentUrl =
     Boolean(order.payment.paymentUrl) && !isPaymentSettled;
 
@@ -817,9 +679,11 @@ export default function CheckoutStatusScreen({ navigation, route }) {
       : order.payment.method === "SEPAY"
         ? "SePay"
         : order.payment.method || "QR";
+
   const shippingMethodLabel = getShippingMethodLabel(order.shippingMethod);
 
   const normalizedOrderStatus = String(order.status || "").toUpperCase();
+
   const canCancelOrder =
     !isPaymentSettled &&
     !["DELIVERED", "CANCELLED"].includes(normalizedOrderStatus);
@@ -831,25 +695,6 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     });
   };
 
-  const handleOpenProductDetail = useCallback(
-    (item) => {
-      const id = item?.apiId || item?.id;
-      if (!id) return;
-
-      navigation.navigate("Tabs", {
-        screen: "ProductsTab",
-        params: {
-          screen: "ProductDetail",
-          params: {
-            item,
-            id,
-          },
-        },
-      });
-    },
-    [navigation]
-  );
-
   useEffect(() => {
     if (paymentStatus === "PAID" && !clearedRef.current) {
       clearedRef.current = true;
@@ -858,7 +703,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   }, [paymentStatus, clearCart, cartType]);
 
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
-  const handleViewOrderDetail = () => navigateToTab("OrdersTab", "Orders");
+  const handleViewOrderDetail = () => navigateToTab("ProfileTab", "Orders");
 
   const handleCancelPayment = () => {
     const orderId =
@@ -901,12 +746,6 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               Alert.alert("Thành công", "Đã hủy thanh toán và hủy đơn hàng.", [
                 {
                   text: "OK",
-                  onPress: () => {
-                    navigation.navigate("Tabs", {
-                      screen: "OrdersTab",
-                      params: { screen: "Orders" },
-                    });
-                  },
                 },
               ]);
             } catch (err) {
@@ -914,16 +753,16 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               Alert.alert(
                 "Hủy thất bại",
                 data?.message ||
-                  data?.error ||
-                  err?.message ||
-                  "Không thể hủy đơn.",
+                data?.error ||
+                err?.message ||
+                "Không thể hủy đơn."
               );
             } finally {
               setIsCancelling(false);
             }
           },
         },
-      ],
+      ]
     );
   };
 
@@ -940,7 +779,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Trạng thái đơn hàng</Text>
+          <Text style={styles.headerTitle}>Trạng thái thanh toán</Text>
         </View>
       </View>
 
@@ -1045,6 +884,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                   disabled={isCancelling}
                   onPress={handleCancelPayment}
                 >
+                  <Ionicons name="close-circle-outline" size={16} color="#B91C1C" />
                   <Text style={styles.cancelBtnText}>
                     {isCancelling ? "Đang hủy..." : "Hủy thanh toán"}
                   </Text>
@@ -1082,9 +922,10 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 disabled={isCancelling}
                 onPress={handleCancelPayment}
               >
-                <Text style={styles.cancelBtnText}>
-                  {isCancelling ? "Đang hủy..." : "Hủy thanh toán"}
-                </Text>
+                  <Ionicons name="close-circle-outline" size={16} color="#B91C1C" />
+                  <Text style={styles.cancelBtnText}>
+                    {isCancelling ? "Đang hủy..." : "Hủy thanh toán"}
+                  </Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -1159,27 +1000,6 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         ) : null}
 
         <View style={styles.card}>
-          <View style={styles.productSectionHeader}>
-            <Text style={styles.sectionTitle}>Thông tin sản phẩm</Text>
-            <Text style={styles.productCountText}>{orderItems.length} sản phẩm</Text>
-          </View>
-
-          {orderItems.length > 0 ? (
-            <View style={styles.itemsList}>
-              {orderItems.map((item, idx) => (
-                <OrderProductRow
-                  key={`${item?.id || item?.apiId || "item"}-${idx}`}
-                  item={item}
-                  onPress={() => handleOpenProductDetail(item)}
-                />
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.mutedText}>Không có sản phẩm trong đơn hàng.</Text>
-          )}
-        </View>
-
-        <View style={styles.card}>
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
 
           <View style={styles.rowBetween}>
@@ -1234,47 +1054,6 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               {line}
             </Text>
           ))}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Tiến trình đơn hàng</Text>
-
-          <View style={styles.timeline}>
-            {ORDER_STEPS.map((step, idx) => {
-              const active = idx <= activeStepIndex;
-              const isLast = idx === ORDER_STEPS.length - 1;
-
-              return (
-                <View key={step.key} style={styles.stepRow}>
-                  <View style={styles.stepLeft}>
-                    <View
-                      style={[styles.stepDot, active && styles.stepDotActive]}
-                    />
-                    {!isLast ? (
-                      <View
-                        style={[
-                          styles.stepLine,
-                          active && styles.stepLineActive,
-                        ]}
-                      />
-                    ) : null}
-                  </View>
-
-                  <View style={styles.stepContent}>
-                    <Text
-                      style={[
-                        styles.stepTitle,
-                        active && styles.stepTitleActive,
-                      ]}
-                    >
-                      {step.label}
-                    </Text>
-                    <Text style={styles.stepDesc}>{step.desc}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1403,6 +1182,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEE2E2",
     borderWidth: 1,
     borderColor: "#FCA5A5",
+    flexDirection: "row",
+    gap: 6,
   },
   cancelBtnText: {
     color: "#B91C1C",
@@ -1425,153 +1206,5 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: "700",
     color: "#6B7280",
-  },
-
-  timeline: { marginTop: 12 },
-  stepRow: { flexDirection: "row", alignItems: "flex-start" },
-  stepLeft: { width: 20, alignItems: "center" },
-  stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#E5E7EB",
-    marginTop: 2,
-  },
-  stepDotActive: { backgroundColor: "#2563EB" },
-  stepLine: {
-    width: 2,
-    height: 40,
-    backgroundColor: "#E5E7EB",
-    marginTop: 2,
-  },
-  stepLineActive: { backgroundColor: "#2563EB" },
-  stepContent: { flex: 1, paddingBottom: 18 },
-  stepTitle: { fontSize: 13.5, fontWeight: "900", color: "#6B7280" },
-  stepTitleActive: { color: "#111827" },
-  stepDesc: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
-
-  productSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  productCountText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#6B7280",
-  },
-
-  itemsList: {
-    gap: 10,
-  },
-
-  orderItemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.02)",
-  },
-
-  orderItemLeft: {
-    position: "relative",
-  },
-
-  itemThumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    backgroundColor: "#F3F4F6",
-  },
-
-  itemThumbIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  preorderItemBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: "#ECFDF5",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#FFFFFF",
-  },
-
-  preorderItemBadgeText: {
-    fontSize: 8,
-    fontWeight: "800",
-    color: "#15803D",
-  },
-
-  orderItemMid: {
-    flex: 1,
-  },
-
-  orderItemName: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#111827",
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-
-  orderItemMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  orderItemQty: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-
-  orderItemPrice: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#2563EB",
-  },
-
-  payLaterBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: "#FFF7ED",
-    borderRadius: 12,
-    alignSelf: "flex-start",
-  },
-
-  payLaterText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#B45309",
-  },
-
-  viewDetailBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#EFF6FF",
   },
 });

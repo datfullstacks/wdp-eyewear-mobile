@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   Platform,
   Pressable,
@@ -33,7 +33,6 @@ const SETTING_ACCENTS = {
   noti: { bg: "#ECFEFF", fg: "#0891B2" },
 };
 
-// Add avatar color array
 const AVATAR_COLORS = [
   "#F44336", "#E91E63", "#9C27B0", "#673AB7", "#3F51B5",
   "#2196F3", "#03A9F4", "#00BCD4", "#009688", "#4CAF50",
@@ -158,6 +157,29 @@ function TextAvatar({ name, style }) {
   );
 }
 
+function OrderShortcut({ icon, label, count, onPress, iconSet = "Ionicons", iconSize = 26, iconColor = "#111827",
+}) {
+  const IconComponent =
+    iconSet === "MaterialCommunityIcons" ? MaterialCommunityIcons : Ionicons;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.orderShortcutItem, pressed && styles.pressedSoft]}
+    >
+      <View style={styles.orderShortcutIconWrap}>
+        <IconComponent name={icon} size={iconSize} color={iconColor} />
+        {count > 0 ? (
+          <View style={styles.orderBadge}>
+            <Text style={styles.orderBadgeText}>{count > 99 ? "99+" : count}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.orderShortcutLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const normalizeFavoriteIds = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.items)) return payload.items;
@@ -187,6 +209,10 @@ export default function ProfileScreen({ navigation }) {
     favorites: 0,
     addresses: 0,
     prescription: "0",
+    orderPending: 0,
+    orderWaitingPick: 0,
+    orderShipping: 0,
+    orderReview: 0,
   });
 
   useEffect(() => {
@@ -201,7 +227,7 @@ export default function ProfileScreen({ navigation }) {
     try {
       const [ordersResult, favoriteResult, addressesResult, prescriptionsResult] =
         await Promise.all([
-          getMyOrdersApi({ page: 1, limit: 100 }),
+          getMyOrdersApi({ page: 1, limit: 1000 }),
           getMyFavoriteIdsApi(),
           getMyAddressesApi(),
           getMyPrescriptionsApi(),
@@ -212,10 +238,21 @@ export default function ProfileScreen({ navigation }) {
       const addressList = normalizeList(addressesResult);
       const prescriptionList = normalizeList(prescriptionsResult);
 
+      const getStatusCount = (status) =>
+        orders.filter((order) => String(order?.status || "").toLowerCase() === status).length;
+
       const pendingOrders = orders.filter((order) => {
         const status = String(order?.status || "").toLowerCase();
         return !["delivered", "cancelled", "returned"].includes(status);
       }).length;
+
+      const orderPending = getStatusCount("pending");
+      const orderWaitingPick = orders.filter((order) => {
+        const status = String(order?.status || "").toLowerCase();
+        return ["confirmed", "processing"].includes(status);
+      }).length;
+      const orderShipping = getStatusCount("shipped");
+      const orderReview = getStatusCount("delivered");
 
       setStats((prev) => ({
         ...prev,
@@ -223,6 +260,10 @@ export default function ProfileScreen({ navigation }) {
         favorites: favoriteIds.length,
         addresses: addressList.length,
         prescription: String(prescriptionList.length),
+        orderPending,
+        orderWaitingPick,
+        orderShipping,
+        orderReview,
       }));
     } catch (err) {
       console.log("loadStats error:", err);
@@ -259,7 +300,6 @@ export default function ProfileScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
-
         <ProfileHeader
           navigation={navigation}
           right={
@@ -268,7 +308,6 @@ export default function ProfileScreen({ navigation }) {
             </Pressable>
           }
         />
-
         <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
           <Text style={{ fontWeight: "800", color: "#111827" }}>
             Đang tải hồ sơ...
@@ -310,10 +349,56 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.email}>{displayEmail}</Text>
             </View>
           </View>
+        </Card>
 
+        <Card style={{ paddingVertical: 14, paddingHorizontal: 14 }}>
+          <View style={styles.orderSectionHeader}>
+            <Text style={styles.orderSectionTitle}>Đơn mua</Text>
+            <Pressable
+              onPress={() => navigation.navigate("Orders", { initialFilter: "all" })}
+              style={({ pressed }) => [styles.orderHistoryBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.orderHistoryText}>Lịch sử mua hàng</Text>
+              <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+            </Pressable>
+          </View>
+
+          <View style={styles.orderShortcutRow}>
+            <OrderShortcut
+              icon="wallet-outline"
+              label="Chờ xác nhận"
+              count={stats.orderPending}
+              onPress={() => navigation.navigate("Orders", { initialFilter: "pending" })}
+            />
+
+            <OrderShortcut
+              icon="archive-outline"
+              label="Chờ lấy hàng"
+              count={stats.orderWaitingPick}
+              onPress={() => navigation.navigate("Orders", { initialFilter: ["processing", "confirmed"] })}
+            />
+
+            <OrderShortcut
+              icon="truck-outline"
+              iconSet="MaterialCommunityIcons"
+              label="Chờ giao hàng"
+              count={stats.orderShipping}
+              onPress={() => navigation.navigate("Orders", { initialFilter: "shipped" })}
+            />
+
+            <OrderShortcut
+              icon="star-outline"
+              label="Đánh giá"
+              count={stats.orderReview}
+              onPress={() => navigation.navigate("Orders", { initialFilter: "review" })}
+            />
+          </View>
+        </Card>
+
+        <Card style={{ padding: 16 }}>
           <View style={styles.statGrid}>
             <Pressable
-              onPress={() => navigation.navigate("Orders")}
+              onPress={() => navigation.navigate("Orders", { initialFilter: "all" })}
               style={({ pressed }) => [
                 styles.statItem,
                 {
@@ -412,7 +497,7 @@ export default function ProfileScreen({ navigation }) {
             title="Đơn hàng"
             subtitle="Theo dõi đơn hàng và hoàn trả"
             rightText={`${stats.pendingOrders} đơn`}
-            onPress={() => navigation.navigate("Orders")}
+            onPress={() => navigation.navigate("Orders", { initialFilter: "all" })}
             accent={{ bg: "#EEF2FF", fg: "#4F46E5" }}
           />
           <Divider />
@@ -547,20 +632,75 @@ const styles = StyleSheet.create({
   name: { fontSize: 18, fontWeight: "800", color: "#111827" },
   email: { marginTop: 2, color: "#6B7280", fontWeight: "600" },
 
-  pillRow: { marginTop: 10, flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  pill: {
+  orderSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
+    justifyContent: "space-between",
+    marginBottom: 16,
   },
-  pillText: { color: "#111827", fontWeight: "700", fontSize: 12 },
+  orderSectionTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  orderHistoryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  orderHistoryText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+
+  orderShortcutRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  orderShortcutItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  orderShortcutIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    backgroundColor: "#F9FAFB",
+  },
+  orderShortcutLabel: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#374151",
+    textAlign: "center",
+  },
+  orderBadge: {
+    position: "absolute",
+    top: -6,
+    right: -8,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+  },
+  orderBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
 
   statGrid: {
-    marginTop: 14,
+    marginTop: 2,
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 10,

@@ -1,6 +1,4 @@
-﻿// screens/OrdersScreen.js
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { CART_TYPES } from "../store/cartStore";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   ActivityIndicator,
@@ -14,8 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
-import { getMyOrdersApi, patchOrderItemApi, cancelOrderApi } from "../services/orderService";
-import OrderItemEditModal from "../components/OrderItemEditModal";
+import { getMyOrdersApi, cancelOrderApi } from "../services/orderService";
 import OrderCard from "../components/OrderCard";
 
 const STATUS_FILTERS = [
@@ -29,75 +26,135 @@ const STATUS_FILTERS = [
 ];
 
 const SORT_OPTIONS = [
-  { key: "newest", label: "Mới nhất", icon: "arrow-up", iconSet: "FontAwesome5" },
-  { key: "oldest", label: "Cũ nhất", icon: "arrow-down", iconSet: "FontAwesome5" },
-  { key: "price_asc", label: "Giá thấp đến cao", icon: "arrow-up", iconSet: "FontAwesome5" },
-  { key: "price_desc", label: "Giá cao đến thấp", icon: "arrow-down", iconSet: "FontAwesome5" },
+  {
+    key: "newest",
+    label: "Mới nhất",
+    icon: "arrow-up",
+    iconSet: "FontAwesome5",
+  },
+  {
+    key: "oldest",
+    label: "Cũ nhất",
+    icon: "arrow-down",
+    iconSet: "FontAwesome5",
+  },
+  {
+    key: "price_asc",
+    label: "Giá thấp đến cao",
+    icon: "arrow-up",
+    iconSet: "FontAwesome5",
+  },
+  {
+    key: "price_desc",
+    label: "Giá cao đến thấp",
+    icon: "arrow-down",
+    iconSet: "FontAwesome5",
+  },
 ];
 
-export default function OrdersScreen({ navigation }) {
+const normalizeFilterArray = (value) => {
+  if (Array.isArray(value)) {
+    const cleaned = value
+      .map((item) => String(item).toLowerCase().trim())
+      .filter(Boolean);
+    return cleaned.length ? cleaned : ["all"];
+  }
+
+  if (!value) return ["all"];
+  return [String(value).toLowerCase().trim()];
+};
+
+const isFilterSelected = (filters, key) => {
+  return normalizeFilterArray(filters).includes(String(key).toLowerCase());
+};
+
+const toggleFilter = (prevFilters, key) => {
+  const normalizedKey = String(key).toLowerCase();
+  const current = normalizeFilterArray(prevFilters).filter((item) => item !== "all");
+
+  if (normalizedKey === "all") {
+    return ["all"];
+  }
+
+  let next;
+  if (current.includes(normalizedKey)) {
+    next = current.filter((item) => item !== normalizedKey);
+  } else {
+    next = [...current, normalizedKey];
+  }
+
+  return next.length ? next : ["all"];
+};
+
+export default function OrdersScreen({ navigation, route }) {
+  const initialFilter = route?.params?.initialFilter || ["all"];
+
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState(
+    Array.isArray(initialFilter) ? initialFilter : [initialFilter]
+  );
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [sortBy, setSortBy] = useState("newest");
   const [showSortDropdown, setShowSortDropdown] = useState(false);
 
-  const [editingOrderItem, setEditingOrderItem] = useState(null);
-  const [editingOrder, setEditingOrder] = useState(null);
+  useEffect(() => {
+    setActiveFilter(Array.isArray(initialFilter) ? initialFilter : [initialFilter]);
+  }, [initialFilter]);
 
   const loadOrders = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     setError("");
+
     try {
-      const result = await getMyOrdersApi({ page: 1, limit: 50 }, true);
+      const result = await getMyOrdersApi({ page: 1, limit: 1000 }, true);
       const ordersData = Array.isArray(result?.items) ? result.items : [];
       setOrders(ordersData);
     } catch (err) {
       const data = err?.response?.data || {};
-      setError(data.message || data.error || err?.message || "Không tải được đơn hàng");
+      setError(
+        data.message || data.error || err?.message || "Không tải được đơn hàng"
+      );
     } finally {
       if (!silent) setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  // Filter and sort orders
   useEffect(() => {
     let filtered = [...orders];
-    
-    // Apply filter
-    if (activeFilter !== "all") {
-      filtered = filtered.filter(order => 
-        String(order?.status || "").toLowerCase() === activeFilter
-      );
+    const selectedFilters = normalizeFilterArray(activeFilter);
+
+    if (!selectedFilters.includes("all")) {
+      filtered = filtered.filter((order) => {
+        const status = String(order?.status || "").toLowerCase();
+        return selectedFilters.includes(status);
+      });
     }
-    
-    // Apply sort
+
     filtered.sort((a, b) => {
       const dateA = new Date(a?.createdAt || 0).getTime();
       const dateB = new Date(b?.createdAt || 0).getTime();
       const totalA = Number(a?.total || 0);
       const totalB = Number(b?.total || 0);
-      
+
       switch (sortBy) {
         case "newest":
-          return dateB - dateA; // Mới nhất lên đầu
+          return dateB - dateA;
         case "oldest":
-          return dateA - dateB; // Cũ nhất lên đầu
+          return dateA - dateB;
         case "price_asc":
-          return totalA - totalB; // Giá thấp đến cao
+          return totalA - totalB;
         case "price_desc":
-          return totalB - totalA; // Giá cao đến thấp
+          return totalB - totalA;
         default:
           return dateB - dateA;
       }
     });
-    
+
     setFilteredOrders(filtered);
   }, [orders, activeFilter, sortBy]);
 
@@ -105,42 +162,9 @@ export default function OrdersScreen({ navigation }) {
     loadOrders();
   }, [loadOrders]);
 
-  const handleEditItem = useCallback((orderItem, order) => {
-    setEditingOrderItem(orderItem);
-    setEditingOrder(order);
-  }, []);
-
-  const handleSavePatch = useCallback(async (patch) => {
-    if (isSavingEdit) return;
-    if (!editingOrderItem || !editingOrder) return;
-
-    const orderId = editingOrder?._id || editingOrder?.id || null;
-    const itemId = editingOrderItem?.itemId || editingOrderItem?._id || null;
-
-    if (!orderId || !itemId) {
-      Alert.alert("Không thể cập nhật", "Thiếu thông tin orderId/itemId.");
-      return;
-    }
-
-    try {
-      setIsSavingEdit(true);
-      await patchOrderItemApi(orderId, itemId, editingOrderItem, patch);
-      await loadOrders({ silent: true });
-      setEditingOrderItem(null);
-      setEditingOrder(null);
-    } catch (err) {
-      const data = err?.response?.data || {};
-      const errors = Array.isArray(data?.errors)
-        ? data.errors.map((e) => e?.msg).filter(Boolean).join("\n")
-        : null;
-      const message = errors || data?.message || data?.error || err?.message;
-      Alert.alert("Cập nhật thất bại", message || "Không thể cập nhật sản phẩm trong đơn.");
-    } finally {
-      setIsSavingEdit(false);
-    }
-  }, [editingOrderItem, editingOrder, isSavingEdit, loadOrders]);
-
   const emptyComponent = useMemo(() => {
+    const selectedFilters = normalizeFilterArray(activeFilter);
+
     if (loading) {
       return (
         <View style={styles.emptyWrap}>
@@ -149,9 +173,8 @@ export default function OrdersScreen({ navigation }) {
         </View>
       );
     }
-    
-    if (activeFilter !== "all" && filteredOrders.length === 0) {
-      const filterLabel = STATUS_FILTERS.find(f => f.key === activeFilter)?.label || "";
+
+    if (!selectedFilters.includes("all") && filteredOrders.length === 0) {
       return (
         <View style={styles.emptyWrap}>
           <View style={styles.emptyIconContainer}>
@@ -159,97 +182,98 @@ export default function OrdersScreen({ navigation }) {
           </View>
           <Text style={styles.emptyTitle}>Không có đơn hàng</Text>
           <Text style={styles.emptySub}>
-            Không tìm thấy đơn hàng nào ở trạng thái "{filterLabel}"
+            Không tìm thấy đơn hàng theo bộ lọc hiện tại
           </Text>
           <TouchableOpacity
             style={styles.clearFilterBtn}
-            onPress={() => setActiveFilter("all")}
+            onPress={() => setActiveFilter(["all"])}
           >
             <Text style={styles.clearFilterText}>Xem tất cả đơn hàng</Text>
           </TouchableOpacity>
         </View>
       );
     }
-    
+
     return (
       <View style={styles.emptyWrap}>
         <Ionicons name="receipt-outline" size={44} color="#9CA3AF" />
         <Text style={styles.emptyTitle}>Chưa có đơn hàng</Text>
-        <Text style={styles.emptySub}>Đơn hàng sẽ hiển thị ở đây sau khi thanh toán.</Text>
+        <Text style={styles.emptySub}>
+          Đơn hàng sẽ hiển thị ở đây sau khi thanh toán.
+        </Text>
       </View>
     );
   }, [loading, activeFilter, filteredOrders.length]);
 
-  const handleCancelOrder = useCallback((order) => {
-    const orderId = order?._id || order?.id || null;
-    if (!orderId) {
-      Alert.alert("Không thể huỷ", "Thiếu orderId.");
-      return;
-    }
+  const handleCancelOrder = useCallback(
+    (order) => {
+      const orderId = order?._id || order?.id || null;
+      if (!orderId) {
+        Alert.alert("Không thể huỷ", "Thiếu orderId.");
+        return;
+      }
 
-    Alert.alert(
-      "Huỷ đơn hàng?",
-      "Bạn chắc chắn muốn huỷ đơn này? Thao tác không thể hoàn tác.",
-      [
-        { text: "Không", style: "cancel" },
-        {
-          text: "Huỷ đơn",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await cancelOrderApi(orderId);
-              await loadOrders({ silent: true });
-              Alert.alert("Thành công", "Đã huỷ đơn hàng.");
-            } catch (err) {
-              const data = err?.response?.data || {};
-              Alert.alert(
-                "Huỷ thất bại",
-                data?.message || data?.error || err?.message || "Không thể huỷ đơn."
-              );
-            }
+      Alert.alert(
+        "Huỷ đơn hàng?",
+        "Bạn chắc chắn muốn huỷ đơn này? Thao tác không thể hoàn tác.",
+        [
+          { text: "Không", style: "cancel" },
+          {
+            text: "Huỷ đơn",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await cancelOrderApi(orderId);
+                await loadOrders({ silent: true });
+                Alert.alert("Thành công", "Đã huỷ đơn hàng.");
+              } catch (err) {
+                const data = err?.response?.data || {};
+                Alert.alert(
+                  "Huỷ thất bại",
+                  data?.message ||
+                    data?.error ||
+                    err?.message ||
+                    "Không thể huỷ đơn."
+                );
+              }
+            },
           },
-        },
-      ]
-    );
-  }, [loadOrders]);
+        ]
+      );
+    },
+    [loadOrders]
+  );
 
   const getOrderCountByStatus = (statusKey) => {
     if (statusKey === "all") return orders.length;
-    return orders.filter(order => String(order?.status || "").toLowerCase() === statusKey).length;
-  };
 
-  const activeFilterLabel = STATUS_FILTERS.find(f => f.key === activeFilter)?.label || "Tất cả";
-  
-  const getActiveSortLabel = () => {
-    switch (sortBy) {
-      case "newest": return "Mới nhất";
-      case "oldest": return "Cũ nhất";
-      case "price_asc": return "Giá thấp → cao";
-      case "price_desc": return "Giá cao → thấp";
-      default: return "Mới nhất";
-    }
+    return orders.filter(
+      (order) => String(order?.status || "").toLowerCase() === statusKey
+    ).length;
   };
 
   const getSortButtonLabel = () => {
     switch (sortBy) {
-      case "newest": return "Mới";
-      case "oldest": return "Cũ";
-      case "price_asc": return "Giá ↑";
-      case "price_desc": return "Giá ↓";
-      default: return "Mới";
+      case "newest":
+        return "Mới";
+      case "oldest":
+        return "Cũ";
+      case "price_asc":
+        return "Giá ↑";
+      case "price_desc":
+        return "Giá ↓";
+      default:
+        return "Mới";
     }
   };
 
   const renderSortIcon = (option) => {
     const color = sortBy === option.key ? "#2563EB" : "#6B7280";
     const size = 14;
-    
-    if (option.iconSet === "Ionicons") {
-      return <Ionicons name={option.icon} size={size} color={color} />;
-    } else {
-      return <FontAwesome5 name={option.icon} size={size} color={color} />;
-    }
+    return <FontAwesome5 name={option.icon} size={size} color={color} />;
   };
+
+  const selectedFilters = normalizeFilterArray(activeFilter);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -264,9 +288,8 @@ export default function OrdersScreen({ navigation }) {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Đơn hàng</Text>
         </View>
-        
+
         <View style={styles.headerRight}>
-          {/* Sort Button */}
           <TouchableOpacity
             style={[styles.sortBtn, showSortDropdown && styles.sortBtnActive]}
             onPress={() => {
@@ -280,36 +303,40 @@ export default function OrdersScreen({ navigation }) {
               size={14}
               color={showSortDropdown ? "#2563EB" : "#6B7280"}
             />
-            <Text style={[styles.sortBtnText, showSortDropdown && styles.sortBtnTextActive]}>
+            <Text
+              style={[
+                styles.sortBtnText,
+                showSortDropdown && styles.sortBtnTextActive,
+              ]}
+            >
               {getSortButtonLabel()}
             </Text>
           </TouchableOpacity>
 
-          {/* Filter Button */}
           <TouchableOpacity
-            style={[styles.filterBtn, showFilterDropdown && styles.filterBtnActive]}
+            style={[
+              styles.filterBtn,
+              showFilterDropdown && styles.filterBtnActive,
+            ]}
             onPress={() => {
               setShowFilterDropdown(!showFilterDropdown);
               setShowSortDropdown(false);
             }}
             activeOpacity={0.7}
           >
-            <FontAwesome5  
-              name="filter" 
-              size={14} 
-              color={showFilterDropdown ? "#2563EB" : "#6B7280"} 
+            <FontAwesome5
+              name="filter"
+              size={14}
+              color={showFilterDropdown ? "#2563EB" : "#6B7280"}
             />
-            {activeFilter !== "all" && (
-              <View style={styles.filterDot} />
-            )}
+            {!selectedFilters.includes("all") && <View style={styles.filterDot} />}
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Sort Dropdown */}
       {showSortDropdown && (
         <View style={styles.sortDropdown}>
-          <ScrollView 
+          <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.sortDropdownContent}
           >
@@ -327,10 +354,12 @@ export default function OrdersScreen({ navigation }) {
               >
                 <View style={styles.sortOptionLeft}>
                   {renderSortIcon(option)}
-                  <Text style={[
-                    styles.sortOptionText,
-                    sortBy === option.key && styles.sortOptionTextActive
-                  ]}>
+                  <Text
+                    style={[
+                      styles.sortOptionText,
+                      sortBy === option.key && styles.sortOptionTextActive,
+                    ]}
+                  >
                     {option.label}
                   </Text>
                 </View>
@@ -343,18 +372,17 @@ export default function OrdersScreen({ navigation }) {
         </View>
       )}
 
-      {/* Filter Dropdown */}
       {showFilterDropdown && (
         <View style={styles.filterDropdown}>
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.filterScrollContent}
           >
             {STATUS_FILTERS.map((filter) => {
               const count = getOrderCountByStatus(filter.key);
-              const isActive = activeFilter === filter.key;
-              
+              const isActive = isFilterSelected(activeFilter, filter.key);
+
               return (
                 <TouchableOpacity
                   key={filter.key}
@@ -363,20 +391,21 @@ export default function OrdersScreen({ navigation }) {
                     isActive && styles.filterChipActive,
                   ]}
                   onPress={() => {
-                    setActiveFilter(filter.key);
-                    setShowFilterDropdown(false);
+                    setActiveFilter((prev) => toggleFilter(prev, filter.key));
                   }}
                   activeOpacity={0.7}
                 >
-                  <Ionicons 
-                    name={filter.icon} 
-                    size={14} 
-                    color={isActive ? "#2563EB" : filter.color || "#6B7280"} 
+                  <Ionicons
+                    name={filter.icon}
+                    size={14}
+                    color={isActive ? "#2563EB" : filter.color || "#6B7280"}
                   />
-                  <Text style={[
-                    styles.filterChipText,
-                    isActive && styles.filterChipTextActive
-                  ]}>
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      isActive && styles.filterChipTextActive,
+                    ]}
+                  >
                     {filter.label}
                   </Text>
                   {count > 0 && (
@@ -391,51 +420,55 @@ export default function OrdersScreen({ navigation }) {
         </View>
       )}
 
-      {/* Active Filters Bar */}
-      {(activeFilter !== "all" || sortBy !== "newest") && !showFilterDropdown && !showSortDropdown && (
-        <View style={styles.activeFilterBar}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.activeFilterScrollContent}
-          >
-            <View style={styles.activeFilterTags}>
-              {activeFilter !== "all" && (
-                <View style={styles.activeFilterTag}>
-                  <Ionicons name="filter" size={12} color="#2563EB" />
-                  <Text style={styles.activeFilterText}>
-                    {activeFilterLabel}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setActiveFilter("all")}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="close-circle" size={14} color="#9CA3AF" />
-                  </TouchableOpacity>
+      {!selectedFilters.includes("all") &&
+        !showFilterDropdown &&
+        !showSortDropdown && (
+          <View style={styles.activeFilterBar}>
+            <View style={styles.activeFilterLeft}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.activeFilterScrollContent}
+              >
+                <View style={styles.activeFilterTags}>
+                  {selectedFilters.map((filterKey) => {
+                    const filterObj = STATUS_FILTERS.find((f) => f.key === filterKey);
+                    if (!filterObj) return null;
+
+                    return (
+                      <View key={filterKey} style={styles.activeFilterTag}>
+                        <Ionicons
+                          name={filterObj.icon}
+                          size={12}
+                          color={filterObj.color || "#2563EB"}
+                        />
+                        <Text style={styles.activeFilterText}>
+                          {filterObj.label}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() =>
+                            setActiveFilter((prev) => toggleFilter(prev, filterKey))
+                          }
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <Ionicons
+                            name="close-circle"
+                            size={14}
+                            color="#9CA3AF"
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
                 </View>
-              )}
-              
-              {sortBy !== "newest" && (
-                <View style={styles.activeFilterTag}>
-                  <FontAwesome5 name="sort-amount-down" size={10} color="#2563EB" />
-                  <Text style={styles.activeFilterText}>
-                    {getActiveSortLabel()}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setSortBy("newest")}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="close-circle" size={14} color="#9CA3AF" />
-                  </TouchableOpacity>
-                </View>
-              )}
+              </ScrollView>
             </View>
-          </ScrollView>
-          <Text style={styles.activeFilterCount}>
-            {filteredOrders.length} đơn
-          </Text>
-        </View>
-      )}
+
+            <Text style={styles.activeFilterCount}>
+              {filteredOrders.length} đơn
+            </Text>
+          </View>
+        )}
 
       {error ? (
         <View style={styles.errorBox}>
@@ -453,18 +486,12 @@ export default function OrdersScreen({ navigation }) {
         renderItem={({ item }) => (
           <OrderCard
             order={item}
-            onEditItem={handleEditItem}
             onCancel={handleCancelOrder}
             onPress={() => {
-              navigation.navigate("CartFlow", {
-                screen: "CheckoutStatus",
-                params: {
-                  order: item,
-                  cartType: CART_TYPES.ORDER,
-                },
+              navigation.navigate("OrderDetail", {
+                orderId: item?._id || item?.id,
               });
             }}
-            showEditButton={true}
           />
         )}
         ListEmptyComponent={emptyComponent}
@@ -477,19 +504,6 @@ export default function OrdersScreen({ navigation }) {
             }}
           />
         }
-      />
-
-      <OrderItemEditModal
-        visible={Boolean(editingOrderItem)}
-        orderItem={editingOrderItem}
-        orderCreatedAt={editingOrder?.createdAt}
-        onClose={() => {
-          if (isSavingEdit) return;
-          setEditingOrderItem(null);
-          setEditingOrder(null);
-        }}
-        onSave={handleSavePatch}
-        isSaving={isSavingEdit}
       />
     </SafeAreaView>
   );
@@ -506,16 +520,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
+
   headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  
+
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  
+
   sortBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -525,21 +548,21 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "#F3F4F6",
   },
-  
+
   sortBtnActive: {
     backgroundColor: "#EFF6FF",
   },
-  
+
   sortBtnText: {
     fontSize: 12,
     fontWeight: "600",
     color: "#6B7280",
   },
-  
+
   sortBtnTextActive: {
     color: "#2563EB",
   },
-  
+
   filterBtn: {
     width: 36,
     height: 36,
@@ -549,11 +572,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     position: "relative",
   },
-  
+
   filterBtnActive: {
     backgroundColor: "#EFF6FF",
   },
-  
+
   filterDot: {
     position: "absolute",
     top: 8,
@@ -678,6 +701,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: "#F9FAFB",
@@ -685,8 +709,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F3F4F6",
   },
 
-  activeFilterScrollContent: {
+  activeFilterLeft: {
     flex: 1,
+    minWidth: 0,
+  },
+
+  activeFilterScrollContent: {
     paddingRight: 8,
   },
 
@@ -731,19 +759,49 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  errorText: { flex: 1, color: "#991B1B", fontWeight: "700", fontSize: 12.5 },
-  retryText: { color: "#1D4ED8", fontWeight: "900", fontSize: 12.5 },
 
-  listContent: { paddingHorizontal: 16, paddingBottom: 32, flexGrow: 1 },
+  errorText: {
+    flex: 1,
+    color: "#991B1B",
+    fontWeight: "700",
+    fontSize: 12.5,
+  },
 
-  emptyWrap: { paddingTop: 48, alignItems: "center", gap: 8 },
-  emptyTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  emptySub: { fontSize: 12, fontWeight: "700", color: "#6B7280", textAlign: "center" },
-  
+  retryText: {
+    color: "#1D4ED8",
+    fontWeight: "900",
+    fontSize: 12.5,
+  },
+
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    flexGrow: 1,
+  },
+
+  emptyWrap: {
+    paddingTop: 48,
+    alignItems: "center",
+    gap: 8,
+  },
+
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  emptySub: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    textAlign: "center",
+  },
+
   emptyIconContainer: {
     marginBottom: 8,
   },
-  
+
   clearFilterBtn: {
     marginTop: 12,
     paddingHorizontal: 16,
@@ -751,7 +809,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#EFF6FF",
     borderRadius: 20,
   },
-  
+
   clearFilterText: {
     fontSize: 12,
     fontWeight: "700",
