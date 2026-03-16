@@ -56,10 +56,6 @@ export default function HeaderSearchActions({
         />
       </View>
 
-      <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={handlePressFav}>
-        <Ionicons name="heart" size={25} color="red" />
-      </TouchableOpacity>
-
       <CartIconButton onPress={handlePressCart} />
     </View>
   );
@@ -77,12 +73,4 @@ const styles = StyleSheet.create({
     height: 44,
   },
   searchInput: { flex: 1, color: "#111827" },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-  },
 });

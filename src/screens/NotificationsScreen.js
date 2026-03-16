@@ -111,7 +111,7 @@ function NotificationCard({ item, onPress }) {
   );
 }
 
-export default function NotificationsScreen({ navigation }) {
+export default function NotificationsScreen({ navigation, onNotificationsChanged }) {
   const authToken = useAuthStore((s) => s.token);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -119,7 +119,9 @@ export default function NotificationsScreen({ navigation }) {
   const loadData = useCallback(async () => {
     try {
       const data = await getMyNotificationsApi();
-      setItems(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setItems(list);
+      onNotificationsChanged?.();
     } catch (err) {
       const message =
         err?.response?.data?.message ||
@@ -129,7 +131,7 @@ export default function NotificationsScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onNotificationsChanged]);
 
   useEffect(() => {
     loadData();
@@ -191,11 +193,13 @@ export default function NotificationsScreen({ navigation }) {
   const onMarkRead = async (item) => {
     try {
       const data = await markMyNotificationAsReadApi(item?._id);
-      setItems(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setItems(list);
+      onNotificationsChanged?.();
 
       if (item?.data?.orderId) {
         navigation.navigate("ProfileTab", {
-          screen: "Orders",
+          screen: "OrderDetail",
           params: {
             orderId: item.data.orderId,
           },
@@ -213,7 +217,9 @@ export default function NotificationsScreen({ navigation }) {
   const onMarkAll = async () => {
     try {
       const data = await markAllMyNotificationsAsReadApi();
-      setItems(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setItems(list);
+      onNotificationsChanged?.();
     } catch (err) {
       const message =
         err?.response?.data?.message ||

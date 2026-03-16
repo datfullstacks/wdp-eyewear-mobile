@@ -1,9 +1,10 @@
 ﻿// navigation/AppNavigation.js
-import React, { useEffect } from "react";
-import { NavigationContainer, CommonActions } from "@react-navigation/native";
+import React, { useCallback, useEffect, useState } from "react";
+import { NavigationContainer, CommonActions, useFocusEffect } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "../store/authStore";
@@ -20,6 +21,7 @@ import CheckoutScreen from "../screens/CheckoutScreen";
 import CheckoutStatusScreen from "../screens/CheckoutStatusScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import OrdersScreen from "../screens/OrdersScreen";
+import OrderDetailScreen from "../screens/OrderDetailScreen";
 import ProductDetailScreen from "../screens/ProductDetailScreen";
 import FavoritesScreen from "../screens/FavoritesScreen";
 import AddressBookScreen from "../screens/AddressBookScreen";
@@ -29,6 +31,12 @@ import SupportScreen from "../screens/SupportScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import TryOnARScreen from "../screens/TryOnARScreen";
 
+import { getMyNotificationsApi } from "../services/userService";
+import {
+  connectRealtime,
+  isNotificationRealtimeEvent,
+} from "../services/realtimeService";
+
 const RootStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -37,7 +45,7 @@ const ProductsStack = createNativeStackNavigator();
 const CartStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
 const FavoritesStack = createNativeStackNavigator();
-const OrdersStack = createNativeStackNavigator();
+const NotificationsStack = createNativeStackNavigator();
 
 function HomeStackScreen() {
   return (
@@ -72,6 +80,7 @@ function ProfileStackScreen() {
     <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
       <ProfileStack.Screen name="Profile" component={ProfileScreen} />
       <ProfileStack.Screen name="Orders" component={OrdersScreen} />
+      <ProfileStack.Screen name="OrderDetail" component={OrderDetailScreen} />
       <ProfileStack.Screen name="AddressBook" component={AddressBookScreen} />
       <ProfileStack.Screen name="Prescription" component={PrescriptionScreen} />
       <ProfileStack.Screen name="Payments" component={PaymentsScreen} />
@@ -81,22 +90,20 @@ function ProfileStackScreen() {
   );
 }
 
-// function OrdersStackScreen() {
-//   return (
-//     <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
-//       <OrdersStack.Screen name="Orders" component={OrdersScreen} />
-//     </OrdersStack.Navigator>
-//   );
-// }
-
-function NotificationsStackScreen() {
+function NotificationsStackScreen({ onNotificationsChanged }) {
   return (
-    <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
-      <OrdersStack.Screen name="Notifications" component={NotificationsScreen} />
-    </OrdersStack.Navigator>
+    <NotificationsStack.Navigator screenOptions={{ headerShown: false }}>
+      <NotificationsStack.Screen name="Notifications">
+        {(props) => (
+          <NotificationsScreen
+            {...props}
+            onNotificationsChanged={onNotificationsChanged}
+          />
+        )}
+      </NotificationsStack.Screen>
+    </NotificationsStack.Navigator>
   );
 }
-
 
 // Favorites stack
 function FavoritesStackScreen() {
@@ -108,9 +115,82 @@ function FavoritesStackScreen() {
   );
 }
 
+function NotificationTabIcon({ color, focused, hasUnread }) {
+  const iconName = focused ? "notifications" : "notifications-outline";
+
+  return (
+    <View style={styles.tabIconWrap}>
+      <Ionicons name={iconName} size={22} color={color} />
+      {hasUnread ? <View style={styles.notificationDot} /> : null}
+    </View>
+  );
+}
+
 function MainTabs({ navigation }) {
   const token = useAuthStore((s) => s.token);
   const insets = useSafeAreaInsets();
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+
+  const loadUnreadNotifications = useCallback(async () => {
+    if (!token) {
+      setHasUnreadNotifications(false);
+      return;
+    }
+
+    try {
+      const data = await getMyNotificationsApi();
+      const list = Array.isArray(data) ? data : [];
+      const unread = list.some((item) => !item?.readAt);
+      setHasUnreadNotifications(unread);
+    } catch {
+      setHasUnreadNotifications(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadUnreadNotifications();
+  }, [loadUnreadNotifications]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUnreadNotifications();
+    }, [loadUnreadNotifications])
+  );
+
+  useEffect(() => {
+    if (!token) {
+      return undefined;
+    }
+
+    let socket = null;
+    let reconnectTimer = null;
+    let isDisposed = false;
+
+    const connect = () => {
+      if (isDisposed) return;
+
+      socket = connectRealtime(token, {
+        onMessage: (payload) => {
+          if (!isNotificationRealtimeEvent(payload)) return;
+          void loadUnreadNotifications();
+        },
+        onClose: () => {
+          if (isDisposed) return;
+          reconnectTimer = setTimeout(() => {
+            connect();
+          }, 2000);
+        },
+      });
+    };
+
+    connect();
+
+    return () => {
+      isDisposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (socket) socket.close();
+    };
+  }, [token, loadUnreadNotifications]);
 
   return (
     <Tab.Navigator
@@ -128,12 +208,37 @@ function MainTabs({ navigation }) {
         },
         tabBarIcon: ({ color, focused }) => {
           let iconName = "home-outline";
-          if (route.name === "HomeTab") iconName = focused ? "home" : "home-outline";
-          if (route.name === "ProductsTab") iconName = focused ? "cube" : "cube-outline";
-          if (route.name === "FavTab") iconName = focused ? "heart" : "heart-outline";
-          // if (route.name === "OrdersTab") iconName = focused ? "clipboard" : "clipboard-outline";
-          if (route.name === "NotificationTab") iconName = focused ? "notifications" : "notifications-outline";
-          if (route.name === "ProfileTab") iconName = focused ? "person" : "person-outline";
+
+          if (route.name === "HomeTab") {
+            iconName = focused ? "home" : "home-outline";
+            return <Ionicons name={iconName} size={22} color={color} />;
+          }
+
+          if (route.name === "ProductsTab") {
+            iconName = focused ? "cube" : "cube-outline";
+            return <Ionicons name={iconName} size={22} color={color} />;
+          }
+
+          if (route.name === "FavTab") {
+            iconName = focused ? "heart" : "heart-outline";
+            return <Ionicons name={iconName} size={22} color={color} />;
+          }
+
+          if (route.name === "NotificationTab") {
+            return (
+              <NotificationTabIcon
+                color={color}
+                focused={focused}
+                hasUnread={hasUnreadNotifications}
+              />
+            );
+          }
+
+          if (route.name === "ProfileTab") {
+            iconName = focused ? "person" : "person-outline";
+            return <Ionicons name={iconName} size={22} color={color} />;
+          }
+
           return <Ionicons name={iconName} size={22} color={color} />;
         },
       })}
@@ -186,23 +291,8 @@ function MainTabs({ navigation }) {
         }}
       />
 
-      {/* <Tab.Screen
-        name="OrdersTab"
-        component={OrdersStackScreen}
-        options={{ tabBarLabel: "Đơn hàng" }}
-        listeners={({ navigation }) => ({
-          tabPress: (e) => {
-            if (!token) {
-              e.preventDefault();
-              navigation.navigate("Login");
-            }
-          },
-        })}
-      /> */}
-
       <Tab.Screen
         name="NotificationTab"
-        component={NotificationsStackScreen}
         options={{ tabBarLabel: "Thông báo" }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
@@ -212,7 +302,14 @@ function MainTabs({ navigation }) {
             }
           },
         })}
-      />
+      >
+        {(props) => (
+          <NotificationsStackScreen
+            {...props}
+            onNotificationsChanged={loadUnreadNotifications}
+          />
+        )}
+      </Tab.Screen>
 
       <Tab.Screen
         name="ProfileTab"
@@ -236,20 +333,13 @@ export default function AppNavigation() {
   const isHydratingAuth = useAuthStore((s) => s.isHydrating);
   const userKey = useAuthStore((s) => s.userKey);
 
-  // cart: setUser sẽ tự hydrate theo key user
   const setCartUser = useCartStore((s) => s.setUser);
   const isHydratingCart = useCartStore((s) => s.isHydrating);
 
-  // fav: setUser sẽ tự hydrate theo key user
-  // const setFavUser = useFavoriteStore((s) => s.setUser);
-  // const isHydratingFav = useFavoriteStore((s) => s.isHydrating);
-
-  // 1) hydrate auth trước
   useEffect(() => {
     hydrateAuth();
   }, [hydrateAuth]);
 
-  // 2) auth hydrate xong => set user cho cart + fav (tự hydrate đúng storage key)
   useEffect(() => {
     if (!isHydratingAuth) {
       setCartUser(userKey);
@@ -270,3 +360,25 @@ export default function AppNavigation() {
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  tabIconWrap: {
+    position: "relative",
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  notificationDot: {
+    position: "absolute",
+    top: -1,
+    right: -2,
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+  },
+});

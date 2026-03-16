@@ -587,21 +587,6 @@ export default function HomeScreen({ navigation }) {
                 </Text>
                 <Ionicons name="chevron-down" size={14} color="#6B7280" />
               </TouchableOpacity>
-
-              {token ? (
-                <TouchableOpacity onPress={logout} style={styles.authBtn}>
-                  <Ionicons name="log-out-outline" size={14} color="#fff" />
-                  <Text style={styles.authText}>Đăng xuất</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={() => navigation.navigate("Login")}
-                  style={[styles.authBtn, { backgroundColor: "#4F46E5" }]}
-                >
-                  <Ionicons name="log-in-outline" size={14} color="#fff" />
-                  <Text style={styles.authText}>Đăng nhập</Text>
-                </TouchableOpacity>
-              )}
             </View>
 
             <HeaderSearchActions
@@ -614,10 +599,8 @@ export default function HomeScreen({ navigation }) {
             />
           </View>
 
-          <View style={styles.bannerShadowWrap}>
-            <View style={styles.bannerContainer}>
-              <HomeBanner banners={BANNERS} autoPlay intervalMs={3000} />
-            </View>
+          <View style={styles.bannerContainer}>
+            <HomeBanner banners={BANNERS} autoPlay intervalMs={3000} />
           </View>
 
           <View style={styles.categoriesSection}>
@@ -868,38 +851,14 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
 
-  authBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#E11D48",
-    paddingHorizontal: 10,
-    height: 38,
-    borderRadius: 12,
+  bannerContainer: {
+    marginHorizontal: PAGE_PADDING,
+    borderRadius: 20,
+    overflow: "hidden",
+    margin: 0,
+    padding: 0,
+    backgroundColor: "transparent",
   },
-
-  authText: { color: "#fff", fontWeight: "900", fontSize: 12 },
-
-bannerShadowWrap: {
-  marginHorizontal: PAGE_PADDING,
-  borderRadius: 20,
-  overflow: "hidden",
-  backgroundColor: "transparent",
-
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 6 },
-  shadowOpacity: 0.08,
-  shadowRadius: 8,
-  elevation: 4,
-},
-
-bannerContainer: {
-  borderRadius: 20,
-  overflow: "hidden",
-  margin: 0,
-  padding: 0,
-  backgroundColor: "transparent",
-},
 
   categoriesSection: {
     marginTop: 20,
@@ -911,16 +870,16 @@ bannerContainer: {
     gap: 12,
   },
 
-categoryCard: {
-  width: 100,
-  height: 100,
-  borderRadius: 20,
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 8,
-  borderWidth: 1,
-  borderColor: "rgba(0,0,0,0.05)",
-},
+  categoryCard: {
+    width: 100,
+    height: 100,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+  },
 
   categoryText: {
     fontSize: 12,
