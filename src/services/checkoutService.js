@@ -1,4 +1,9 @@
-﻿import { api } from "./apiClient";
+import { api } from "./apiClient";
+
+function toText(value) {
+  if (value == null) return "";
+  return String(value);
+}
 
 function compactAddress(address) {
   if (!address) return null;
@@ -29,63 +34,109 @@ function isRxFilled(rxOD, rxOS) {
   return okOD && okOS;
 }
 
+function normalizeEyePayload(eye = {}) {
+  return {
+    sphere: toText(eye?.sphere ?? eye?.SPH),
+    cyl: toText(eye?.cyl ?? eye?.CYL),
+    axis: toText(eye?.axis ?? eye?.AXIS),
+    add: toText(eye?.add ?? eye?.ADD),
+  };
+}
+
+function normalizePrescriptionPayload(prescription = {}) {
+  const attachmentUrls = Array.isArray(prescription?.attachmentUrls)
+    ? prescription.attachmentUrls.map((item) => toText(item)).filter(Boolean)
+    : [];
+
+  return {
+    mode: toText(prescription?.mode || "none") || "none",
+    isMyopic: Boolean(prescription?.isMyopic),
+    rightEye: normalizeEyePayload(prescription?.rightEye),
+    leftEye: normalizeEyePayload(prescription?.leftEye),
+    pd: toText(prescription?.pd),
+    note: toText(prescription?.note),
+    attachmentUrls,
+  };
+}
+
+function normalizeCombineWithPayload(combineWith = {}) {
+  const productId = toText(combineWith?.productId);
+  if (!productId) return undefined;
+
+  return {
+    productId,
+    product_id: productId,
+    variantId: toText(combineWith?.variantId),
+    variant_id: toText(combineWith?.variantId),
+    note: toText(combineWith?.note),
+  };
+}
+
+function normalizeCustomizationPayload(customization = {}) {
+  const normalized = {
+    selectedColor: toText(customization?.selectedColor),
+    selectedSize: toText(customization?.selectedSize),
+    photochromic: Boolean(customization?.photochromic),
+    note: toText(customization?.note),
+    prescription: normalizePrescriptionPayload(customization?.prescription),
+  };
+
+  const combineWith = normalizeCombineWithPayload(customization?.combineWith);
+  if (combineWith) normalized.combineWith = combineWith;
+
+  return normalized;
+}
+
 function buildPrescription(it) {
+  const existingPrescription = it?.customization?.prescription;
+  if (existingPrescription) {
+    return normalizePrescriptionPayload(existingPrescription);
+  }
+
   const orderType = it?.orderType || "READY";
   const rxOD = it?.rxOD || null;
   const rxOS = it?.rxOS || null;
   const photoUrl = it?.rxPhotoAssetId || it?.rxPhoto?.uri || null;
 
   if (orderType === "READY") {
-    if (!isRxFilled(rxOD, rxOS)) return { mode: "none", isMyopic: false };
-    return {
+    if (!isRxFilled(rxOD, rxOS)) return normalizePrescriptionPayload();
+    return normalizePrescriptionPayload({
       mode: "manual",
-      isMyopic: true,
-      rightEye: {
-        cyl: String(rxOD?.CYL ?? ""),
-        axis: String(rxOD?.AXIS ?? ""),
-      },
-      leftEye: {
-        cyl: String(rxOS?.CYL ?? ""),
-        axis: String(rxOS?.AXIS ?? ""),
-      },
-    };
+      isMyopic: false,
+      rightEye: normalizeEyePayload(rxOD),
+      leftEye: normalizeEyePayload(rxOS),
+    });
   }
 
   if (orderType === "CUSTOM") {
-    if (!photoUrl) return { mode: "none", isMyopic: false };
-    return {
+    if (!photoUrl) return normalizePrescriptionPayload();
+    return normalizePrescriptionPayload({
       mode: "upload",
       isMyopic: true,
       attachmentUrls: [photoUrl],
-    };
+    });
   }
 
   if (orderType === "PREORDER") {
     if (isRxFilled(rxOD, rxOS)) {
-      return {
+      return normalizePrescriptionPayload({
         mode: "manual",
-        isMyopic: true,
-        rightEye: {
-          cyl: String(rxOD?.CYL ?? ""),
-          axis: String(rxOD?.AXIS ?? ""),
-        },
-        leftEye: {
-          cyl: String(rxOS?.CYL ?? ""),
-          axis: String(rxOS?.AXIS ?? ""),
-        },
-      };
+        isMyopic: false,
+        rightEye: normalizeEyePayload(rxOD),
+        leftEye: normalizeEyePayload(rxOS),
+      });
     }
 
     if (photoUrl) {
-      return {
+      return normalizePrescriptionPayload({
         mode: "upload",
         isMyopic: true,
         attachmentUrls: [photoUrl],
-      };
+      });
     }
   }
 
-  return { mode: "none", isMyopic: false };
+  return normalizePrescriptionPayload();
 }
 
 export function buildCheckoutItems(items = []) {
@@ -111,49 +162,37 @@ export function buildCheckoutItems(items = []) {
         : 1;
       const orderType = it.orderType || "READY";
       const variantId =
-        it.variantId || it.variant?.id || it.variant?.variantId || null;
+        it.variantId || it.variant?._id || it.variant?.id || it.variant?.variantId || null;
 
       const selectedColor =
+        it.customization?.selectedColor ||
         it.variant?.colorName ||
         it.variant?.color ||
         it.variant?.colorId ||
         null;
-      const selectedSize = it.variant?.size || null;
+      const selectedSize =
+        it.customization?.selectedSize || it.variant?.size || null;
 
-      const payload = {
-        productId,
-        product_id: productId,
+      return {
+        productId: String(productId),
+        product_id: String(productId),
+        variantId: variantId ? String(variantId) : undefined,
+        variant_id: variantId ? String(variantId) : undefined,
         quantity,
-        orderType,
+        customization: normalizeCustomizationPayload({
+          selectedColor,
+          selectedSize,
+          photochromic: it?.customization?.photochromic,
+          note:
+            it?.customization?.note ??
+            (orderType === "READY" && it?.readyNote ? String(it.readyNote).trim() : ""),
+          combineWith: it?.customization?.combineWith,
+          prescription:
+            it.product?.type === "LENS"
+              ? buildPrescription(it)
+              : it?.customization?.prescription,
+        }),
       };
-
-      if (variantId) {
-        payload.variantId = variantId;
-        payload.variant_id = variantId;
-      }
-
-      const customization = {
-        selectedColor: selectedColor || undefined,
-        selectedSize: selectedSize || undefined,
-        note:
-          orderType === "READY" && it?.readyNote
-            ? String(it.readyNote).trim()
-            : undefined,
-      };
-
-      if (it.product?.type === "LENS") {
-        customization.prescription = buildPrescription(it);
-      }
-
-      const hasCustomization = Object.values(customization).some(
-        (v) => v !== undefined && v !== null,
-      );
-
-      if (hasCustomization) {
-        payload.customization = customization;
-      }
-
-      return payload;
     })
     .filter(Boolean);
 }
@@ -167,22 +206,18 @@ export function buildCheckoutPayload({
   discountAmount,
   voucherCode,
   cartType,
-  paymentMethod,
 }) {
   const payload = {
     items: buildCheckoutItems(items),
   };
 
   if (shippingMethod) payload.shippingMethod = shippingMethod;
-  if (shippingAddress)
-    payload.shippingAddress = compactAddress(shippingAddress);
+  if (shippingAddress) payload.shippingAddress = compactAddress(shippingAddress);
   if (note) payload.note = note;
   if (typeof shippingFee === "number") payload.shippingFee = shippingFee;
-  if (typeof discountAmount === "number")
-    payload.discountAmount = discountAmount;
+  if (typeof discountAmount === "number") payload.discountAmount = discountAmount;
   if (voucherCode) payload.voucherCode = voucherCode;
   if (cartType) payload.cartType = cartType;
-  if (paymentMethod) payload.paymentMethod = paymentMethod;
 
   return payload;
 }

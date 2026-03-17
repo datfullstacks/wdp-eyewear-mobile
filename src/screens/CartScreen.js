@@ -1,5 +1,4 @@
-﻿// screens/CartScreen.js
-import React, { useMemo, useEffect, useState } from "react";
+﻿import React, { useMemo, useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,13 +9,23 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { CART_TYPES, useCartStore } from "../store/cartStore";
+import { CART_TYPES } from "../store/cartStore";
 import {
   buildCheckoutPayload,
-  buildCheckoutItems,
   fetchCheckoutQuote,
 } from "../services/checkoutService";
+import {
+  API_CART_TYPES,
+  getMyCartApi,
+  setCartBadgeQty,
+  syncCartBadgeQty,
+  upsertCartItemApi,
+  removeCartItemApi,
+  clearCartApi,
+} from "../services/cartService";
+import { useProducts } from "../hooks/useProducts";
 import CartItemEditModal from "../components/CartItemEditModal";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v || 0) + "đ";
@@ -28,41 +37,62 @@ const ORDER_TYPE_LABEL = {
 };
 
 const PREORDER_PAY_RATE = 0.3;
-const API_CART_TYPE = {
-  [CART_TYPES.ORDER]: "ready_stock",
-  [CART_TYPES.PREORDER]: "pre_order",
+
+const UI_TO_API_CART_TYPE = {
+  [CART_TYPES.ORDER]: API_CART_TYPES.READY_STOCK,
+  [CART_TYPES.PREORDER]: API_CART_TYPES.PRE_ORDER,
 };
 
-function getPayRate(ci) {
-  return ci?.isPreorder ? PREORDER_PAY_RATE : 1;
-}
-
-function isRxFilled(rxOD, rxOS) {
-  const okOD = Boolean(rxOD?.CYL) && Boolean(rxOD?.AXIS);
-  const okOS = Boolean(rxOS?.CYL) && Boolean(rxOS?.AXIS);
+function isRxFilledFromCustomization(customization) {
+  const p = customization?.prescription;
+  const okOD = Boolean(p?.rightEye?.cyl) && Boolean(p?.rightEye?.axis);
+  const okOS = Boolean(p?.leftEye?.cyl) && Boolean(p?.leftEye?.axis);
   return okOD && okOS;
 }
 
+function hasPrescriptionAttachment(customization) {
+  return Boolean(customization?.prescription?.attachmentUrls?.length);
+}
+
+function inferOrderTypeFromItem(item) {
+  if (item?.preOrder) return "PREORDER";
+  const mode = String(item?.customization?.prescription?.mode || "").toLowerCase();
+  if (mode === "attachment") return "CUSTOM";
+  return "READY";
+}
+
 function isCartItemComplete(ci) {
-  const type = ci.product?.type;
+  const type = ci.product?.type || ci.type;
   if (type !== "LENS") return true;
-  const hasRx = isRxFilled(ci.rxOD, ci.rxOS);
-  const hasPhoto = Boolean(ci.rxPhotoAssetId || ci.rxPhoto?.uri);
-  if (ci.orderType === "READY") return hasRx;
-  if (ci.orderType === "CUSTOM") return hasPhoto;
-  if (ci.orderType === "PREORDER") return hasRx || hasPhoto;
+
+  const hasRx = isRxFilledFromCustomization(ci.customization);
+  const hasPhoto = hasPrescriptionAttachment(ci.customization);
+  const orderType = ci.orderType;
+
+  if (orderType === "READY") return hasRx;
+  if (orderType === "CUSTOM") return hasPhoto;
+  if (orderType === "PREORDER") return hasRx || hasPhoto;
   return false;
 }
 
 function calcLineTotal(ci) {
   const unitPrice =
-    ci.product?.price ?? ci.product?.pricing?.salePrice ?? ci.product?.pricing?.basePrice ?? 0;
-  return unitPrice * (ci.qty || 0) * getPayRate(ci);
+    ci.product?.price ??
+    ci.product?.pricing?.salePrice ??
+    ci.product?.pricing?.basePrice ??
+    ci.unitPrice ??
+    0;
+  const payRate = ci?.isPreorder ? PREORDER_PAY_RATE : 1;
+  return unitPrice * (ci.qty || 0) * payRate;
 }
 
 function calcLineTotalFull(ci) {
   const unitPrice =
-    ci.product?.price ?? ci.product?.pricing?.salePrice ?? ci.product?.pricing?.basePrice ?? 0;
+    ci.product?.price ??
+    ci.product?.pricing?.salePrice ??
+    ci.product?.pricing?.basePrice ??
+    ci.unitPrice ??
+    0;
   return unitPrice * (ci.qty || 0);
 }
 
@@ -75,47 +105,188 @@ function TabBadge({ count }) {
   );
 }
 
-// ✅ build auto note from pairing (hidden)
 function buildAutoPairingNote(cartItems) {
   const lines = [];
-  const keyToItem = new Map((cartItems || []).map((x) => [x.key, x]));
 
   for (const ci of cartItems || []) {
-    if (ci?.product?.type !== "LENS") continue; // only output from lens to avoid duplicates
-    const pairKey = ci?.pairWithKey;
-    if (!pairKey) continue;
+    const combineWith = ci?.customization?.combineWith;
+    if (!combineWith?.productId) continue;
 
-    const frame = keyToItem.get(pairKey);
-    const lensName = ci?.product?.name || "Tròng";
-    const frameName = frame?.product?.name || ci?.pairWithName || "Gọng";
+    const lensName = ci?.product?.name || ci?.name || "Tròng";
+    const frameName = ci?.combineWithName || combineWith?.note || "Gọng";
 
-    lines.push(`Tròng ${lensName} gắn với gọng ${frameName}.`);
+    if ((ci?.product?.type || ci?.type) === "LENS") {
+      lines.push(`Tròng ${lensName} gắn với gọng ${frameName}.`);
+    }
   }
 
   return Array.from(new Set(lines)).join("\n");
 }
 
+function mapApiCartItemToUi(item, products = []) {
+  const matchedProduct =
+    products.find(
+      (p) =>
+        String(p.apiId || p._id || p.id) === String(item.productId)
+    ) || null;
+
+  const orderType = inferOrderTypeFromItem(item);
+  const selectedColor = item?.customization?.selectedColor || null;
+  const selectedSize = item?.customization?.selectedSize || null;
+
+  const colorObj =
+    matchedProduct?.colors?.find(
+      (c) =>
+        String(c.name || c.label || c.id).toLowerCase() ===
+        String(selectedColor || "").toLowerCase()
+    ) || null;
+
+  const imageOverride = colorObj?.imageOverride || null;
+
+  const product = matchedProduct
+    ? {
+        ...matchedProduct,
+        image: imageOverride || matchedProduct.image,
+      }
+    : {
+        id: item.productId,
+        apiId: item.productId,
+        name: item.name || "Sản phẩm",
+        type: item.type || "PRODUCT",
+        image: "",
+        price: item.unitPrice || 0,
+        originalPrice: null,
+      };
+
+  let variantText = null;
+  if ((product?.type || item?.type) === "FRAME") {
+    variantText = [selectedColor, selectedSize].filter(Boolean).join(" • ") || null;
+  } else if (selectedColor) {
+    variantText = selectedColor;
+  } else if (selectedSize) {
+    variantText = selectedSize;
+  }
+
+  return {
+    ...item,
+    key: item._id,
+    qty: item.quantity || 1,
+    isPreorder: Boolean(item.preOrder),
+    orderType,
+    product,
+    unitPrice: item.unitPrice || product?.price || 0,
+    lineTotal: item.lineTotal || 0,
+    variantText,
+    readyNote: item?.customization?.note || "",
+    customization: item?.customization || {},
+    combineWithName: item?.customization?.combineWith?.note || "",
+  };
+}
+
+function buildUpsertPayloadFromUiItem(ci, nextQty) {
+  return {
+    itemId: ci._id,
+    productId: String(ci.productId || ci.product?.apiId || ci.product?.id || ""),
+    variantId: ci.variantId || undefined,
+    quantity: Math.max(1, nextQty),
+    customization: ci.customization || {},
+  };
+}
+
+function buildCheckoutItemsFromApiUi(cartItems) {
+  return cartItems
+    .filter((ci) => ci?.productId || ci?.product?.apiId || ci?.product?.id)
+    .map((ci) => ({
+      productId: String(ci.productId || ci.product?.apiId || ci.product?.id),
+      variantId: ci.variantId || undefined,
+      quantity: ci.qty || 1,
+      customization: ci.customization || {},
+      isPreorder: Boolean(ci.isPreorder),
+      payRate: ci?.isPreorder ? PREORDER_PAY_RATE : 1,
+    }));
+}
+
+function isCombinableType(type) {
+  const normalized = String(type || "").toUpperCase();
+  return normalized === "LENS" || normalized === "FRAME";
+}
+
+function findCombinedPartner(cartItems, ci) {
+  const combineWith = ci?.customization?.combineWith;
+  if (!combineWith?.productId) return null;
+
+  return (
+    (cartItems || []).find(
+      (item) =>
+        item?._id !== ci?._id &&
+        String(item?.productId || item?.product?.apiId || item?.product?.id || "") ===
+          String(combineWith.productId) &&
+        String(item?.variantId || "") === String(combineWith.variantId || ""),
+    ) || null
+  );
+}
+
+function buildCombinePatch(ci, partner) {
+  return {
+    ...buildUpsertPayloadFromUiItem(ci, ci?.qty || 1),
+    customization: {
+      ...(ci?.customization || {}),
+      combineWith: {
+        productId: String(partner?.productId || partner?.product?.apiId || partner?.product?.id || ""),
+        variantId: partner?.variantId || "",
+        note: partner?.product?.name || partner?.name || "",
+      },
+    },
+  };
+}
+
+function buildClearCombinePatch(ci) {
+  const customization = { ...(ci?.customization || {}) };
+  delete customization.combineWith;
+
+  return {
+    ...buildUpsertPayloadFromUiItem(ci, ci?.qty || 1),
+    customization,
+  };
+}
+
 export default function CartScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
-
-  const items = useCartStore((s) => s.items);
-  const preorderItems = useCartStore((s) => s.preorderItems);
-  const isHydrating = useCartStore((s) => s.isHydrating);
-  const hydrate = useCartStore((s) => s.hydrate);
-  const setQtyStore = useCartStore((s) => s.setQty);
-  const removeItemStore = useCartStore((s) => s.removeItem);
-  const setFlags = useCartStore((s) => s.setFlags);
-  const clear = useCartStore((s) => s.clear);
+  const { products } = useProducts();
 
   const [isQuoting, setIsQuoting] = useState(false);
+  const [loadingCart, setLoadingCart] = useState(false);
+
+  const [readyCart, setReadyCart] = useState(null);
+  const [preorderCart, setPreorderCart] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
+
   const [activeCartType, setActiveCartType] = useState(
     route?.params?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER
   );
-  const [editingItem, setEditingItem] = useState(null);
 
-  useEffect(() => {
-    if (isHydrating) hydrate();
-  }, [isHydrating, hydrate]);
+  const loadCarts = useCallback(async () => {
+    try {
+      setLoadingCart(true);
+      const [ready, preorder] = await Promise.all([
+        getMyCartApi(API_CART_TYPES.READY_STOCK),
+        getMyCartApi(API_CART_TYPES.PRE_ORDER),
+      ]);
+      setReadyCart(ready || null);
+      setPreorderCart(preorder || null);
+      syncCartBadgeQty({
+        readyItems: Array.isArray(ready?.items) ? ready.items : [],
+        preorderItems: Array.isArray(preorder?.items) ? preorder.items : [],
+      });
+    } catch (err) {
+      console.log("loadCarts error:", err);
+      setReadyCart(null);
+      setPreorderCart(null);
+      setCartBadgeQty(0);
+    } finally {
+      setLoadingCart(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (route?.params?.cartType === CART_TYPES.PREORDER) {
@@ -127,9 +298,25 @@ export default function CartScreen({ navigation, route }) {
     }
   }, [route?.params?.cartType]);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadCarts();
+    }, [loadCarts])
+  );
+
+  const readyItems = useMemo(() => {
+    const items = Array.isArray(readyCart?.items) ? readyCart.items : [];
+    return items.map((it) => mapApiCartItemToUi(it, products));
+  }, [readyCart, products]);
+
+  const preorderItems = useMemo(() => {
+    const items = Array.isArray(preorderCart?.items) ? preorderCart.items : [];
+    return items.map((it) => mapApiCartItemToUi(it, products));
+  }, [preorderCart, products]);
+
   const cartItems = useMemo(
-    () => (activeCartType === CART_TYPES.PREORDER ? preorderItems : items),
-    [activeCartType, items, preorderItems]
+    () => (activeCartType === CART_TYPES.PREORDER ? preorderItems : readyItems),
+    [activeCartType, readyItems, preorderItems]
   );
 
   const canCheckout = useMemo(() => {
@@ -143,91 +330,161 @@ export default function CartScreen({ navigation, route }) {
   );
 
   const discount = 0;
-  // const shipping = cartItems.length > 0 ? 30000 : 0;
   const shipping = 0;
   const total = Math.max(0, subtotal - discount + shipping);
 
-
-  const checkoutItems = useMemo(() => {
-    const built = buildCheckoutItems(cartItems);
-    return built.map((it, idx) => {
-      const ci = cartItems[idx];
-      const payRate = ci?.isPreorder ? PREORDER_PAY_RATE : 1;
-      return { ...it, isPreorder: Boolean(ci?.isPreorder), payRate };
-    });
-  }, [cartItems]);
+  const checkoutItems = useMemo(
+    () => buildCheckoutItemsFromApiUi(cartItems),
+    [cartItems]
+  );
 
   const shippingMethod = "standard";
 
-  const setQty = (key, nextQty) => setQtyStore(key, nextQty, activeCartType);
+  const setQty = async (ci, nextQty) => {
+    if (!ci?._id) return;
+    if (nextQty < 1) {
+      removeItem(ci);
+      return;
+    }
 
-  const removeItem = (key) => {
+    try {
+      const apiCartType = UI_TO_API_CART_TYPE[activeCartType] || API_CART_TYPES.READY_STOCK;
+      await upsertCartItemApi(apiCartType, buildUpsertPayloadFromUiItem(ci, nextQty));
+      await loadCarts();
+    } catch (err) {
+      const data = err?.response?.data || {};
+      Alert.alert(
+        "Không cập nhật được số lượng",
+        data?.message || data?.error || err?.message || "Vui lòng thử lại.",
+      );
+    }
+  };
+
+  const removeItem = (ci) => {
     Alert.alert("Xóa sản phẩm", "Bạn chắc chắn muốn xóa sản phẩm khỏi giỏ?", [
       { text: "Hủy", style: "cancel" },
-      { text: "Xóa", style: "destructive", onPress: () => removeItemStore(key, activeCartType) },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const apiCartType = UI_TO_API_CART_TYPE[activeCartType] || API_CART_TYPES.READY_STOCK;
+            await removeCartItemApi(apiCartType, ci._id);
+            await loadCarts();
+          } catch (err) {
+            const data = err?.response?.data || {};
+            Alert.alert(
+              "Không xóa được sản phẩm",
+              data?.message || data?.error || err?.message || "Vui lòng thử lại.",
+            );
+          }
+        },
+      },
     ]);
   };
 
   const openEdit = (ci) => {
-    const isOut = (ci.product?.totalStock ?? 1) <= 0 && !ci.product?.preOrder?.enabled;
-    if (isOut) {
-      Alert.alert("Hết hàng", "Sản phẩm này đã hết hàng, không thể chỉnh sửa.");
-      return;
-    }
     setEditingItem(ci);
   };
 
-  // ✅ combine logic (1-1 pairing, stored local)
-  const openCombine = (ci) => {
-    const t = ci?.product?.type;
-    if (t !== "LENS" && t !== "FRAME") return;
+  const saveEdit = async (ci, patch) => {
+    try {
+      const apiCartType = UI_TO_API_CART_TYPE[activeCartType] || API_CART_TYPES.READY_STOCK;
+      await upsertCartItemApi(apiCartType, {
+        ...buildUpsertPayloadFromUiItem(ci, ci?.qty || 1),
+        customization: patch?.customization || ci?.customization || {},
+      });
+      setEditingItem(null);
+      await loadCarts();
+    } catch (err) {
+      const data = err?.response?.data || {};
+      Alert.alert(
+        "Không cập nhật được sản phẩm",
+        data?.message || data?.error || err?.message || "Vui lòng thử lại.",
+      );
+    }
+  };
 
-    const targetType = t === "LENS" ? "FRAME" : "LENS";
-    const candidates = cartItems.filter((x) => x?.product?.type === targetType);
+  const openCombine = (ci) => {
+    const type = String(ci?.product?.type || ci?.type || "").toUpperCase();
+    if (!isCombinableType(type)) return;
+
+    const targetType = type === "LENS" ? "FRAME" : "LENS";
+    const candidates = cartItems.filter(
+      (item) =>
+        item?._id !== ci?._id &&
+        String(item?.product?.type || item?.type || "").toUpperCase() === targetType,
+    );
 
     if (!candidates.length) {
       Alert.alert(
         "Chưa có sản phẩm để kết hợp",
-        targetType === "FRAME" ? "Bạn cần thêm gọng vào giỏ để kết hợp." : "Bạn cần thêm tròng vào giỏ để kết hợp."
+        targetType === "FRAME"
+          ? "Bạn cần thêm gọng vào giỏ để kết hợp."
+          : "Bạn cần thêm tròng vào giỏ để kết hợp.",
       );
       return;
     }
 
+    const currentPartner = findCombinedPartner(cartItems, ci);
     const buttons = [];
 
-    if (ci?.pairWithKey) {
+    if (currentPartner) {
       buttons.push({
         text: "Bỏ kết hợp",
         style: "destructive",
-        onPress: () => {
-          // clear both sides if possible
-          const otherKey = ci.pairWithKey;
-          setFlags(ci.key, { pairWithKey: null, pairWithName: null }, activeCartType);
-          if (otherKey) setFlags(otherKey, { pairWithKey: null, pairWithName: null }, activeCartType);
+        onPress: async () => {
+          try {
+            const apiCartType = UI_TO_API_CART_TYPE[activeCartType] || API_CART_TYPES.READY_STOCK;
+            await Promise.all([
+              upsertCartItemApi(apiCartType, buildClearCombinePatch(ci)),
+              upsertCartItemApi(apiCartType, buildClearCombinePatch(currentPartner)),
+            ]);
+            await loadCarts();
+          } catch (err) {
+            const data = err?.response?.data || {};
+            Alert.alert(
+              "Không cập nhật được kết hợp",
+              data?.message || data?.error || err?.message || "Vui lòng thử lại.",
+            );
+          }
         },
       });
     }
 
-    candidates.forEach((x) => {
+    candidates.forEach((candidate) => {
       buttons.push({
-        text: x.product?.name || "Sản phẩm",
-        onPress: () => {
-          // (optional) clear existing links that point to these keys to keep pairing clean
-          // Here we do a simple 1-1: break previous links on both sides.
-          for (const it of cartItems) {
-            if (it?.pairWithKey === ci.key) {
-              setFlags(it.key, { pairWithKey: null, pairWithName: null }, activeCartType);
+        text: candidate?.product?.name || "Sản phẩm",
+        onPress: async () => {
+          try {
+            const apiCartType = UI_TO_API_CART_TYPE[activeCartType] || API_CART_TYPES.READY_STOCK;
+            const candidatePartner = findCombinedPartner(cartItems, candidate);
+            const requests = [upsertCartItemApi(apiCartType, buildCombinePatch(ci, candidate))];
+
+            if (currentPartner && currentPartner?._id !== candidate?._id) {
+              requests.push(upsertCartItemApi(apiCartType, buildClearCombinePatch(currentPartner)));
             }
-            if (it?.pairWithKey === x.key) {
-              setFlags(it.key, { pairWithKey: null, pairWithName: null }, activeCartType);
+
+            if (candidatePartner && candidatePartner?._id !== ci?._id) {
+              requests.push(upsertCartItemApi(apiCartType, buildClearCombinePatch(candidatePartner)));
             }
+
+            requests.push(upsertCartItemApi(apiCartType, buildCombinePatch(candidate, ci)));
+
+            await Promise.all(requests);
+            await loadCarts();
+            Alert.alert(
+              "Đã kết hợp",
+              `${ci?.product?.name || "Sản phẩm"} ↔ ${candidate?.product?.name || "Sản phẩm"}`,
+            );
+            console.log(`${ci?.product?.name || "Sản phẩm"} ↔ ${candidate?.product?.name || "Sản phẩm"}`);
+          } catch (err) {
+            const data = err?.response?.data || {};
+            Alert.alert(
+              "Không cập nhật được kết hợp",
+              data?.message || data?.error || err?.message || "Vui lòng thử lại.",
+            );
           }
-
-          setFlags(ci.key, { pairWithKey: x.key, pairWithName: x.product?.name || "" }, activeCartType);
-          setFlags(x.key, { pairWithKey: ci.key, pairWithName: ci.product?.name || "" }, activeCartType);
-
-          Alert.alert("Đã kết hợp", `${ci.product?.name || "Tròng/Gọng"} ↔ ${x.product?.name || "Tròng/Gọng"}`);
-          console.log(`${ci.product?.name || "Tròng/Gọng"} ↔ ${x.product?.name || "Tròng/Gọng"}`);
         },
       });
     });
@@ -235,14 +492,15 @@ export default function CartScreen({ navigation, route }) {
     buttons.push({ text: "Hủy", style: "cancel" });
 
     Alert.alert(
-      t === "LENS" ? "Chọn gọng để gắn" : "Chọn tròng để gắn",
-      "Kết hợp 1-1 để note rõ cho đơn.",
-      buttons
+      type === "LENS" ? "Chọn gọng để gắn" : "Chọn tròng để gắn",
+      "Kết hợp 1-1 để ghi chú rõ cho đơn.",
+      buttons,
     );
   };
 
   const proceedCheckout = async () => {
     if (!canCheckout || isQuoting) return;
+
     if (checkoutItems.length !== cartItems.length) {
       Alert.alert(
         "Thiếu thông tin sản phẩm",
@@ -250,47 +508,39 @@ export default function CartScreen({ navigation, route }) {
       );
       return;
     }
-    // ✅ hidden auto note built from pairing
+
     const autoNote = buildAutoPairingNote(cartItems);
-
-    // ✅ NEW: infer cart type from items (product.preOrder.enabled OR ci.isPreorder)
-    const hasPreorderItem = cartItems.some(
-      (ci) => ci?.isPreorder || ci?.product?.preOrder?.enabled
-    );
-    const inferredCartType = hasPreorderItem ? CART_TYPES.PREORDER : activeCartType;
-
-    // ✅ OPTIONAL: nếu đang ở tab Mua ngay mà có preorder -> auto switch tab cho đúng UI
-    if (hasPreorderItem && activeCartType === CART_TYPES.ORDER) {
-      setActiveCartType(CART_TYPES.PREORDER);
-    }
 
     try {
       setIsQuoting(true);
+
+      const inferredCartType =
+        activeCartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
+
       const payload = buildCheckoutPayload({
         items: checkoutItems,
         shippingFee: shipping,
         discountAmount: discount,
         shippingMethod,
-        cartType: API_CART_TYPE[inferredCartType] || "ready_stock", // ✅ FIX HERE
+        cartType: UI_TO_API_CART_TYPE[inferredCartType] || "ready_stock",
       });
 
       const quote = await fetchCheckoutQuote(payload);
 
       navigation.navigate("Checkout", {
         quote,
+        cartItems,
+        checkoutItems,
         quoteMeta: {
           shippingFee: shipping,
           discountAmount: discount,
           shippingMethod,
-          cartType: inferredCartType, // ✅ pass inferred type
+          cartType: inferredCartType,
           autoNote,
         },
       });
     } catch (err) {
       const data = err?.response?.data || {};
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn("checkout quote error", err?.response?.status, data || err?.message);
-      }
       const errors = Array.isArray(data.errors)
         ? data.errors.map((e) => e.msg).filter(Boolean).join("\n")
         : null;
@@ -322,7 +572,24 @@ export default function CartScreen({ navigation, route }) {
             if (cartItems.length === 0) return;
             Alert.alert("Xóa tất cả", "Bạn muốn xóa toàn bộ giỏ hàng đang chọn?", [
               { text: "Hủy", style: "cancel" },
-              { text: "Xóa", style: "destructive", onPress: () => clear(activeCartType) },
+              {
+                text: "Xóa",
+                style: "destructive",
+                onPress: async () => {
+                  try {
+                    const apiCartType =
+                      UI_TO_API_CART_TYPE[activeCartType] || API_CART_TYPES.READY_STOCK;
+                    await clearCartApi(apiCartType);
+                    await loadCarts();
+                  } catch (err) {
+                    const data = err?.response?.data || {};
+                    Alert.alert(
+                      "Không xóa được giỏ hàng",
+                      data?.message || data?.error || err?.message || "Vui lòng thử lại.",
+                    );
+                  }
+                },
+              },
             ]);
           }}
         >
@@ -346,7 +613,7 @@ export default function CartScreen({ navigation, route }) {
             <Text style={[styles.cartTypeText, activeCartType === CART_TYPES.ORDER && styles.cartTypeTextActive]}>
               Mua ngay
             </Text>
-            <TabBadge count={items.length} />
+            <TabBadge count={readyItems.length} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -361,7 +628,12 @@ export default function CartScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {cartItems.length === 0 ? (
+        {loadingCart ? (
+          <View style={styles.emptyBox}>
+            <Ionicons name="time-outline" size={44} color="#9CA3AF" />
+            <Text style={styles.emptyTitle}>Đang tải giỏ hàng...</Text>
+          </View>
+        ) : cartItems.length === 0 ? (
           <View style={styles.emptyBox}>
             <Ionicons name="cart-outline" size={44} color="#9CA3AF" />
             <Text style={styles.emptyTitle}>Giỏ hàng trống</Text>
@@ -383,14 +655,12 @@ export default function CartScreen({ navigation, route }) {
             <CartItemCard
               key={ci.key}
               ci={ci}
-              onDec={() => setQty(ci.key, (ci.qty || 1) - 1)}
-              onInc={() => setQty(ci.key, (ci.qty || 1) + 1)}
-              onRemove={() => removeItem(ci.key)}
+              onDec={() => setQty(ci, (ci.qty || 1) - 1)}
+              onInc={() => setQty(ci, (ci.qty || 1) + 1)}
+              onRemove={() => removeItem(ci)}
               onEdit={() => openEdit(ci)}
               onCombine={
-                ci.product?.type === "LENS" || ci.product?.type === "FRAME"
-                  ? () => openCombine(ci)
-                  : null
+                isCombinableType(ci?.product?.type || ci?.type) ? () => openCombine(ci) : null
               }
             />
           ))
@@ -418,10 +688,6 @@ export default function CartScreen({ navigation, route }) {
                 <Text style={styles.sumLabel}>Giảm giá</Text>
                 <Text style={styles.sumValue}>-{formatVND(discount)}</Text>
               </View>
-              {/* <View style={styles.sumRow}>
-                <Text style={styles.sumLabel}>Phí vận chuyển</Text>
-                <Text style={styles.sumValue}>{formatVND(shipping)}</Text>
-              </View> */}
               <View style={styles.sumDivider} />
               <View style={styles.sumRow}>
                 <Text style={styles.sumTotalLabel}>Tổng cần thanh toán</Text>
@@ -436,7 +702,7 @@ export default function CartScreen({ navigation, route }) {
               onPress={proceedCheckout}
             >
               <Text style={[styles.checkoutText, (!canCheckout || isQuoting) && styles.checkoutTextDisabled]}>
-                Tiến hành thanh toán
+                {isQuoting ? "Đang lấy báo giá..." : "Tiến hành thanh toán"}
               </Text>
             </TouchableOpacity>
 
@@ -448,6 +714,7 @@ export default function CartScreen({ navigation, route }) {
                   params: { screen: "Products" },
                 })
               }
+              style={styles.continueBtn}
             >
               <Text style={styles.continueText}>Tiếp tục mua sắm</Text>
             </TouchableOpacity>
@@ -461,64 +728,68 @@ export default function CartScreen({ navigation, route }) {
         onClose={() => setEditingItem(null)}
         onSave={(patch) => {
           if (!editingItem) return;
-          setFlags(editingItem.key, patch, activeCartType);
-          setEditingItem(null);
+          saveEdit(editingItem, patch);
         }}
       />
     </SafeAreaView>
   );
 }
 
-// ✅ THÊM prop onCombine vào CartItemCard
 function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
-  const p = ci.product;
-  const unitPrice = p?.price ?? p?.pricing?.salePrice ?? p?.pricing?.basePrice ?? 0;
+  const p = ci.product || {};
+  const unitPrice =
+    p?.price ?? p?.pricing?.salePrice ?? p?.pricing?.basePrice ?? ci.unitPrice ?? 0;
   const complete = isCartItemComplete(ci);
-  const isOut = (p?.totalStock ?? 1) <= 0 && !p?.preOrder?.enabled;
 
   const lensStatus =
     p?.type !== "LENS"
       ? null
       : ci.orderType === "READY"
-        ? isRxFilled(ci.rxOD, ci.rxOS) ? "Đã nhập Rx" : "Chưa nhập Rx"
-        : Boolean(ci.rxPhotoAssetId || ci.rxPhoto?.uri) ? "Đã tải ảnh đơn kính" : "Chưa tải ảnh đơn kính";
+        ? isRxFilledFromCustomization(ci.customization)
+          ? "Đã nhập Rx"
+          : "Chưa nhập Rx"
+        : hasPrescriptionAttachment(ci.customization)
+          ? "Đã tải ảnh đơn kính"
+          : "Chưa tải ảnh đơn kính";
 
   const payNow = calcLineTotal(ci);
   const full = calcLineTotalFull(ci);
 
-  const pairedLabel =
-    (ci.product?.type === "LENS" || ci.product?.type === "FRAME") && ci.pairWithName
-      ? `Đã kết hợp: ${ci.pairWithName}`
-      : null;
+  const pairedLabel = ci.combineWithName ? `Đã kết hợp: ${ci.combineWithName}` : null;
 
   return (
     <View style={styles.itemCard}>
       <View style={styles.itemTopRow}>
-        <Image source={{ uri: p.image }} style={styles.itemImage} />
+        {p.image ? (
+          <Image source={{ uri: p.image }} style={styles.itemImage} />
+        ) : (
+          <View style={[styles.itemImage, { alignItems: "center", justifyContent: "center" }]}>
+            <Ionicons name="image-outline" size={24} color="#9CA3AF" />
+          </View>
+        )}
+
         <View style={{ flex: 1, marginLeft: 10 }}>
           <View style={styles.nameRow}>
             <Text style={[styles.itemName, { flex: 1 }]} numberOfLines={2}>
-              {p.name}
+              {p.name || ci.name || "Sản phẩm"}
             </Text>
 
             {onCombine ? (
               <TouchableOpacity
                 style={styles.combineBtn}
+                activeOpacity={0.85}
                 onPress={onCombine}
-                activeOpacity={0.8}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Ionicons name="link-outline" size={15} color="#2563EB" />
               </TouchableOpacity>
             ) : null}
 
             <TouchableOpacity
-              style={[styles.editBtn, isOut && styles.editBtnDisabled]}
+              style={styles.editBtn}
+              activeOpacity={0.85}
               onPress={onEdit}
-              activeOpacity={0.8}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="pencil" size={13} color={isOut ? "#D1D5DB" : "#2563EB"} />
+              <Ionicons name="pencil" size={13} color="#2563EB" />
             </TouchableOpacity>
           </View>
 
@@ -540,12 +811,6 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
                 </View>
               </View>
             ) : null}
-
-            {p?.type === "LENS" && ci?.lensMeta?.buyingLensOnly ? (
-              <View style={[styles.pill, { backgroundColor: "#FFF7ED" }]}>
-                <Text style={[styles.pillText, { color: "#B45309" }]}>Mua tròng riêng</Text>
-              </View>
-            ) : null}
           </View>
 
           <View style={styles.priceRow}>
@@ -565,16 +830,9 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
             </Text>
           ) : null}
 
-          {ci.orderType === "READY" && ci.readyNote ? (
+          {ci.readyNote ? (
             <Text style={[styles.variantText, { marginTop: 6 }]}>Ghi chú: {ci.readyNote}</Text>
           ) : null}
-
-          {isOut && (
-            <View style={styles.outRow}>
-              <Ionicons name="alert-circle" size={12} color="#EF4444" />
-              <Text style={styles.outLabel}>Hết hàng</Text>
-            </View>
-          )}
         </View>
       </View>
 
@@ -699,9 +957,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
-  editBtnDisabled: { backgroundColor: "#F3F4F6" },
-
-  // ✅ combine btn
   combineBtn: {
     width: 28,
     height: 28,
@@ -711,10 +966,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
-
-  outRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
-  outLabel: { fontSize: 12, fontWeight: "800", color: "#EF4444" },
-
   itemName: { fontSize: 14, fontWeight: "900", color: "#111827" },
   variantText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
 
@@ -816,8 +1067,17 @@ const styles = StyleSheet.create({
   checkoutText: { color: "#FFFFFF", fontWeight: "900" },
   checkoutTextDisabled: { color: "#9CA3AF" },
 
+  continueBtn: {
+    marginTop: 8,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderColor: "#2563EB",
+    borderWidth: 2,
+  },
   continueText: {
-    marginTop: 12,
     textAlign: "center",
     color: "#2563EB",
     fontWeight: "900",

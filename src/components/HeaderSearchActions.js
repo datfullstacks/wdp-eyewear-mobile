@@ -1,6 +1,6 @@
 ﻿import React from "react";
 import { View, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, AntDesign } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
 import CartIconButton from "./CartIconButton";
@@ -29,12 +29,6 @@ export default function HeaderSearchActions({
     ]);
   };
 
-  const handlePressFav = () => {
-    if (!token) return requireLogin("FavTab");
-    if (onPressFav) return onPressFav();
-    navigation.navigate("FavTab");
-  };
-
   const handlePressCart = () => {
     if (!token) return requireLogin("CartFlow", { screen: "Cart" });
     if (onPressCart) return onPressCart();
@@ -57,6 +51,9 @@ export default function HeaderSearchActions({
       </View>
 
       <CartIconButton onPress={handlePressCart} />
+      <View>
+        <AntDesign name="comment" size={25} color="black" />
+      </View>
     </View>
   );
 }

@@ -1,5 +1,4 @@
-﻿// screens/ProductDetailScreen.js
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+﻿import React, { useMemo, useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -21,7 +20,13 @@ import * as ImagePicker from "expo-image-picker";
 import { addMyFavoriteApi, getMyFavoriteIdsApi, removeMyFavoriteApi } from "../services/userService";
 import { useProducts } from "../hooks/useProducts";
 import { getRelatedProducts, fetchProductById } from "../services/productService";
-import { CART_TYPES, useCartStore } from "../store/cartStore";
+import { CART_TYPES } from "../store/cartStore";
+import {
+  API_CART_TYPES,
+  getMyCartApi,
+  changeCartBadgeQty,
+  upsertCartItemApi,
+} from "../services/cartService";
 import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
 import { useAuthStore } from "../store/authStore";
@@ -53,6 +58,11 @@ const TRY_ON_STATUS_LABEL = {
 
 const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
 const MODEL_FILE_PATTERN = /\.(glb|gltf|usdz)(\?|#|$)/i;
+
+const UI_TO_API_CART_TYPE = {
+  [CART_TYPES.ORDER]: API_CART_TYPES.READY_STOCK,
+  [CART_TYPES.PREORDER]: API_CART_TYPES.PRE_ORDER,
+};
 
 function normalizeStr(s) {
   return String(s ?? "").trim().toLowerCase();
@@ -112,7 +122,6 @@ function getVariantAssets(product, variant) {
   return Array.isArray(assets) ? assets : [];
 }
 
-// chọn variant theo options color/size (match mềm)
 function getSelectedVariant(product, { colorId, size }) {
   if (!product?.variants?.length) return null;
 
@@ -155,7 +164,6 @@ function getOppositeTypeList(products, product, limit = 10) {
   const targetType = t === "FRAME" ? "LENS" : "FRAME";
   const curId = String(product.apiId || product._id || product.id || "");
 
-  // Lấy list đối nghịch type, loại chính nó, giới hạn số lượng
   return (products || [])
     .filter((p) => normType(p.type) === targetType)
     .filter((p) => String(p.apiId || p._id || p.id || "") !== curId)
@@ -163,7 +171,6 @@ function getOppositeTypeList(products, product, limit = 10) {
 }
 
 function pickIds(maybe) {
-  // accept: ["id1","id2"] or [{_id:"..."}, ...]
   if (!Array.isArray(maybe)) return [];
   return maybe
     .map((x) => (typeof x === "string" ? x : x?._id || x?.id || null))
@@ -171,7 +178,6 @@ function pickIds(maybe) {
 }
 
 function getCompatibilityIds(product) {
-  // Try multiple possible locations to be resilient
   const p = product || {};
   const specs = p.specs || {};
 
@@ -189,7 +195,6 @@ function getCompatibilityIds(product) {
     pickIds(specs?.common?.compatibleFrameIds) ||
     [];
 
-  // Fallback: if you store a single array of ids
   const withIds = pickIds(p.compatibleWithIds) || pickIds(specs?.common?.compatibleWithIds) || [];
 
   return {
@@ -206,15 +211,10 @@ function getCompatibleProducts(products, product) {
   if (type !== "FRAME" && type !== "LENS") return [];
 
   const { lensIds, frameIds, withIds } = getCompatibilityIds(product);
-
-  // Determine target type and id list to use
   const targetType = type === "FRAME" ? "LENS" : "FRAME";
   const targetIds = type === "FRAME" ? lensIds : frameIds;
-
-  // If backend uses one common list, use it as a fallback
   const idsToUse = targetIds.length ? targetIds : withIds;
 
-  // If still empty → nothing to show
   if (!idsToUse.length) return [];
 
   const idSet = new Set(idsToUse.map(String));
@@ -226,6 +226,80 @@ function getCompatibleProducts(products, product) {
       return idSet.has(pid);
     });
 }
+
+function buildCartCustomization({
+  product,
+  orderType,
+  colorId,
+  size,
+  readyNote,
+  rxOD,
+  rxOS,
+  rxPhoto,
+}) {
+  const colorObj = product?.colors?.find((x) => x.id === colorId);
+
+  const customization = {
+    selectedColor: colorObj?.name || colorObj?.label || colorId || undefined,
+    selectedSize: size || undefined,
+    note: readyNote || undefined,
+  };
+
+  if (product?.type === "LENS") {
+    if (orderType === "READY") {
+      customization.prescription = {
+        mode: "manual",
+        rightEye: {
+          cyl: rxOD?.CYL || "",
+          axis: rxOD?.AXIS || "",
+        },
+        leftEye: {
+          cyl: rxOS?.CYL || "",
+          axis: rxOS?.AXIS || "",
+        },
+      };
+    }
+
+    if (orderType === "CUSTOM" && rxPhoto?.uri) {
+      customization.prescription = {
+        mode: "attachment",
+        attachmentUrls: [rxPhoto.uri],
+      };
+    }
+  }
+
+  return customization;
+}
+
+function buildCartItemPayload({
+  product,
+  qty,
+  colorId,
+  size,
+  readyNote,
+  orderType,
+  rxOD,
+  rxOS,
+  rxPhoto,
+  selectedVariant,
+}) {
+  return {
+    productId: String(product?.apiId || product?._id || product?.id || ""),
+    variantId: selectedVariant?._id || selectedVariant?.id || undefined,
+    quantity: qty || 1,
+    customization: buildCartCustomization({
+      product,
+      orderType,
+      colorId,
+      size,
+      readyNote,
+      rxOD,
+      rxOS,
+      rxPhoto,
+    }),
+  };
+}
+
 /* -------------------- Screen -------------------- */
 
 export default function ProductDetailScreen({ navigation, route }) {
@@ -235,7 +309,6 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const { products } = useProducts();
   const [specsOpen, setSpecsOpen] = useState(true);
-
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const requireLogin = () => {
@@ -244,6 +317,19 @@ export default function ProductDetailScreen({ navigation, route }) {
       { text: "Đăng nhập", onPress: () => navigation.navigate("Login") },
     ]);
   };
+
+  const fallbackFromList = useMemo(() => {
+    if (!passedId) return null;
+    return products.find((p) => p.id === passedId) || null;
+  }, [passedId, products]);
+
+  const [product, setProduct] = useState(passedItem ?? fallbackFromList ?? null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [fav, setFav] = useState(false);
+
+  const apiId = useMemo(() => {
+    return passedItem?.apiId || passedItem?._id || passedId || null;
+  }, [passedItem, passedId]);
 
   useEffect(() => {
     let mounted = true;
@@ -268,18 +354,6 @@ export default function ProductDetailScreen({ navigation, route }) {
     };
   }, [token, product?.id]);
 
-  const fallbackFromList = useMemo(() => {
-    if (!passedId) return null;
-    return products.find((p) => p.id === passedId) || null;
-  }, [passedId, products]);
-
-  const [product, setProduct] = useState(passedItem ?? fallbackFromList ?? null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const apiId = useMemo(() => {
-    return passedItem?.apiId || passedItem?._id || passedId || null;
-  }, [passedItem, passedId]);
-
   useEffect(() => {
     let mounted = true;
     if (!apiId) return;
@@ -288,10 +362,8 @@ export default function ProductDetailScreen({ navigation, route }) {
       try {
         setIsRefreshing(true);
         const fresh = await fetchProductById(apiId);
-        console.log("Fetched fresh product by id", apiId, fresh);
         if (mounted && fresh) setProduct(fresh);
       } catch (e) {
-        // ignore
       } finally {
         if (mounted) setIsRefreshing(false);
       }
@@ -301,15 +373,6 @@ export default function ProductDetailScreen({ navigation, route }) {
       mounted = false;
     };
   }, [apiId]);
-
-  useEffect(() => {
-    const st = useCartStore.getState();
-    if (st && st.isHydrating) st.hydrate();
-  }, []);
-
-  const addItem = useCartStore((s) => s.addItem);
-
-  const [fav, setFav] = useState(false);
 
   const discountPct = useMemo(() => {
     if (!product) return 0;
@@ -356,7 +419,6 @@ export default function ProductDetailScreen({ navigation, route }) {
     qa: false,
   });
 
-  // ✅ selected variant + stock
   const selectedVariant = useMemo(() => {
     if (!product) return null;
     if (product.type === "FRAME") return getSelectedVariant(product, { colorId, size });
@@ -440,7 +502,6 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const variantStock = selectedVariant?.stock ?? product?.totalStock ?? 0;
   const isVariantOut = variantStock <= 0;
-
   const preorderEnabled = product?.preOrder?.enabled === true;
   const isPreorderMode = isVariantOut && preorderEnabled;
   const showPreorder = isPreorderMode;
@@ -482,13 +543,26 @@ export default function ProductDetailScreen({ navigation, route }) {
     }
   }, []);
 
-  const hasFrameInCart = () => {
-    const st = useCartStore.getState();
-    return [...(st.items || []), ...(st.preorderItems || [])].some((x) => x.product?.type === "FRAME");
+  const hasFrameInCart = async () => {
+    try {
+      const [readyCart, preorderCart] = await Promise.all([
+        getMyCartApi(API_CART_TYPES.READY_STOCK),
+        getMyCartApi(API_CART_TYPES.PRE_ORDER),
+      ]);
+
+      const readyItems = Array.isArray(readyCart?.items) ? readyCart.items : [];
+      const preorderItems = Array.isArray(preorderCart?.items) ? preorderCart.items : [];
+
+      return [...readyItems, ...preorderItems].some(
+        (x) => String(x?.type || "").toUpperCase() === "FRAME"
+      );
+    } catch {
+      return false;
+    }
   };
 
-  const doAddToCart = useCallback(() => {
-    if (!product) return;
+  const doAddToCart = useCallback(async () => {
+    if (!product) return false;
 
     if (product.type === "LENS") {
       const hasRx = isRxFilled(rxOD, rxOS);
@@ -496,99 +570,103 @@ export default function ProductDetailScreen({ navigation, route }) {
 
       if (orderType === "READY" && !hasRx) {
         Alert.alert("Thiếu thông số", "Vui lòng nhập đầy đủ thông số (OD/OS).");
-        return;
+        return false;
       }
+
       if (orderType === "CUSTOM" && !hasPhoto) {
         Alert.alert("Thiếu ảnh đơn kính", "Vui lòng tải ảnh đơn kính để tiếp tục.");
-        return;
+        return false;
       }
+    }
 
-      const c = product.colors?.find((x) => x.id === colorId);
+    try {
+      const uiCartType = isPreorderMode ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
+      const apiCartType = UI_TO_API_CART_TYPE[uiCartType] || API_CART_TYPES.READY_STOCK;
 
-      addItem({
+      const payload = buildCartItemPayload({
         product,
-        orderType: isPreorderMode ? "PREORDER" : orderType,
-        isPreorder: isPreorderMode,
         qty,
-
-        variantId: selectedVariant?._id || null,
-        variant: c ? { colorId, colorName: c?.name || c?.label || "—" } : null,
-        variantText: c ? `${c?.name || c?.label || "—"}` : null,
-
-        rxOD: orderType === "READY" ? rxOD : null,
-        rxOS: orderType === "READY" ? rxOS : null,
-        rxPhoto: orderType === "CUSTOM" ? rxPhoto : null,
+        colorId,
+        size,
+        readyNote,
+        orderType: isPreorderMode ? "PREORDER" : orderType,
+        rxOD,
+        rxOS,
+        rxPhoto,
+        selectedVariant,
       });
+
+      await upsertCartItemApi(apiCartType, payload);
+      changeCartBadgeQty(qty);
 
       Toast.show({
         type: "success",
         text1: isPreorderMode ? "Đã đặt trước" : "Đã thêm vào giỏ",
         text2: product.name,
       });
-      return;
+
+      return true;
+    } catch (err) {
+      const data = err?.response?.data || {};
+      const errors = Array.isArray(data?.errors)
+        ? data.errors.map((e) => e?.msg).filter(Boolean).join("\n")
+        : null;
+      const message = errors || data?.message || data?.error || err?.message;
+
+      Alert.alert(
+        "Không thêm vào giỏ được",
+        message || "Đã có lỗi xảy ra. Vui lòng thử lại.",
+      );
+      return false;
     }
-
-    const c = product.colors?.find((x) => x.id === colorId);
-
-    addItem({
-      product,
-      orderType: isPreorderMode ? "PREORDER" : orderType,
-      isPreorder: isPreorderMode,
-      qty,
-      variantId: selectedVariant?._id || null,
-      variant:
-        product.type === "FRAME"
-          ? { colorId, colorName: c?.name || c?.label || "—", size }
-          : { size },
-      variantText:
-        product.type === "FRAME" ? `${c?.name || "—"} • ${size}` : size ? `Size ${size}` : null,
-      readyNote: orderType === "READY" ? readyNote : null,
-    });
-
-    Toast.show({
-      type: "success",
-      text1: isPreorderMode ? "Đã đặt trước" : "Đã thêm vào giỏ",
-      text2: product.name,
-    });
   }, [
     product,
-    orderType,
     qty,
-    addItem,
     colorId,
     size,
     readyNote,
-    selectedVariant,
+    orderType,
     rxOD,
     rxOS,
     rxPhoto,
-    isVariantOut,
+    selectedVariant,
     isPreorderMode,
   ]);
 
-  const onAddToCart = useCallback(() => {
+  const onAddToCart = useCallback(async () => {
     if (!token) return requireLogin();
     if (!product || !canBuy) return;
 
-    if (product.type === "LENS" && !hasFrameInCart()) {
+    if (product.type === "LENS" && !(await hasFrameInCart())) {
       Alert.alert(
         "Bạn đang mua tròng riêng",
         "Nếu bạn chưa có gọng phù hợp, bạn có thể thêm gọng để shop hỗ trợ lắp và căn chỉnh tốt hơn.",
         [
-          { text: isPreorderMode ? "Đặt trước (tròng)" : "Thêm vào giỏ (tròng)", onPress: doAddToCart },
-          { text: "Chọn thêm gọng", onPress: () => navigation.navigate("Tabs", { screen: "ProductsTab" }) },
+          {
+            text: isPreorderMode ? "Đặt trước (tròng)" : "Thêm vào giỏ (tròng)",
+            onPress: async () => {
+              await doAddToCart();
+            },
+          },
+          {
+            text: "Chọn thêm gọng",
+            onPress: () => navigation.navigate("Tabs", { screen: "ProductsTab" }),
+          },
           { text: "Hủy", style: "cancel" },
         ]
       );
       return;
     }
 
-    doAddToCart();
+    await doAddToCart();
   }, [token, product, canBuy, doAddToCart, navigation, isPreorderMode]);
 
-  const onBuyNow = () => {
+  const onBuyNow = async () => {
     if (!token) return requireLogin();
-    onAddToCart();
+
+    const ok = await doAddToCart();
+    if (!ok) return;
+
     navigation.navigate("CartFlow", {
       screen: "Cart",
       params: { cartType: isPreorderMode ? CART_TYPES.PREORDER : CART_TYPES.ORDER },
@@ -659,7 +737,7 @@ export default function ProductDetailScreen({ navigation, route }) {
   if (!product) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <HeaderBar navigation={navigation} title="Chi tiết sản phẩm" />
+        <HeaderBar navigation={navigation} title="Chi tiết sản phẩm" isPreorderMode={isPreorderMode} />
         <View style={{ padding: 16 }}>
           <Text>Không tìm thấy sản phẩm.</Text>
         </View>
@@ -1433,8 +1511,6 @@ function CompatibleList({ navigation, items, title }) {
   );
 }
 
-/* -------------------- Small UI -------------------- */
-
 function Card({ children, style }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
@@ -1487,7 +1563,6 @@ function RxInput({ label, placeholder, value, onChangeText }) {
   );
 }
 
-/* -------------------- Styles -------------------- */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F7FB" },
   content: { paddingHorizontal: 16, paddingBottom: 16 },

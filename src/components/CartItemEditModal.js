@@ -1,4 +1,3 @@
-// components/CartItemEditModal.js
 import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
@@ -22,34 +21,45 @@ function isRxFilled(rxOD, rxOS) {
   return okOD && okOS;
 }
 
+function toLegacyEye(eye = {}) {
+  return {
+    CYL: String(eye?.cyl ?? eye?.CYL ?? ""),
+    AXIS: String(eye?.axis ?? eye?.AXIS ?? ""),
+  };
+}
+
 export default function CartItemEditModal({ visible, cartItem, onClose, onSave }) {
   const ci = cartItem;
   const product = ci?.product;
-  const productType = product?.type; // "LENS" | "FRAME"
+  const productType = product?.type;
   const isOut = (product?.totalStock ?? 1) <= 0 && !product?.preOrder?.enabled;
 
-  /* ── LENS state ──────────────────────────────────────── */
   const [rxOD, setRxOD] = useState({ CYL: "", AXIS: "" });
   const [rxOS, setRxOS] = useState({ CYL: "", AXIS: "" });
   const [rxPhoto, setRxPhoto] = useState(null);
-
-  /* ── FRAME state ─────────────────────────────────────── */
   const [colorId, setColorId] = useState(null);
   const [size, setSize] = useState(null);
 
-  /* populate from existing item when modal opens */
   useEffect(() => {
     if (!visible || !ci) return;
 
     if (productType === "LENS") {
-      setRxOD(ci.rxOD || { CYL: "", AXIS: "" });
-      setRxOS(ci.rxOS || { CYL: "", AXIS: "" });
-      setRxPhoto(ci.rxPhoto || null);
+      setRxOD(toLegacyEye(ci?.customization?.prescription?.rightEye));
+      setRxOS(toLegacyEye(ci?.customization?.prescription?.leftEye));
+      const attachmentUrl = ci?.customization?.prescription?.attachmentUrls?.[0] || null;
+      setRxPhoto(attachmentUrl ? { uri: attachmentUrl, name: "rx.jpg", type: "image/jpeg" } : null);
     } else {
-      setColorId(ci.variant?.colorId || product?.colors?.[0]?.id || null);
-      setSize(ci.variant?.size || product?.sizes?.[0] || null);
+      const selectedColor = ci?.customization?.selectedColor;
+      const matchedColor =
+        product?.colors?.find(
+          (c) =>
+            String(c.id) === String(selectedColor) ||
+            String(c.name || c.label || "").toLowerCase() === String(selectedColor || "").toLowerCase(),
+        ) || null;
+      setColorId(matchedColor?.id || product?.colors?.[0]?.id || null);
+      setSize(ci?.customization?.selectedSize || product?.sizes?.[0] || null);
     }
-  }, [visible, ci]);
+  }, [visible, ci, productType, product]);
 
   const pickRxPhoto = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -84,24 +94,35 @@ export default function CartItemEditModal({ visible, cartItem, onClose, onSave }
         return;
       }
 
-      const prescriptionFilled =
-        ot === "READY"
-          ? isRxFilled(rxOD, rxOS)
-          : ot === "CUSTOM"
-          ? Boolean(rxPhoto?.uri)
-          : isRxFilled(rxOD, rxOS) || Boolean(rxPhoto?.uri);
-
-      onSave?.({ rxOD, rxOS, rxPhoto, prescriptionFilled });
+      onSave?.({
+        customization: {
+          ...(ci?.customization || {}),
+          prescription: {
+            ...(ci?.customization?.prescription || {}),
+            mode: ot === "CUSTOM" ? "upload" : "manual",
+            rightEye: {
+              ...(ci?.customization?.prescription?.rightEye || {}),
+              cyl: String(rxOD?.CYL ?? ""),
+              axis: String(rxOD?.AXIS ?? ""),
+            },
+            leftEye: {
+              ...(ci?.customization?.prescription?.leftEye || {}),
+              cyl: String(rxOS?.CYL ?? ""),
+              axis: String(rxOS?.AXIS ?? ""),
+            },
+            attachmentUrls: rxPhoto?.uri ? [rxPhoto.uri] : [],
+          },
+        },
+      });
     } else {
-      // FRAME
       const colorObj = product?.colors?.find((c) => c.id === colorId);
-      const variant = {
-        colorId: colorId || null,
-        colorName: colorObj?.name || colorObj?.label || "—",
-        size: size || null,
-      };
-      const variantText = `Mau: ${colorObj?.name || "—"}, Size: ${size || "—"}`;
-      onSave?.({ variant, variantText });
+      onSave?.({
+        customization: {
+          ...(ci?.customization || {}),
+          selectedColor: colorObj?.name || colorObj?.label || colorId || "",
+          selectedSize: size || "",
+        },
+      });
     }
 
     onClose?.();
@@ -110,15 +131,9 @@ export default function CartItemEditModal({ visible, cartItem, onClose, onSave }
   if (!ci || !product) return null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.sheet}>
-          {/* Header */}
           <View style={styles.sheetHeader}>
             <View style={styles.sheetHandleBar} />
           </View>
@@ -130,18 +145,11 @@ export default function CartItemEditModal({ visible, cartItem, onClose, onSave }
             </TouchableOpacity>
           </View>
 
-          {/* Product summary */}
           <View style={styles.productSummary}>
             <Image source={{ uri: product.image }} style={styles.productThumb} />
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
               <Text style={styles.productPrice}>{formatVND(product.price)}</Text>
-              {isOut && (
-                <View style={styles.outOfStockPill}>
-                  <Ionicons name="alert-circle" size={12} color="#EF4444" />
-                  <Text style={styles.outOfStockText}>Sản phẩm đã hết hàng</Text>
-                </View>
-              )}
             </View>
           </View>
 
@@ -153,11 +161,7 @@ export default function CartItemEditModal({ visible, cartItem, onClose, onSave }
               </Text>
             </View>
           ) : (
-            <ScrollView
-              style={styles.formScroll}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.formContent}
-            >
+            <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent}>
               {productType === "LENS" ? (
                 <LensEditForm
                   ci={ci}
@@ -180,21 +184,11 @@ export default function CartItemEditModal({ visible, cartItem, onClose, onSave }
             </ScrollView>
           )}
 
-          {/* Footer */}
           <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={onClose}
-              activeOpacity={0.85}
-            >
+            <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.85}>
               <Text style={styles.cancelText}>Hủy</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.saveBtn, isOut && styles.saveBtnDisabled]}
-              onPress={handleSave}
-              disabled={isOut}
-              activeOpacity={0.9}
-            >
+            <TouchableOpacity style={[styles.saveBtn, isOut && styles.saveBtnDisabled]} onPress={handleSave} disabled={isOut} activeOpacity={0.9}>
               <Ionicons name="checkmark" size={16} color={isOut ? "#9CA3AF" : "#FFFFFF"} />
               <Text style={[styles.saveText, isOut && styles.saveTextDisabled]}>Lưu thay đổi</Text>
             </TouchableOpacity>
@@ -204,8 +198,6 @@ export default function CartItemEditModal({ visible, cartItem, onClose, onSave }
     </Modal>
   );
 }
-
-/* ── Sub-forms ──────────────────────────────────────────── */
 
 function LensEditForm({ ci, rxOD, rxOS, setRxOD, setRxOS, rxPhoto, pickRxPhoto }) {
   const ot = ci?.orderType;
@@ -218,8 +210,7 @@ function LensEditForm({ ci, rxOD, rxOS, setRxOD, setRxOS, rxPhoto, pickRxPhoto }
       <View style={styles.orderTypeBadge}>
         <Ionicons name="information-circle-outline" size={14} color="#2563EB" />
         <Text style={styles.orderTypeBadgeText}>
-          Loại đơn:{" "}
-          {{ READY: "Nhận thông số", CUSTOM: "Làm theo đơn", PREORDER: "Đặt trước" }[ot] || ot}
+          Loại đơn: {{ READY: "Nhập thông số", CUSTOM: "Làm theo đơn", PREORDER: "Đặt trước" }[ot] || ot}
         </Text>
       </View>
 
@@ -227,30 +218,14 @@ function LensEditForm({ ci, rxOD, rxOS, setRxOD, setRxOS, rxPhoto, pickRxPhoto }
         <>
           <SectionLabel label="Mắt phải (OD)" />
           <View style={styles.rxRow}>
-            <RxField
-              label="CYL"
-              value={rxOD.CYL}
-              onChangeText={(t) => setRxOD((p) => ({ ...p, CYL: t }))}
-            />
-            <RxField
-              label="AXIS"
-              value={rxOD.AXIS}
-              onChangeText={(t) => setRxOD((p) => ({ ...p, AXIS: t }))}
-            />
+            <RxField label="CYL" value={rxOD.CYL} onChangeText={(t) => setRxOD((p) => ({ ...p, CYL: t }))} />
+            <RxField label="AXIS" value={rxOD.AXIS} onChangeText={(t) => setRxOD((p) => ({ ...p, AXIS: t }))} />
           </View>
 
           <SectionLabel label="Mắt trái (OS)" />
           <View style={styles.rxRow}>
-            <RxField
-              label="CYL"
-              value={rxOS.CYL}
-              onChangeText={(t) => setRxOS((p) => ({ ...p, CYL: t }))}
-            />
-            <RxField
-              label="AXIS"
-              value={rxOS.AXIS}
-              onChangeText={(t) => setRxOS((p) => ({ ...p, AXIS: t }))}
-            />
+            <RxField label="CYL" value={rxOS.CYL} onChangeText={(t) => setRxOS((p) => ({ ...p, CYL: t }))} />
+            <RxField label="AXIS" value={rxOS.AXIS} onChangeText={(t) => setRxOS((p) => ({ ...p, AXIS: t }))} />
           </View>
         </>
       )}
@@ -258,26 +233,18 @@ function LensEditForm({ ci, rxOD, rxOS, setRxOD, setRxOS, rxPhoto, pickRxPhoto }
       {(showPhoto || showBoth) && (
         <>
           {showBoth && <SectionLabel label="Hoặc tải ảnh đơn kính" />}
-          <TouchableOpacity
-            style={styles.photoBtn}
-            onPress={pickRxPhoto}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name={rxPhoto?.uri ? "image" : "cloud-upload-outline"}
-              size={18}
-              color="#2563EB"
-            />
+          <TouchableOpacity style={styles.photoBtn} onPress={pickRxPhoto} activeOpacity={0.85}>
+            <Ionicons name={rxPhoto?.uri ? "image" : "cloud-upload-outline"} size={18} color="#2563EB" />
             <Text style={styles.photoBtnText}>
               {rxPhoto?.uri ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}
             </Text>
           </TouchableOpacity>
-          {rxPhoto?.uri && (
+          {rxPhoto?.uri ? (
             <View style={styles.photoPreviewRow}>
               <Ionicons name="checkmark-circle" size={14} color="#15803D" />
               <Text style={styles.photoPreviewText}>Đã chọn ảnh</Text>
             </View>
-          )}
+          ) : null}
         </>
       )}
     </View>
@@ -290,7 +257,7 @@ function FrameEditForm({ product, colorId, setColorId, size, setSize }) {
 
   return (
     <View style={{ gap: 16 }}>
-      {hasColors && (
+      {hasColors ? (
         <View>
           <SectionLabel label="Màu sắc" />
           <View style={styles.colorRow}>
@@ -304,24 +271,19 @@ function FrameEditForm({ product, colorId, setColorId, size, setSize }) {
                   style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
                 >
                   <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
-                  {active && (
+                  {active ? (
                     <View style={styles.colorDotCheck}>
                       <Ionicons name="checkmark" size={10} color="#FFFFFF" />
                     </View>
-                  )}
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
           </View>
-          {colorId && (
-            <Text style={styles.selectedLabel}>
-              Đã chọn: {product.colors.find((c) => c.id === colorId)?.name || "—"}
-            </Text>
-          )}
         </View>
-      )}
+      ) : null}
 
-      {hasSizes && (
+      {hasSizes ? (
         <View>
           <SectionLabel label="Kích thước" />
           <View style={styles.sizeRow}>
@@ -340,18 +302,10 @@ function FrameEditForm({ product, colorId, setColorId, size, setSize }) {
             })}
           </View>
         </View>
-      )}
-
-      {!hasColors && !hasSizes && (
-        <Text style={styles.noOptionsText}>
-          Sản phẩm này không có tùy chọn màu sắc hoặc kích thước.
-        </Text>
-      )}
+      ) : null}
     </View>
   );
 }
-
-/* ── Atoms ─────────────────────────────────────────────── */
 
 function SectionLabel({ label }) {
   return <Text style={styles.sectionLabel}>{label}</Text>;
@@ -373,218 +327,47 @@ function RxField({ label, value, onChangeText }) {
   );
 }
 
-/* ── Styles ─────────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "88%",
-    paddingBottom: 32,
-  },
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "88%", paddingBottom: 32 },
   sheetHeader: { alignItems: "center", paddingTop: 10 },
-  sheetHandleBar: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#E5E7EB",
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
-  },
+  sheetHandleBar: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#E5E7EB" },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 },
   sheetTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  productSummary: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 12,
-    backgroundColor: "#F6F7FB",
-    borderRadius: 16,
-  },
-  productThumb: {
-    width: 56,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: "#E5E7EB",
-  },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
+  productSummary: { flexDirection: "row", alignItems: "center", marginHorizontal: 16, marginBottom: 12, padding: 12, backgroundColor: "#F6F7FB", borderRadius: 16 },
+  productThumb: { width: 56, height: 46, borderRadius: 10, backgroundColor: "#E5E7EB" },
   productName: { fontSize: 13, fontWeight: "900", color: "#111827", marginBottom: 4 },
   productPrice: { fontSize: 12, fontWeight: "800", color: "#EF4444" },
-  outOfStockPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 4,
-  },
-  outOfStockText: { fontSize: 11, fontWeight: "800", color: "#EF4444" },
-
-  disabledNotice: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 12,
-    backgroundColor: "#FFF7ED",
-    borderRadius: 14,
-    borderLeftWidth: 3,
-    borderLeftColor: "#F59E0B",
-  },
-  disabledNoticeText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#92400E",
-    lineHeight: 18,
-  },
-
+  disabledNotice: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginHorizontal: 16, marginBottom: 12, padding: 12, backgroundColor: "#FFF7ED", borderRadius: 14, borderLeftWidth: 3, borderLeftColor: "#F59E0B" },
+  disabledNoticeText: { flex: 1, fontSize: 13, fontWeight: "700", color: "#92400E", lineHeight: 18 },
   formScroll: { maxHeight: 380 },
   formContent: { paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4 },
-
-  orderTypeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#EFF6FF",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-  },
+  orderTypeBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#EFF6FF", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12 },
   orderTypeBadgeText: { fontSize: 12.5, fontWeight: "800", color: "#2563EB" },
-
   sectionLabel: { fontSize: 13, fontWeight: "900", color: "#111827", marginBottom: 8 },
-
   rxRow: { flexDirection: "row", gap: 12 },
   rxCell: { flex: 1 },
   rxLabel: { fontSize: 11.5, fontWeight: "800", color: "#6B7280", marginBottom: 6 },
-  rxInput: {
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#E5E7EB",
-    paddingHorizontal: 12,
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#111827",
-    backgroundColor: "#FAFAFA",
-  },
-
-  photoBtn: {
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#2563EB",
-    borderStyle: "dashed",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#F0F6FF",
-  },
+  rxInput: { height: 44, borderRadius: 12, borderWidth: 1.5, borderColor: "#E5E7EB", paddingHorizontal: 12, fontSize: 14, fontWeight: "800", color: "#111827", backgroundColor: "#FAFAFA" },
+  photoBtn: { height: 46, borderRadius: 12, borderWidth: 1.5, borderColor: "#2563EB", borderStyle: "dashed", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#F0F6FF" },
   photoBtnText: { fontSize: 13, fontWeight: "800", color: "#2563EB" },
-  photoPreviewRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: -6,
-  },
+  photoPreviewRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: -6 },
   photoPreviewText: { fontSize: 12, fontWeight: "700", color: "#15803D" },
-
   colorRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
-  colorDotWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
+  colorDotWrap: { width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", position: "relative" },
   colorDotWrapActive: { borderColor: "#111827", borderWidth: 2.5 },
   colorDot: { width: 22, height: 22, borderRadius: 11 },
-  colorDotCheck: {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "#111827",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  selectedLabel: { marginTop: 6, fontSize: 11.5, fontWeight: "700", color: "#6B7280" },
-
+  colorDotCheck: { position: "absolute", bottom: -2, right: -2, width: 16, height: 16, borderRadius: 8, backgroundColor: "#111827", alignItems: "center", justifyContent: "center" },
   sizeRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
-  sizePill: {
-    minWidth: 46,
-    height: 40,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  sizePillActive: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
-  },
+  sizePill: { minWidth: 46, height: 40, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "transparent" },
+  sizePillActive: { backgroundColor: "#111827", borderColor: "#111827" },
   sizeText: { fontSize: 13, fontWeight: "900", color: "#374151" },
   sizeTextActive: { color: "#FFFFFF" },
-
-  noOptionsText: { fontSize: 13, fontWeight: "700", color: "#9CA3AF", textAlign: "center", marginTop: 8 },
-
-  footer: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
-  },
-  cancelBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-  },
+  footer: { flexDirection: "row", paddingHorizontal: 16, paddingTop: 12, gap: 12, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
+  cancelBtn: { flex: 1, height: 46, borderRadius: 14, borderWidth: 1.5, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
   cancelText: { fontSize: 14, fontWeight: "900", color: "#374151" },
-  saveBtn: {
-    flex: 2,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: "#2563EB",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
+  saveBtn: { flex: 2, height: 46, borderRadius: 14, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
   saveBtnDisabled: { backgroundColor: "#E5E7EB" },
   saveText: { fontSize: 14, fontWeight: "900", color: "#FFFFFF" },
   saveTextDisabled: { color: "#9CA3AF" },

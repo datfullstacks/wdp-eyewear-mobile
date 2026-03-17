@@ -8,8 +8,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { CART_TYPES, useCartStore } from "../store/cartStore";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { CART_TYPES } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
 import {
   buildCheckoutPayload,
@@ -29,7 +29,7 @@ import {
   getWardsApi,
 } from "../services/locationService";
 import { validatePromotionApi } from "../services/promotionService";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, FontAwesome6 } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 
 const SHIPPING_METHODS = [
@@ -122,15 +122,22 @@ const normalizeAddressRecord = (raw = {}) => ({
 const hasLocationIds = (addr) =>
   Boolean(
     addr?.provinceId &&
-    addr?.districtId &&
-    addr?.wardCode &&
-    String(addr.provinceId).trim() &&
-    String(addr.districtId).trim() &&
-    String(addr.wardCode).trim(),
+      addr?.districtId &&
+      addr?.wardCode &&
+      String(addr.provinceId).trim() &&
+      String(addr.districtId).trim() &&
+      String(addr.wardCode).trim(),
   );
 
 export default function CheckoutScreen({ navigation, route }) {
+  const insets = useSafeAreaInsets();
   const initialQuote = route?.params?.quote || null;
+  const initialCartItems = Array.isArray(route?.params?.cartItems)
+    ? route.params.cartItems
+    : [];
+  const initialCheckoutItems = Array.isArray(route?.params?.checkoutItems)
+    ? route.params.checkoutItems
+    : [];
   const initialQuoteMeta = route?.params?.quoteMeta || {};
 
   const autoNote = String(initialQuoteMeta.autoNote || "").trim();
@@ -152,16 +159,11 @@ export default function CheckoutScreen({ navigation, route }) {
   );
   const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
 
-  const items = useCartStore((s) => s.items);
-  const preorderItems = useCartStore((s) => s.preorderItems);
   const cartType =
     route?.params?.quoteMeta?.cartType === CART_TYPES.PREORDER
       ? CART_TYPES.PREORDER
       : CART_TYPES.ORDER;
-  const cartItems = cartType === CART_TYPES.PREORDER ? preorderItems : items;
-
-  const isHydrating = useCartStore((s) => s.isHydrating);
-  const hydrate = useCartStore((s) => s.hydrate);
+  const cartItems = initialCartItems;
   const token = useAuthStore((s) => s.token);
 
   const [address, setAddress] = useState(null);
@@ -206,12 +208,15 @@ export default function CheckoutScreen({ navigation, route }) {
     () => cartItems.some((it) => Boolean(it?.isPreorder)),
     [cartItems],
   );
-  const paymentMethods = PAYMENT_METHODS;
+  
 
+  const paymentMethods = PAYMENT_METHODS;
   const cartDiscountAmount = initialQuoteMeta.discountAmount;
 
   const checkoutItems = useMemo(() => {
-    const built = buildCheckoutItems(cartItems);
+    const built = initialCheckoutItems.length
+      ? buildCheckoutItems(initialCheckoutItems)
+      : buildCheckoutItems(cartItems);
     return built.map((it, idx) => {
       const ci = cartItems[idx];
       return {
@@ -225,6 +230,7 @@ export default function CheckoutScreen({ navigation, route }) {
   const subtotal = quote?.subtotal ?? cartSubtotal;
   const discount = quote?.discountAmount ?? 0;
   const shippingOptions = quote?.shippingOptions || null;
+
   const shippingMethods = useMemo(
     () =>
       SHIPPING_METHODS.map((method) => {
@@ -239,6 +245,7 @@ export default function CheckoutScreen({ navigation, route }) {
       }),
     [shippingOptions],
   );
+
   const selectedShippingOption = shippingOptions?.[shippingId] || null;
   const shipping = quote?.shippingFee ?? selectedShippingOption?.fee ?? 0;
   const total = quote?.total ?? Math.max(0, subtotal - discount + shipping);
@@ -246,11 +253,8 @@ export default function CheckoutScreen({ navigation, route }) {
   const payLater = quote?.payLater ?? Math.max(0, total - payNow);
 
   useEffect(() => {
-    if (isHydrating) hydrate();
-  }, [isHydrating, hydrate]);
-
-  useEffect(() => {
     let active = true;
+
     getProvincesApi()
       .then((data) => {
         if (!active) return;
@@ -268,6 +272,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
   useEffect(() => {
     if (!token) return;
+
     let active = true;
     setAddressLoading(true);
 
@@ -314,6 +319,7 @@ export default function CheckoutScreen({ navigation, route }) {
       setWards([]);
       return;
     }
+
     let active = true;
     getDistrictsApi(draftAddress.provinceId)
       .then((data) => {
@@ -326,6 +332,7 @@ export default function CheckoutScreen({ navigation, route }) {
         setDistricts([]);
         setWards([]);
       });
+
     return () => {
       active = false;
     };
@@ -336,6 +343,7 @@ export default function CheckoutScreen({ navigation, route }) {
       setWards([]);
       return;
     }
+
     let active = true;
     getWardsApi(draftAddress.districtId)
       .then((data) => {
@@ -346,6 +354,7 @@ export default function CheckoutScreen({ navigation, route }) {
         if (!active) return;
         setWards([]);
       });
+
     return () => {
       active = false;
     };
@@ -484,11 +493,11 @@ export default function CheckoutScreen({ navigation, route }) {
 
     const hasValue = Boolean(
       cleaned.fullName ||
-      cleaned.phone ||
-      cleaned.line1 ||
-      cleaned.ward ||
-      cleaned.district ||
-      cleaned.province,
+        cleaned.phone ||
+        cleaned.line1 ||
+        cleaned.ward ||
+        cleaned.district ||
+        cleaned.province,
     );
 
     if (!hasValue) {
@@ -570,6 +579,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
         const nextAddress =
           await refreshAndSelectDefaultAddress(selectedFallback);
+
         setDraftAddress({
           ...EMPTY_ADDRESS,
           ...(nextAddress || selectedFallback),
@@ -610,23 +620,23 @@ export default function CheckoutScreen({ navigation, route }) {
 
   const hasAddress = Boolean(
     address?.fullName ||
-    address?.phone ||
-    address?.line1 ||
-    address?.ward ||
-    address?.district ||
-    address?.province,
+      address?.phone ||
+      address?.line1 ||
+      address?.ward ||
+      address?.district ||
+      address?.province,
   );
 
   const addressComplete = Boolean(
     address?.fullName &&
-    address?.phone &&
-    address?.line1 &&
-    address?.ward &&
-    address?.wardCode &&
-    address?.district &&
-    address?.districtId &&
-    address?.province &&
-    address?.provinceId,
+      address?.phone &&
+      address?.line1 &&
+      address?.ward &&
+      address?.wardCode &&
+      address?.district &&
+      address?.districtId &&
+      address?.province &&
+      address?.provinceId,
   );
 
   const canSubmitOrder = Boolean(
@@ -694,9 +704,8 @@ export default function CheckoutScreen({ navigation, route }) {
 
   const applyVoucher = async () => {
     if (isApplyingVoucher) return;
-    const code = String(voucherInput || "")
-      .trim()
-      .toUpperCase();
+
+    const code = String(voucherInput || "").trim().toUpperCase();
 
     if (!code) {
       setAppliedVoucherCode("");
@@ -793,7 +802,6 @@ export default function CheckoutScreen({ navigation, route }) {
             : undefined,
         voucherCode: appliedVoucherCode || undefined,
         cartType: API_CART_TYPE[cartType] || "ready_stock",
-        paymentMethod: paymentId || "sepay",
       });
 
       const data = await createCheckout(payload);
@@ -910,17 +918,23 @@ export default function CheckoutScreen({ navigation, route }) {
         shippingAddress: address,
         items: checkoutItems.map((it) => ({
           name:
-            cartItems.find((x) => x.product?.id === it.productId)?.product
-              ?.name || "Sản phẩm",
+            cartItems.find(
+              (x) =>
+                String(x?.productId || x?.product?.apiId || x?.product?._id || x?.product?.id || "") ===
+                String(it.productId),
+            )?.product?.name || "Sản phẩm",
           qty: it.quantity,
           price:
-            cartItems.find((x) => x.product?.id === it.productId)?.product
-              ?.price || 0,
+            cartItems.find(
+              (x) =>
+                String(x?.productId || x?.product?.apiId || x?.product?._id || x?.product?.id || "") ===
+                String(it.productId),
+            )?.product?.price || 0,
           preorder: Boolean(it.isPreorder),
         })),
       };
 
-      console.log("Note:", mergedNote);
+      console.log("Note: ", mergedNote);
       navigation.navigate("CheckoutStatus", { order: orderPayload, cartType });
     } catch (err) {
       const data = err?.response?.data || {};
@@ -940,28 +954,52 @@ export default function CheckoutScreen({ navigation, route }) {
     }
   };
 
+  const handleCancelCheckout = () => {
+    Alert.alert(
+      "Hủy mua hàng",
+      "Bạn có chắc muốn hủy mua hàng và quay lại giỏ hàng không?",
+      [
+        {
+          text: "Không",
+          style: "cancel",
+        },
+        {
+          text: "Xác nhận",
+          style: "destructive",
+          onPress: () => {
+            if (navigation?.canGoBack?.()) {
+              navigation.goBack();
+            }
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
+            activeOpacity={0.85}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="chevron-back" size={22} color="#111827" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Thanh toán</Text>
+        </View>
+      </View>
+
       <View style={styles.container}>
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Math.max(insets.bottom + 24, 36) },
+          ]}
         >
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <TouchableOpacity
-                onPress={() =>
-                  navigation?.canGoBack?.() ? navigation.goBack() : null
-                }
-                activeOpacity={0.85}
-                style={styles.iconBtn}
-              >
-                <Ionicons name="chevron-back" size={22} color="#111827" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Thanh toán</Text>
-            </View>
-          </View>
-
           <View style={styles.card}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
@@ -1316,6 +1354,7 @@ export default function CheckoutScreen({ navigation, route }) {
                 const active = m.id === shippingId;
                 const disabled =
                   addressComplete && shippingOptions ? !m.available : false;
+
                 return (
                   <TouchableOpacity
                     key={m.id}
@@ -1498,6 +1537,7 @@ export default function CheckoutScreen({ navigation, route }) {
             {quoteLoading ? (
               <Text style={styles.quoteHint}>Đang cập nhật giá...</Text>
             ) : null}
+
             {quoteError ? (
               <Text style={styles.quoteError}>
                 {quoteErrorMessage || "Không lấy được báo giá mới."}
@@ -1510,13 +1550,38 @@ export default function CheckoutScreen({ navigation, route }) {
             style={[
               styles.continueBtn,
               (!canSubmitOrder || isSubmitting) && styles.continueBtnDisabled,
+              {
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              },
             ]}
             onPress={checkoutOrder}
             disabled={isSubmitting || !checkoutItems.length || !canSubmitOrder}
           >
+            <FontAwesome6 name="money-bill-wave" size={16} color="white" />
             <Text style={styles.continueText}>
               {isSubmitting ? "Đang tạo đơn..." : "Tiếp tục"}
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={[
+              styles.cancelBtn,
+              {
+                marginBottom: insets.bottom > 0 ? insets.bottom + 8 : 20,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              },
+            ]}
+            onPress={handleCancelCheckout}
+          >
+            <Ionicons name="close-circle-outline" size={16} color="#B91C1C" />
+            <Text style={styles.cancelText}>Hủy</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -1526,17 +1591,28 @@ export default function CheckoutScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F7FB" },
-  container: { flex: 1 },
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
+
   header: {
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  headerTitle: { fontSize: 18, fontWeight: "900", color: "#111827" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  container: { flex: 1 },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
 
   card: {
     marginTop: 12,
@@ -1577,6 +1653,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#9CA3AF",
   },
+
   savedAddressList: { marginTop: 14, gap: 10 },
   savedAddressTitle: { fontSize: 12.5, fontWeight: "900", color: "#111827" },
   savedAddressItem: {
@@ -1742,6 +1819,7 @@ const styles = StyleSheet.create({
     color: "#111827",
     backgroundColor: "#FFFFFF",
   },
+
   voucherRow: {
     marginTop: 10,
     flexDirection: "row",
@@ -1821,11 +1899,19 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+  cancelBtn: {
+    marginTop: 10,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
     alignItems: "center",
     justifyContent: "center",
+  },
+  cancelText: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#B91C1C",
   },
 });
