@@ -1,27 +1,37 @@
-﻿// components/CartIconButton.js
-import React from "react";
+// components/CartIconButton.js
+import React, { useEffect, useState } from "react";
 import { TouchableOpacity, View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useCartStore } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
+import {
+  getCartBadgeQty,
+  refreshCartBadgeQty,
+  setCartBadgeQty,
+  subscribeCartBadgeQty,
+} from "../services/cartService";
 
 export default function CartIconButton({ onPress }) {
   const token = useAuthStore((s) => s.token);
+  const [qty, setQty] = useState(() => getCartBadgeQty());
 
-  const items = useCartStore((s) => s.items);
-  const preorderItems = useCartStore((s) => s.preorderItems);
-  const isHydrating = useCartStore((s) => s.isHydrating);
+  useEffect(() => {
+    const unsubscribe = subscribeCartBadgeQty(setQty);
 
-  const qty = token
-    ? [...items, ...preorderItems].reduce((sum, it) => sum + (it.qty || 0), 0)
-    : 0;
+    if (!token) {
+      setCartBadgeQty(0);
+      return unsubscribe;
+    }
+
+    refreshCartBadgeQty();
+    return unsubscribe;
+  }, [token]);
 
   return (
     <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={onPress}>
-      <Ionicons name="cart-outline" size={25} color="blue" />
-      {token && !isHydrating && qty > 0 ? (
+      <Ionicons name="cart-outline" size={25} color="black" />
+      {token && qty > 0 ? (
         <View style={styles.cartDot}>
-          <Text style={styles.cartDotText}>{qty > 9 ? "9+" : String(qty)}</Text>
+          <Text style={styles.cartDotText}>{qty > 99 ? "99+" : String(qty)}</Text>
         </View>
       ) : null}
     </TouchableOpacity>
@@ -41,8 +51,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: -6,
     top: -6,
-    width: 18,
+    minWidth: 18,
     height: 18,
+    paddingHorizontal: 4,
     borderRadius: 9,
     backgroundColor: "#EF4444",
     alignItems: "center",
@@ -50,4 +61,3 @@ const styles = StyleSheet.create({
   },
   cartDotText: { color: "white", fontSize: 11, fontWeight: "800" },
 });
-

@@ -78,18 +78,19 @@ function resolveTargetCart(state, key, cartType) {
 export const useCartStore = create((set, get) => ({
   items: [],
   preorderItems: [],
+  badgeQty: 0,
   isHydrating: true,
   userKey: null,
 
   setUser: async (userKey) => {
-    set({ userKey: userKey || null, isHydrating: true, items: [], preorderItems: [] });
+    set({ userKey: userKey || null, isHydrating: true, items: [], preorderItems: [], badgeQty: 0 });
     await get().hydrate();
   },
 
   hydrate: async () => {
     const key = makeCartKey(get().userKey);
     if (!key) {
-      set({ items: [], preorderItems: [], isHydrating: false });
+      set({ items: [], preorderItems: [], badgeQty: 0, isHydrating: false });
       return;
     }
 
@@ -100,16 +101,39 @@ export const useCartStore = create((set, get) => ({
       // legacy: array only
       if (Array.isArray(data)) {
         const { orderItems, preorderItems } = splitLegacyItems(data);
-        set({ items: orderItems, preorderItems, isHydrating: false });
+        const badgeQty = [...orderItems, ...preorderItems].reduce((sum, item) => sum + (item?.qty || 0), 0);
+        set({ items: orderItems, preorderItems, badgeQty, isHydrating: false });
         return;
       }
 
       const orderItems = Array.isArray(data?.orderItems) ? data.orderItems : [];
       const preorderItems = Array.isArray(data?.preorderItems) ? data.preorderItems : [];
-      set({ items: orderItems, preorderItems, isHydrating: false });
+      const badgeQty = [...orderItems, ...preorderItems].reduce((sum, item) => sum + (item?.qty || 0), 0);
+      set({ items: orderItems, preorderItems, badgeQty, isHydrating: false });
     } catch {
-      set({ items: [], preorderItems: [], isHydrating: false });
+      set({ items: [], preorderItems: [], badgeQty: 0, isHydrating: false });
     }
+  },
+
+  syncBadgeQty: (payload) => {
+    if (typeof payload === "number") {
+      set({ badgeQty: Math.max(0, Math.floor(payload)) });
+      return;
+    }
+
+    const readyItems = Array.isArray(payload?.readyItems) ? payload.readyItems : [];
+    const preorderItems = Array.isArray(payload?.preorderItems) ? payload.preorderItems : [];
+    const badgeQty = [...readyItems, ...preorderItems].reduce(
+      (sum, item) => sum + Number(item?.quantity ?? item?.qty ?? 0),
+      0,
+    );
+
+    set({ badgeQty: Math.max(0, Math.floor(badgeQty)) });
+  },
+
+  changeBadgeQty: (delta) => {
+    const nextQty = Math.max(0, Math.floor((get().badgeQty || 0) + Number(delta || 0)));
+    set({ badgeQty: nextQty });
   },
 
   _persist: async (orderItems, preorderItems) => {
@@ -133,7 +157,8 @@ export const useCartStore = create((set, get) => ({
     if (cartType === CART_TYPES.PREORDER) {
       set((state) => {
         get()._persist(state.items, []);
-        return { preorderItems: [] };
+        const badgeQty = [...state.items].reduce((sum, item) => sum + (item?.qty || 0), 0);
+        return { preorderItems: [], badgeQty };
       });
       return;
     }
@@ -141,12 +166,13 @@ export const useCartStore = create((set, get) => ({
     if (cartType === CART_TYPES.ORDER) {
       set((state) => {
         get()._persist([], state.preorderItems);
-        return { items: [] };
+        const badgeQty = [...state.preorderItems].reduce((sum, item) => sum + (item?.qty || 0), 0);
+        return { items: [], badgeQty };
       });
       return;
     }
 
-    set({ items: [], preorderItems: [] });
+    set({ items: [], preorderItems: [], badgeQty: 0 });
     if (key) AsyncStorage.removeItem(key).catch(() => {});
   },
 
