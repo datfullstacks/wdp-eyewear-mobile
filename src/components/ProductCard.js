@@ -122,6 +122,13 @@ export default function ProductCard({
             </Text>
           </View>
         )}
+
+        {!!item?.canTryOn && !isOutOfStock && (
+          <View style={styles.tryOnPill}>
+            <Ionicons name="camera-outline" size={12} color="#FFFFFF" />
+            <Text style={styles.tryOnPillText}>Thử kính</Text>
+          </View>
+        )}
       </View>
 
       <View style={[styles.info, isOutOfStock && styles.infoDisabled]}>
@@ -232,6 +239,24 @@ const styles = StyleSheet.create({
     maxWidth: "80%",
   },
   statusText: { fontSize: 11, fontWeight: "700", color: "#111827" },
+  tryOnPill: {
+    position: "absolute",
+    right: 8,
+    bottom: 8,
+    zIndex: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(17,24,39,0.88)",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  tryOnPillText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
+  },
 
   info: { padding: 10, paddingTop: 8 },
   infoDisabled: { opacity: 0.6 },

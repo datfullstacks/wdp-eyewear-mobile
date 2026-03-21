@@ -110,7 +110,7 @@ export default function OrdersScreen({ navigation, route }) {
     setError("");
 
     try {
-      const result = await getMyOrdersApi({ page: 1, limit: 1000 }, true);
+      const result = await getMyOrdersApi({ page: 1, limit: 1000 });
       const ordersData = Array.isArray(result?.items) ? result.items : [];
       setOrders(ordersData);
     } catch (err) {

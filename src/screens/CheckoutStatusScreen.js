@@ -54,7 +54,83 @@ const PAYMENT_STATUS_META = {
   },
 };
 
-const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
+const REFUND_STATUS_META = {
+  requested: {
+    label: "Da gui yeu cau",
+    desc: "Yeu cau refund da duoc ghi nhan va dang cho staff tiep nhan.",
+    color: "#B45309",
+    bg: "#FFF7ED",
+  },
+  reviewing: {
+    label: "Dang review",
+    desc: "Staff dang kiem tra thong tin refund cua ban.",
+    color: "#1D4ED8",
+    bg: "#EFF6FF",
+  },
+  waiting_customer_info: {
+    label: "Can bo sung",
+    desc: "Vui long bo sung them thong tin/chung tu cho yeu cau refund.",
+    color: "#B45309",
+    bg: "#FFF7ED",
+  },
+  escalated_to_manager: {
+    label: "Cho manager",
+    desc: "Case dang duoc chuyen manager de phe duyet them.",
+    color: "#991B1B",
+    bg: "#FEE2E2",
+  },
+  approved: {
+    label: "Da duyet",
+    desc: "Yeu cau refund da duoc duyet, he thong dang chuyen sang buoc xu ly.",
+    color: "#15803D",
+    bg: "#ECFDF5",
+  },
+  return_pending: {
+    label: "Cho tra hang",
+    desc: "Case can doi soat hang hoan truoc khi payout.",
+    color: "#B45309",
+    bg: "#FFF7ED",
+  },
+  return_received: {
+    label: "Da nhan hang hoan",
+    desc: "Operations da xac nhan hang hoan va se tiep tuc payout.",
+    color: "#1D4ED8",
+    bg: "#EFF6FF",
+  },
+  processing: {
+    label: "Dang hoan tien",
+    desc: "He thong dang xu ly giao dich refund.",
+    color: "#1D4ED8",
+    bg: "#EFF6FF",
+  },
+  completed: {
+    label: "Hoan tat",
+    desc: "Refund da hoan tat.",
+    color: "#15803D",
+    bg: "#ECFDF5",
+  },
+  rejected: {
+    label: "Tu choi",
+    desc: "Yeu cau refund da bi tu choi. Xem ghi chu de biet them chi tiet.",
+    color: "#991B1B",
+    bg: "#FEE2E2",
+  },
+};
+
+const ORDER_STEPS = [
+  { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
+  {
+    key: "AWAITING_STOCK",
+    label: "Chờ hàng về",
+    desc: "Đang chờ sản phẩm về kho",
+  },
+  { key: "PACKING", label: "Đóng gói", desc: "Đơn hàng đang được đóng gói" },
+  { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
+  { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
+];
+
+const formatVND = (value) =>
+  new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
 
 const SEPAY_FALLBACK_ACCOUNT_NUMBER =
   process.env.EXPO_PUBLIC_SEPAY_BANK_ACCOUNT_NUMBER ||
@@ -249,10 +325,154 @@ const normalizeShippingMethod = (value) => {
   return "standard";
 };
 
+const normalizeRefundBreakdown = (
+  value,
+  fallbackItemAmount = 0,
+  fallbackShippingFeeAmount = 0,
+) => {
+  const itemAmount = Number(value?.itemAmount ?? fallbackItemAmount ?? 0);
+  const shippingFeeAmount = Number(
+    value?.shippingFeeAmount ?? fallbackShippingFeeAmount ?? 0,
+  );
+  const returnShippingFeeAmount = Number(
+    value?.returnShippingFeeAmount ?? 0,
+  );
+  const total = Number(
+    value?.total ??
+      itemAmount + shippingFeeAmount + returnShippingFeeAmount,
+  );
+
+  return {
+    itemAmount,
+    shippingFeeAmount,
+    returnShippingFeeAmount,
+    total,
+  };
+};
+
+const normalizeRefundHistoryEntry = (entry) => ({
+  action: String(entry?.action || "").trim().toLowerCase(),
+  fromStatus: String(entry?.fromStatus || "none").trim().toLowerCase(),
+  toStatus: String(entry?.toStatus || "none").trim().toLowerCase(),
+  actorRole: String(entry?.actorRole || "").trim().toLowerCase(),
+  actorName: String(entry?.actorName || "").trim(),
+  note: String(entry?.note || "").trim(),
+  createdAt: entry?.createdAt || null,
+});
+
+const normalizeRefund = (refund, { total = 0, shippingFee = 0 } = {}) => {
+  const status = String(refund?.status || "")
+    .trim()
+    .toLowerCase();
+
+  if (!status || status === "none") {
+    return null;
+  }
+
+  const fallbackItemAmount = Math.max(Number(total || 0) - Number(shippingFee || 0), 0);
+  const requestedBreakdown = normalizeRefundBreakdown(
+    refund?.requestedBreakdown,
+    fallbackItemAmount,
+    0,
+  );
+  const approvedBreakdown = normalizeRefundBreakdown(
+    refund?.approvedBreakdown,
+    requestedBreakdown.itemAmount,
+    requestedBreakdown.shippingFeeAmount,
+  );
+
+  return {
+    status,
+    reason: String(refund?.reason || "").trim(),
+    responsibility: String(refund?.responsibility || "").trim(),
+    requiresReturn: Boolean(refund?.requiresReturn),
+    amount:
+      Number(refund?.amount || 0) ||
+      approvedBreakdown.total ||
+      requestedBreakdown.total,
+    requestedBreakdown,
+    approvedBreakdown,
+    requestedAt: refund?.requestedAt || null,
+    approvedAt: refund?.approvedAt || null,
+    processedAt: refund?.processedAt || null,
+    rejectReason: String(refund?.rejectReason || "").trim(),
+    decisionNote: String(refund?.decisionNote || "").trim(),
+    contactNote: String(refund?.contactNote || "").trim(),
+    escalateReason: String(refund?.escalateReason || "").trim(),
+    transactionRef: String(refund?.transactionRef || "").trim(),
+    currentOwnerRole: String(refund?.currentOwnerRole || "none")
+      .trim()
+      .toLowerCase(),
+    nextActionCode: String(refund?.nextActionCode || "")
+      .trim()
+      .toLowerCase(),
+    inspectionStatus: String(refund?.inspectionStatus || "not_required")
+      .trim()
+      .toLowerCase(),
+    inspectionNote: String(refund?.inspectionNote || "").trim(),
+    inspectionAt: refund?.inspectionAt || null,
+    returnShipmentCode: String(refund?.returnShipmentCode || "").trim(),
+    returnCarrier: String(refund?.returnCarrier || "").trim(),
+    returnReceivedAt: refund?.returnReceivedAt || null,
+    payoutProofUrl: String(refund?.payoutProofUrl || "").trim(),
+    bankAccount: refund?.bankAccount || null,
+    evidence: Array.isArray(refund?.evidence)
+      ? refund.evidence
+          .map((entry) => String(entry || "").trim())
+          .filter(Boolean)
+      : [],
+    history: Array.isArray(refund?.history)
+      ? refund.history.map(normalizeRefundHistoryEntry)
+      : [],
+  };
+};
+
+const getRefundOwnerLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "sales") return "Sale/Staff";
+  if (normalized === "manager") return "Manager";
+  if (normalized === "operations") return "Operations";
+  if (normalized === "customer") return "Ban";
+  return "Da dong case";
+};
+
+const getRefundNextStepLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "customer_submit_info") return "Ban bo sung thong tin";
+  if (normalized === "manager_approve") return "Manager quyet dinh";
+  if (normalized === "confirm_return_received") {
+    return "Operations nhan va doi soat hang hoan";
+  }
+  if (normalized === "start_processing") return "Operations bat dau payout";
+  if (normalized === "complete") return "Operations xac nhan da chuyen tien";
+  if (normalized === "start_review") return "Staff review ho so";
+  return "--";
+};
+
+const getRefundInspectionLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "pending") return "Dang doi soat";
+  if (normalized === "passed") return "Da dat";
+  if (normalized === "failed") return "Khong dat";
+  return "Khong yeu cau";
+};
+
 const getShippingMethodLabel = (value) => {
   const normalized = normalizeShippingMethod(value);
   if (normalized === "express") return "Giao nhanh";
   return "Giao tieu chuan";
+};
+
+const getShippingCollectionTimingLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "with_balance") return "Thu cùng đợt thanh toán còn lại";
+  if (normalized === "on_delivery") return "Thu khi giao hàng";
+  return "Thu ngay";
+};
+
+const getShippingFeeModeLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "estimated" ? "Tạm tính" : "Đã chốt";
 };
 
 const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
@@ -298,6 +518,18 @@ const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
         serverOrder.payLaterTotal ??
         serverOrder.payLater ??
         localBreakdown.payLater,
+      payNowMethod:
+        serverOrder.payNowMethod ||
+        localBreakdown.payNowMethod ||
+        serverOrder.paymentMethod ||
+        localOrder.paymentMethod,
+      payLaterMethod:
+        serverOrder.payLaterMethod || localBreakdown.payLaterMethod,
+      shippingFeeMode:
+        serverOrder.shippingFeeMode || localBreakdown.shippingFeeMode,
+      shippingCollectionTiming:
+        serverOrder.shippingCollectionTiming ||
+        localBreakdown.shippingCollectionTiming,
     },
     payment: {
       ...localPayment,
@@ -391,10 +623,23 @@ const normalizeOrder = (raw) => {
   const payNow = breakdown.payNow ?? raw?.payNow ?? 0;
   const payLater =
     breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
+  const paidAmount = Number(raw?.paidAmount || 0);
+  const unpaidAmount = Math.max(0, total - paidAmount);
+  const shippingCollectionTiming =
+    breakdown.shippingCollectionTiming ??
+    raw?.shippingCollectionTiming ??
+    "upfront";
+  const shippingFeeMode =
+    breakdown.shippingFeeMode ??
+    raw?.shippingFeeMode ??
+    "estimated";
+  const payLaterMethod =
+    firstTextValue(breakdown.payLaterMethod, raw?.payLaterMethod) ||
+    (payLater > 0 ? "COD" : null);
 
   const payment = raw?.payment || {};
   const paymentMethod = normalizePaymentMethod(
-    payment.method || raw?.paymentMethod,
+    payment.method || breakdown.payNowMethod || raw?.paymentMethod,
     payNow
   );
   const paymentStatus = normalizePaymentStatus(
@@ -554,6 +799,8 @@ const normalizeOrder = (raw) => {
     shippingMethod: normalizeShippingMethod(
       raw?.shippingMethod || raw?.shipping_method
     ),
+    paidAmount,
+    unpaidAmount,
     address,
     totals: {
       subtotal,
@@ -562,9 +809,12 @@ const normalizeOrder = (raw) => {
       total,
       payNow,
       payLater,
+      shippingCollectionTiming,
+      shippingFeeMode,
     },
     payment: {
       method: paymentMethod,
+      payLaterMethod,
       status: paymentStatus,
       amount: paymentAmount,
       paymentCode,
@@ -579,6 +829,7 @@ const normalizeOrder = (raw) => {
       paymentUrl: paymentLink,
       qrUrl,
     },
+    refund: normalizeRefund(raw?.refund, { total, shippingFee }),
   };
 };
 
@@ -683,10 +934,33 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const shippingMethodLabel = getShippingMethodLabel(order.shippingMethod);
 
   const normalizedOrderStatus = String(order.status || "").toUpperCase();
+  const rawOrderStatusKey = String(order.status || "")
+    .trim()
+    .toUpperCase();
 
   const canCancelOrder =
-    !isPaymentSettled &&
-    !["DELIVERED", "CANCELLED"].includes(normalizedOrderStatus);
+    ["PENDING", "CONFIRMED", "PROCESSING"].includes(rawOrderStatusKey);
+  const refundStatus = String(order.refund?.status || "")
+    .trim()
+    .toLowerCase();
+  const hasClosedRefund =
+    order.refund &&
+    ["completed", "rejected"].includes(refundStatus);
+  const hasActiveRefund = Boolean(order.refund && !hasClosedRefund);
+  const rawPaidAmount = Math.max(0, Number(order.paidAmount || 0));
+  const refundMeta = order.refund
+    ? REFUND_STATUS_META[refundStatus] || REFUND_STATUS_META.requested
+    : null;
+  const canSubmitRefundInfo =
+    Boolean(pollOrderId) && refundStatus === "waiting_customer_info";
+  const canRequestRefund =
+    Boolean(pollOrderId) &&
+    !hasActiveRefund &&
+    ["PENDING", "CANCELLED", "DELIVERED", "RETURNED"].includes(
+      rawOrderStatusKey,
+    ) &&
+    rawPaidAmount > 0;
+  const canOpenRefundForm = canRequestRefund || canSubmitRefundInfo;
 
   const navigateToTab = (tabName, screenName) => {
     navigation.navigate("Tabs", {
@@ -704,6 +978,16 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
   const handleViewOrderDetail = () => navigateToTab("ProfileTab", "Orders");
+  const handleRequestRefund = () => {
+    if (!canOpenRefundForm) return;
+
+    navigation.navigate("RefundRequest", {
+      orderId: pollOrderId,
+      order: rawOrder,
+      cartType,
+      refundAction: canSubmitRefundInfo ? "customer_submit_info" : undefined,
+    });
+  };
 
   const handleCancelPayment = () => {
     const orderId =
@@ -721,8 +1005,10 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     }
 
     Alert.alert(
-      "Hủy thanh toán?",
-      "Bạn chắc chắn muốn hủy thanh toán và hủy đơn hàng này? Thao tác không thể hoàn tác.",
+      rawPaidAmount > 0 ? "Hủy đơn?" : "Hủy thanh toán?",
+      rawPaidAmount > 0
+        ? "Bạn chắc chắn muốn hủy đơn hàng này? Hệ thống sẽ tạo luồng hoàn tiền cho khoản đã thanh toán."
+        : "Bạn chắc chắn muốn hủy thanh toán và hủy đơn hàng này? Thao tác không thể hoàn tác.",
       [
         { text: "Không", style: "cancel" },
         {
@@ -732,22 +1018,26 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             try {
               setIsCancelling(true);
 
-              await cancelOrderApi(orderId);
+              const cancelledOrder = await cancelOrderApi(orderId);
 
-              setServerOrder((prev) => ({
-                ...(prev || rawOrder || {}),
-                status: "cancelled",
-                payment: {
-                  ...((prev || rawOrder || {}).payment || {}),
-                  status: "FAILED",
+              setServerOrder(
+                cancelledOrder || {
+                  ...(rawOrder || {}),
+                  status: "cancelled",
                 },
-              }));
+              );
 
-              Alert.alert("Thành công", "Đã hủy thanh toán và hủy đơn hàng.", [
-                {
-                  text: "OK",
-                },
-              ]);
+              Alert.alert(
+                "Thành công",
+                rawPaidAmount > 0
+                  ? "Đã hủy đơn hàng. Yêu cầu hoàn tiền đã được khởi tạo cho khoản đã thanh toán."
+                  : "Đã hủy thanh toán và hủy đơn hàng.",
+                [
+                  {
+                    text: "OK",
+                  },
+                ],
+              );
             } catch (err) {
               const data = err?.response?.data || {};
               Alert.alert(
@@ -936,25 +1226,52 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Phương thức</Text>
-            <Text style={styles.metaValue}>{order.payment.method || "--"}</Text>
+            <Text style={styles.metaValue}>
+              {order.totals.payNow > 0
+                ? order.payment.method || "--"
+                : order.payment.payLaterMethod
+                  ? String(order.payment.payLaterMethod).toUpperCase()
+                  : order.payment.method || "--"}
+            </Text>
           </View>
 
           {order.totals.payNow > 0 ? (
             <>
               <View style={styles.rowBetween}>
-                <Text style={styles.metaLabel}>Đặt cọc</Text>
+                <Text style={styles.metaLabel}>Thanh toán ngay</Text>
                 <Text style={styles.metaValue}>
                   {formatVND(order.totals.payNow)}
                 </Text>
               </View>
               <View style={styles.rowBetween}>
-                <Text style={styles.metaLabel}>Còn lại (COD)</Text>
+                <Text style={styles.metaLabel}>
+                  Thanh toán sau
+                  {order.payment.payLaterMethod
+                    ? ` (${String(order.payment.payLaterMethod).toUpperCase()})`
+                    : ""}
+                </Text>
                 <Text style={styles.metaValue}>
                   {formatVND(order.totals.payLater)}
                 </Text>
               </View>
             </>
           ) : null}
+
+          <View style={styles.rowBetween}>
+            <Text style={styles.metaLabel}>Phí ship</Text>
+            <Text style={styles.metaValue}>
+              {getShippingFeeModeLabel(order.totals.shippingFeeMode)}
+            </Text>
+          </View>
+
+          <View style={styles.rowBetween}>
+            <Text style={styles.metaLabel}>Thu phí ship</Text>
+            <Text style={styles.metaValue}>
+              {getShippingCollectionTimingLabel(
+                order.totals.shippingCollectionTiming,
+              )}
+            </Text>
+          </View>
 
           <View style={styles.rowBetween}>
             <Text style={styles.metaLabel}>Trạng thái</Text>
@@ -999,6 +1316,272 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           </View>
         ) : null}
 
+        {order.refund ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Trang thai hoan tien</Text>
+            <View
+              style={[
+                styles.statusPill,
+                { backgroundColor: refundMeta?.bg || "#EFF6FF" },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: refundMeta?.color || "#1D4ED8" },
+                ]}
+              >
+                {refundMeta?.label || "Dang xu ly"}
+              </Text>
+            </View>
+            <Text style={styles.mutedText}>
+              {refundMeta?.desc || "Yeu cau refund dang duoc xu ly."}
+            </Text>
+
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>Tien de nghi hoan</Text>
+              <Text style={styles.metaValue}>
+                {formatVND(
+                  order.refund.requestedBreakdown.total || order.refund.amount,
+                )}
+              </Text>
+            </View>
+
+            {order.refund.approvedBreakdown.total > 0 ? (
+              <View style={styles.rowBetween}>
+                <Text style={styles.metaLabel}>Tien da duyet</Text>
+                <Text style={styles.metaValue}>
+                  {formatVND(order.refund.approvedBreakdown.total)}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>Ngay yeu cau</Text>
+              <Text style={styles.metaValue}>
+                {formatDateTime(order.refund.requestedAt)}
+              </Text>
+            </View>
+
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>Da thanh toan</Text>
+              <Text style={styles.metaValue}>{formatVND(order.paidAmount)}</Text>
+            </View>
+
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>Chua thu</Text>
+              <Text style={styles.metaValue}>{formatVND(order.unpaidAmount)}</Text>
+            </View>
+
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>Owner hien tai</Text>
+              <Text style={styles.metaValue}>
+                {getRefundOwnerLabel(order.refund.currentOwnerRole)}
+              </Text>
+            </View>
+
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>Buoc tiep theo</Text>
+              <Text style={styles.metaValue}>
+                {getRefundNextStepLabel(order.refund.nextActionCode)}
+              </Text>
+            </View>
+
+            {order.refund.processedAt ? (
+              <View style={styles.rowBetween}>
+                <Text style={styles.metaLabel}>Ngay xu ly</Text>
+                <Text style={styles.metaValue}>
+                  {formatDateTime(order.refund.processedAt)}
+                </Text>
+              </View>
+            ) : null}
+
+            {order.refund.reason ? (
+              <Text style={styles.refundNote}>Ly do: {order.refund.reason}</Text>
+            ) : null}
+
+            {order.refund.rejectReason ? (
+              <Text style={styles.refundNote}>
+                Ly do tu choi: {order.refund.rejectReason}
+              </Text>
+            ) : null}
+
+            {order.refund.decisionNote ? (
+              <Text style={styles.refundNote}>
+                Ghi chu: {order.refund.decisionNote}
+              </Text>
+            ) : null}
+
+            {order.refund.contactNote ? (
+              <Text style={styles.refundNote}>
+                Staff yeu cau: {order.refund.contactNote}
+              </Text>
+            ) : null}
+
+            {order.refund.requiresReturn ||
+            order.refund.returnShipmentCode ||
+            order.refund.inspectionStatus !== "not_required" ? (
+              <View style={styles.refundSubCard}>
+                <Text style={styles.refundSubTitle}>Thong tin return / QC</Text>
+                <Text style={styles.refundSubText}>
+                  QC: {getRefundInspectionLabel(order.refund.inspectionStatus)}
+                </Text>
+                {order.refund.inspectionNote ? (
+                  <Text style={styles.refundSubText}>
+                    Ghi chu QC: {order.refund.inspectionNote}
+                  </Text>
+                ) : null}
+                {order.refund.inspectionAt ? (
+                  <Text style={styles.refundSubText}>
+                    Kiem tra luc: {formatDateTime(order.refund.inspectionAt)}
+                  </Text>
+                ) : null}
+                {order.refund.returnCarrier ? (
+                  <Text style={styles.refundSubText}>
+                    Don vi hoan: {String(order.refund.returnCarrier).toUpperCase()}
+                  </Text>
+                ) : null}
+                {order.refund.returnShipmentCode ? (
+                  <Text style={styles.refundSubText}>
+                    Ma van don tra: {order.refund.returnShipmentCode}
+                  </Text>
+                ) : null}
+                {order.refund.returnReceivedAt ? (
+                  <Text style={styles.refundSubText}>
+                    Da nhan hang hoan: {formatDateTime(order.refund.returnReceivedAt)}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {order.refund.bankAccount?.accountNumber ? (
+              <Text style={styles.refundNote}>
+                Tai khoan nhan tien: {order.refund.bankAccount.bankName || "--"} -{" "}
+                {order.refund.bankAccount.accountNumber}
+              </Text>
+            ) : null}
+
+            {order.totals.payLater > 0 ? (
+              <Text style={styles.refundNote}>
+                Refund hien tai chi ap dung tren tien coc/tien da thanh toan.
+              </Text>
+            ) : null}
+
+            {order.refund.transactionRef ? (
+              <Text style={styles.refundNote}>
+                Ma giao dich refund: {order.refund.transactionRef}
+              </Text>
+            ) : null}
+
+            {order.refund.evidence?.length ? (
+              <View style={styles.refundTimeline}>
+                <Text style={styles.refundSubTitle}>Bang chung da gui</Text>
+                <View style={styles.refundEvidenceRow}>
+                  {order.refund.evidence.slice(0, 4).map((url, index) => (
+                    <TouchableOpacity
+                      key={`${url}-${index}`}
+                      activeOpacity={0.85}
+                      onPress={() => Linking.openURL(url).catch(() => {})}
+                    >
+                      <Image
+                        source={{ uri: url }}
+                        style={styles.refundEvidenceImage}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {order.refund.history?.length ? (
+              <View style={styles.refundTimeline}>
+                <Text style={styles.refundSubTitle}>Tien trinh refund</Text>
+                {order.refund.history
+                  .slice()
+                  .reverse()
+                  .slice(0, 4)
+                  .map((entry, index) => (
+                    <View
+                      key={`${entry.createdAt || entry.action || "refund"}-${index}`}
+                      style={styles.refundTimelineItem}
+                    >
+                      <View style={styles.rowBetween}>
+                        <Text style={styles.refundTimelineTitle}>
+                          {entry.actorName ||
+                            (entry.actorRole
+                              ? getRefundOwnerLabel(entry.actorRole)
+                              : "System")}
+                        </Text>
+                        <Text style={styles.refundTimelineTime}>
+                          {formatDateTime(entry.createdAt)}
+                        </Text>
+                      </View>
+                      <Text style={styles.refundTimelineMeta}>
+                        {(entry.fromStatus || "none").toUpperCase()} {"->"}{" "}
+                        {(entry.toStatus || "none").toUpperCase()}
+                      </Text>
+                      {entry.note ? (
+                        <Text style={styles.refundTimelineMeta}>{entry.note}</Text>
+                      ) : null}
+                    </View>
+                  ))}
+              </View>
+            ) : null}
+
+            {canSubmitRefundInfo ? (
+              <TouchableOpacity
+                style={[
+                  styles.actionBtn,
+                  styles.actionBtnPrimary,
+                  { marginTop: 12 },
+                ]}
+                activeOpacity={0.85}
+                onPress={handleRequestRefund}
+              >
+                <Text style={[styles.actionText, styles.actionTextPrimary]}>
+                  Bo sung thong tin hoan tien
+                </Text>
+              </TouchableOpacity>
+            ) : canRequestRefund ? (
+              <TouchableOpacity
+                style={[
+                  styles.actionBtn,
+                  styles.actionBtnPrimary,
+                  { marginTop: 12 },
+                ]}
+                activeOpacity={0.85}
+                onPress={handleRequestRefund}
+              >
+                <Text style={[styles.actionText, styles.actionTextPrimary]}>
+                  Tao yeu cau hoan tien moi
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : canRequestRefund ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Yeu cau hoan tien</Text>
+            <Text style={styles.mutedText}>
+              Neu don hang co van de, ban co the gui yeu cau refund de staff tiep
+              nhan va xu ly.
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                styles.actionBtnPrimary,
+                { marginTop: 12 },
+              ]}
+              activeOpacity={0.85}
+              onPress={handleRequestRefund}
+            >
+              <Text style={[styles.actionText, styles.actionTextPrimary]}>
+                Tao yeu cau hoan tien
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
 
@@ -1022,9 +1605,20 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           </View>
 
           <View style={styles.rowBetween}>
-            <Text style={styles.metaLabel}>Phí vận chuyển</Text>
+            <Text style={styles.metaLabel}>
+              Phí vận chuyển ({getShippingFeeModeLabel(order.totals.shippingFeeMode)})
+            </Text>
             <Text style={styles.metaValue}>
               {formatVND(order.totals.shippingFee)}
+            </Text>
+          </View>
+
+          <View style={styles.rowBetween}>
+            <Text style={styles.metaLabel}>Thu phí ship</Text>
+            <Text style={styles.metaValue}>
+              {getShippingCollectionTimingLabel(
+                order.totals.shippingCollectionTiming,
+              )}
             </Text>
           </View>
 
@@ -1124,6 +1718,75 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: "700",
     color: "#6B7280",
+  },
+  refundNote: {
+    marginTop: 10,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#4B5563",
+    lineHeight: 18,
+  },
+  refundSubCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  refundSubTitle: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  refundSubText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+    lineHeight: 17,
+  },
+  refundTimeline: {
+    marginTop: 14,
+  },
+  refundEvidenceRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  refundEvidenceImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    backgroundColor: "#E2E8F0",
+  },
+  refundTimelineItem: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  refundTimelineTitle: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  refundTimelineTime: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#64748B",
+    textAlign: "right",
+  },
+  refundTimelineMeta: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+    lineHeight: 17,
   },
 
   qrWrap: {

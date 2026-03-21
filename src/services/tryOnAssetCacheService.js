@@ -8,6 +8,7 @@ const HTTP_URL_PATTERN = /^https?:\/\//i;
 const CACHE_ENABLED = toBoolean(process.env.EXPO_PUBLIC_TRYON_CACHE_3D_ENABLED, true);
 const CACHE_MAX_AGE_HOURS = toPositiveNumber(process.env.EXPO_PUBLIC_TRYON_CACHE_3D_MAX_AGE_HOURS, 168);
 const CACHE_DIR = `${FileSystem.cacheDirectory || ""}tryon-3d/`;
+const pendingDownloads = new Map();
 
 function toText(value) {
   return String(value ?? "").trim();
@@ -93,32 +94,60 @@ async function downloadModelToCache(url) {
 
   await ensureCacheDirectory();
   const finalPath = await buildCachePath(url);
-  const tempPath = `${finalPath}.tmp`;
+  const pendingKey = finalPath;
 
-  try {
-    const result = await FileSystem.downloadAsync(url, tempPath);
-    if (result.status !== 200) {
-      throw new Error(`Download failed with status ${result.status}`);
-    }
+  if (pendingDownloads.has(pendingKey)) {
+    return pendingDownloads.get(pendingKey);
+  }
+
+  const downloadPromise = (async () => {
+    const tempPath = `${finalPath}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     try {
-      await FileSystem.deleteAsync(finalPath, { idempotent: true });
-    } catch {
-      // Ignore missing target file.
-    }
-
-    await FileSystem.moveAsync({ from: tempPath, to: finalPath });
-    console.log(`[TryOn Cache] Downloaded model to cache: ${finalPath}`);
-    return finalPath;
-  } finally {
-    try {
-      const tempInfo = await FileSystem.getInfoAsync(tempPath);
-      if (tempInfo.exists) {
-        await FileSystem.deleteAsync(tempPath, { idempotent: true });
+      const result = await FileSystem.downloadAsync(url, tempPath);
+      if (result.status !== 200) {
+        throw new Error(`Download failed with status ${result.status}`);
       }
-    } catch {
-      // Ignore temp cleanup errors.
+
+      const tempInfo = await FileSystem.getInfoAsync(tempPath);
+      if (!tempInfo.exists || !tempInfo.size || tempInfo.size <= 0) {
+        throw new Error("Downloaded model is empty");
+      }
+
+      try {
+        await FileSystem.deleteAsync(finalPath, { idempotent: true });
+      } catch {
+        // Ignore missing target file.
+      }
+
+      try {
+        await FileSystem.moveAsync({ from: tempPath, to: finalPath });
+      } catch (moveError) {
+        const finalInfo = await FileSystem.getInfoAsync(finalPath);
+        if (!finalInfo.exists || !finalInfo.size || finalInfo.size <= 0) {
+          throw moveError;
+        }
+      }
+
+      console.log(`[TryOn Cache] Downloaded model to cache: ${finalPath}`);
+      return finalPath;
+    } finally {
+      try {
+        const tempInfo = await FileSystem.getInfoAsync(tempPath);
+        if (tempInfo.exists) {
+          await FileSystem.deleteAsync(tempPath, { idempotent: true });
+        }
+      } catch {
+        // Ignore temp cleanup errors.
+      }
     }
+  })();
+
+  pendingDownloads.set(pendingKey, downloadPromise);
+  try {
+    return await downloadPromise;
+  } finally {
+    pendingDownloads.delete(pendingKey);
   }
 }
 

@@ -11,6 +11,9 @@ import {
   Alert,
   Modal,
   Pressable,
+  ActivityIndicator,
+  PermissionsAndroid,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +22,7 @@ import * as ImagePicker from "expo-image-picker";
 
 import { addMyFavoriteApi, getMyFavoriteIdsApi, removeMyFavoriteApi } from "../services/userService";
 import { useProducts } from "../hooks/useProducts";
+import { useStores } from "../hooks/useStores";
 import { getRelatedProducts, fetchProductById } from "../services/productService";
 import { CART_TYPES } from "../store/cartStore";
 import {
@@ -30,7 +34,9 @@ import {
 import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
 import { useAuthStore } from "../store/authStore";
+import { useStoreNetworkStore } from "../store/storeNetworkStore";
 import ProductModelViewer from "../components/ProductModelViewer";
+import { startNativeTryOnSession } from "../services/nativeTryOnService";
 
 /* -------------------- helpers -------------------- */
 
@@ -58,11 +64,16 @@ const TRY_ON_STATUS_LABEL = {
 
 const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
 const MODEL_FILE_PATTERN = /\.(glb|gltf|usdz)(\?|#|$)/i;
+const MAX_TRY_ON_MODELS = 8;
 
 const UI_TO_API_CART_TYPE = {
   [CART_TYPES.ORDER]: API_CART_TYPES.READY_STOCK,
   [CART_TYPES.PREORDER]: API_CART_TYPES.PRE_ORDER,
 };
+
+function toText(value) {
+  return String(value ?? "").trim();
+}
 
 function normalizeStr(s) {
   return String(s ?? "").trim().toLowerCase();
@@ -78,6 +89,23 @@ function isModelFileUrl(value) {
 
 function isWebTryOnUrl(value) {
   return canUseAbsoluteHttpUrl(value) && !isModelFileUrl(value);
+}
+
+async function ensureTryOnCameraPermission() {
+  if (Platform.OS !== "android") return true;
+
+  const permission = PermissionsAndroid.PERMISSIONS.CAMERA;
+  const alreadyGranted = await PermissionsAndroid.check(permission);
+  if (alreadyGranted) return true;
+
+  const result = await PermissionsAndroid.request(permission, {
+    title: "Quyền camera",
+    message: "Cho phép camera để thử kính AR trực tiếp.",
+    buttonPositive: "Cho phép",
+    buttonNegative: "Từ chối",
+  });
+
+  return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
 function toIdString(value) {
@@ -120,6 +148,95 @@ function getVariantAssets(product, variant) {
   const byVariant = product?.media?.byVariant;
   const assets = byVariant?.[variantId];
   return Array.isArray(assets) ? assets : [];
+}
+
+function buildTryOnPayload(baseTryOn = {}, asset = null) {
+  const assetFormat = String(asset?.format || "").trim().toLowerCase();
+  const assetUrl = String(asset?.url || "").trim();
+  const assetAr = asset?.ar && typeof asset.ar === "object" ? asset.ar : {};
+
+  const tryOn = {
+    ...(baseTryOn || {}),
+    glbUrl:
+      assetFormat === "glb" || assetFormat === "gltf"
+        ? String(assetAr.glbUrl || assetUrl || baseTryOn?.glbUrl || "").trim()
+        : String(baseTryOn?.glbUrl || "").trim(),
+    usdzUrl:
+      assetFormat === "usdz"
+        ? String(assetAr.usdzUrl || assetUrl || baseTryOn?.usdzUrl || "").trim()
+        : String(baseTryOn?.usdzUrl || "").trim(),
+  };
+
+  tryOn.launchUrl =
+    (isWebTryOnUrl(baseTryOn?.launchUrl) ? String(baseTryOn?.launchUrl || "").trim() : "") ||
+    (isWebTryOnUrl(tryOn.arUrl) ? String(tryOn.arUrl || "").trim() : "");
+  tryOn.ready = Boolean(
+    tryOn?.ready || tryOn?.effectPath || tryOn?.glbUrl || tryOn?.usdzUrl || tryOn?.launchUrl
+  );
+
+  return tryOn;
+}
+
+function buildTryOnModelLabel(variant, index) {
+  const color = String(variant?.options?.color || "").trim();
+  const size = String(variant?.options?.size || "").trim();
+  const sku = String(variant?.sku || "").trim();
+  const parts = [color, size].filter(Boolean);
+  if (parts.length) return parts.join(" / ");
+  if (sku) return sku;
+  return `Model ${index + 1}`;
+}
+
+function buildTryOnModels(product) {
+  if (!product) return [];
+
+  const baseTryOn = product?.tryOn || {};
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const variantModels = variants
+    .map((variant, index) => {
+      const variantAssets = getVariantAssets(product, variant);
+      const variant3DAsset = pick3DAsset(variantAssets);
+      if (!variant3DAsset) return null;
+
+      const id = toIdString(variant?._id || variant?.id) || `variant-${index + 1}`;
+      const tryOn = buildTryOnPayload(baseTryOn, variant3DAsset);
+
+      return {
+        id,
+        label: buildTryOnModelLabel(variant, index),
+        variantId: id,
+        color: String(variant?.options?.color || "").trim(),
+        size: String(variant?.options?.size || "").trim(),
+        sku: String(variant?.sku || "").trim(),
+        ready: Boolean(tryOn?.ready),
+        tryOn,
+      };
+    })
+    .filter(Boolean);
+
+  if (variantModels.length > 0) return variantModels.slice(0, MAX_TRY_ON_MODELS);
+
+  const fallbackAsset =
+    pick3DAsset(product?.media?.tryOn?.assets || []) ||
+    pick3DAsset(product?.media?.assets || []) ||
+    product?.model3D?.defaultAsset ||
+    null;
+  const fallbackTryOn = buildTryOnPayload(baseTryOn, fallbackAsset);
+
+  if (!fallbackTryOn?.ready) return [];
+
+  return [
+    {
+      id: "default",
+      label: "Mặc định",
+      variantId: "",
+      color: "",
+      size: "",
+      sku: "",
+      ready: true,
+      tryOn: fallbackTryOn,
+    },
+  ].slice(0, MAX_TRY_ON_MODELS);
 }
 
 function getSelectedVariant(product, { colorId, size }) {
@@ -304,10 +421,13 @@ function buildCartItemPayload({
 
 export default function ProductDetailScreen({ navigation, route }) {
   const token = useAuthStore((s) => s.token);
+  const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
+  const setSelectedStoreId = useStoreNetworkStore((s) => s.setSelectedStoreId);
   const passedItem = route?.params?.item;
   const passedId = route?.params?.id || route?.params?.productId;
 
   const { products } = useProducts();
+  const { stores } = useStores();
   const [specsOpen, setSpecsOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -325,7 +445,24 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const [product, setProduct] = useState(passedItem ?? fallbackFromList ?? null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [detailLoadError, setDetailLoadError] = useState("");
+  const [isLaunchingTryOn, setIsLaunchingTryOn] = useState(false);
   const [fav, setFav] = useState(false);
+
+  const handleSelectStore = useCallback(
+    async (store) => {
+      const nextStoreId = toIdString(store?.id);
+      if (!nextStoreId || nextStoreId === selectedStoreId) return;
+
+      await setSelectedStoreId(nextStoreId);
+      Toast.show({
+        type: "success",
+        text1: "Đã đổi cửa hàng",
+        text2: `Đang xem theo ${store?.name || "cửa hàng đã chọn"}.`,
+      });
+    },
+    [selectedStoreId, setSelectedStoreId]
+  );
 
   const apiId = useMemo(() => {
     return passedItem?.apiId || passedItem?._id || passedId || null;
@@ -361,9 +498,14 @@ export default function ProductDetailScreen({ navigation, route }) {
     (async () => {
       try {
         setIsRefreshing(true);
+        setDetailLoadError("");
         const fresh = await fetchProductById(apiId);
         if (mounted && fresh) setProduct(fresh);
       } catch (e) {
+        if (mounted) {
+          setDetailLoadError(e?.response?.data?.message || e?.message || "Không tải được chi tiết sản phẩm.");
+        }
+        console.warn("[ProductDetail] fetchProductById failed", e?.message || e);
       } finally {
         if (mounted) setIsRefreshing(false);
       }
@@ -429,6 +571,7 @@ export default function ProductDetailScreen({ navigation, route }) {
     () => getVariantAssets(product, selectedVariant),
     [product, selectedVariant]
   );
+  const tryOnModels = useMemo(() => buildTryOnModels(product), [product]);
 
   const fallbackColorImage = useMemo(() => {
     if (!product || product.type !== "FRAME") return null;
@@ -461,6 +604,22 @@ export default function ProductDetailScreen({ navigation, route }) {
   }, [image3DAsset, product]);
 
   const has3DAsset = Boolean(image3DAsset);
+  const canOpenTryOn = useMemo(() => {
+    return (
+      tryOnModels.some((model) => model?.ready) ||
+      Boolean(product?.tryOn?.ready) ||
+      Boolean(product?.canTryOn) ||
+      has3DAsset
+    );
+  }, [has3DAsset, product?.canTryOn, product?.tryOn?.ready, tryOnModels]);
+  const canShowTryOnCard = useMemo(() => {
+    return normType(product?.type) === "FRAME" && (
+      tryOnModels.length > 0 ||
+      Boolean(product?.canTryOn) ||
+      Boolean(product?.tryOn?.enabled) ||
+      has3DAsset
+    );
+  }, [has3DAsset, product?.canTryOn, product?.tryOn?.enabled, product?.type, tryOnModels.length]);
 
   useEffect(() => {
     if (!has3DAsset && mediaMode !== "2d") {
@@ -699,40 +858,110 @@ export default function ProductDetailScreen({ navigation, route }) {
     }
   };
 
-  const onOpenTryOn = useCallback(() => {
-    const baseTryOn = product?.tryOn;
-    const assetFormat = String(image3DAsset?.format || "").trim().toLowerCase();
-    const assetUrl = String(image3DAsset?.url || "").trim();
-    const assetAr = image3DAsset?.ar && typeof image3DAsset.ar === "object" ? image3DAsset.ar : {};
-    const tryOn = {
-      ...(baseTryOn || {}),
-      glbUrl:
-        assetFormat === "glb" || assetFormat === "gltf"
-          ? String(assetAr.glbUrl || assetUrl || baseTryOn?.glbUrl || "").trim()
-          : String(baseTryOn?.glbUrl || "").trim(),
-      usdzUrl:
-        assetFormat === "usdz"
-          ? String(assetAr.usdzUrl || assetUrl || baseTryOn?.usdzUrl || "").trim()
-          : String(baseTryOn?.usdzUrl || "").trim(),
-    };
-    tryOn.launchUrl =
-      (isWebTryOnUrl(baseTryOn?.launchUrl) ? String(baseTryOn?.launchUrl || "").trim() : "") ||
-      (isWebTryOnUrl(tryOn.arUrl) ? String(tryOn.arUrl || "").trim() : "");
+  const onOpenTryOn = useCallback(async () => {
+    if (isLaunchingTryOn) return;
 
-    if (!tryOn?.ready) {
-      Alert.alert("Try-on", "Try-on chưa sẵn sàng cho sản phẩm này.");
+    const permissionGranted = await ensureTryOnCameraPermission();
+    if (!permissionGranted) {
+      Alert.alert("Try-on", "Bạn cần cấp quyền camera để sử dụng thử kính.");
       return;
     }
 
-    navigation.navigate("TryOnAR", {
-      product: {
-        id: product.id,
-        apiId: product.apiId,
-        name: product.name,
-      },
-      tryOn,
-    });
-  }, [image3DAsset, navigation, product]);
+    setIsLaunchingTryOn(true);
+    let sourceProduct = product;
+    let sourceTryOnModels = tryOnModels;
+    let fetchFailed = false;
+    try {
+      if ((!sourceTryOnModels.some((model) => model?.ready) || !has3DAsset) && apiId) {
+        try {
+          const fresh = await fetchProductById(apiId);
+          if (fresh) {
+            sourceProduct = fresh;
+            sourceTryOnModels = buildTryOnModels(fresh);
+            setProduct(fresh);
+            setDetailLoadError("");
+          }
+        } catch (e) {
+          fetchFailed = true;
+          setDetailLoadError(e?.response?.data?.message || e?.message || "Không tải được dữ liệu try-on.");
+          console.warn("[ProductDetail] hydrate try-on failed", e?.message || e);
+        }
+      }
+
+      const sourceSelectedVariant =
+        sourceProduct?.type === "FRAME"
+          ? getSelectedVariant(sourceProduct, { colorId, size })
+          : getSelectedVariant(sourceProduct, { colorId, size: null });
+
+      const sourceVariantAssets = getVariantAssets(sourceProduct, sourceSelectedVariant);
+      const sourceImage3DAsset =
+        pick3DAsset(sourceVariantAssets) ||
+        pick3DAsset(sourceProduct?.media?.tryOn?.assets || []) ||
+        pick3DAsset(sourceProduct?.media?.assets || []) ||
+        sourceProduct?.model3D?.defaultAsset ||
+        null;
+
+      const selectedModelId = toIdString(sourceSelectedVariant?._id || sourceSelectedVariant?.id);
+      const selectedModel =
+        sourceTryOnModels.find((model) => model.id === selectedModelId) ||
+        sourceTryOnModels.find((model) => model.ready) ||
+        sourceTryOnModels[0] ||
+        null;
+      const tryOn =
+        selectedModel?.tryOn ||
+        buildTryOnPayload(sourceProduct?.tryOn || {}, sourceImage3DAsset || null);
+
+      if (!tryOn?.ready) {
+        if (fetchFailed || detailLoadError) {
+          Alert.alert(
+            "Try-on",
+            "Không tải được dữ liệu try-on đầy đủ cho sản phẩm này. Kiểm tra kết nối rồi thử lại."
+          );
+        } else {
+          Alert.alert("Try-on", "Dữ liệu try-on của sản phẩm này chưa đầy đủ hoặc chưa publish.");
+        }
+        return;
+      }
+
+      await startNativeTryOnSession({
+        product: {
+          id: sourceProduct.id,
+          apiId: sourceProduct.apiId,
+          name: sourceProduct.name,
+        },
+        tryOn: {
+          ...(tryOn || {}),
+          selectedModelId: selectedModel?.id || "",
+          models: sourceTryOnModels.map((model) => ({
+            id: model.id,
+            label: model.label,
+            ready: Boolean(model.ready),
+            glbUrl: toText(model?.tryOn?.glbUrl),
+            usdzUrl: toText(model?.tryOn?.usdzUrl),
+            arUrl: toText(model?.tryOn?.arUrl),
+            launchUrl: toText(model?.tryOn?.launchUrl),
+            effectPath: toText(model?.tryOn?.effectPath),
+            scene: toText(model?.tryOn?.scene),
+            resourcePaths: Array.isArray(model?.tryOn?.resourcePaths)
+              ? model.tryOn.resourcePaths
+              : [],
+            prefab:
+              model?.tryOn?.prefab && typeof model.tryOn.prefab === "object"
+                ? model.tryOn.prefab
+                : undefined,
+          })),
+        },
+      });
+    } catch (error) {
+      console.warn("[TryOn Native] Direct launch failed", error);
+      Alert.alert(
+        "Try-on",
+        error?.message || "Không mở được try-on. Vui lòng thử lại."
+      );
+    } finally {
+      setIsLaunchingTryOn(false);
+    }
+  }, [apiId, colorId, detailLoadError, has3DAsset, isLaunchingTryOn, product, size, tryOnModels]);
 
   if (!product) {
     return (
@@ -777,10 +1006,29 @@ export default function ProductDetailScreen({ navigation, route }) {
           onOpenPreview={() => setPreviewOpen(true)}
         />
 
-        <InfoCard product={product} discountPct={discountPct} isVariantOut={isVariantOut} variantStock={variantStock} />
+        <InfoCard
+          product={product}
+          discountPct={discountPct}
+          isVariantOut={isVariantOut}
+          variantStock={variantStock}
+          isPreorderMode={isPreorderMode}
+        />
 
-        {product.type === "FRAME" && product?.tryOn?.enabled ? (
-          <TryOnCard tryOn={product.tryOn} onOpenTryOn={onOpenTryOn} />
+        <StoreAvailabilityCard
+          storeScope={product.storeScope}
+          selectedStoreId={selectedStoreId}
+          stores={stores}
+          onSelectStore={handleSelectStore}
+        />
+
+        {canShowTryOnCard ? (
+          <TryOnCard
+            tryOn={product.tryOn}
+            onOpenTryOn={onOpenTryOn}
+            canOpen={canOpenTryOn}
+            modelCount={tryOnModels.length}
+            isLaunching={isLaunchingTryOn}
+          />
         ) : null}
 
         <Card>
@@ -1093,7 +1341,13 @@ function HeroPreviewModal({
   );
 }
 
-function InfoCard({ product, discountPct, isVariantOut, variantStock }) {
+function InfoCard({
+  product,
+  discountPct,
+  isVariantOut,
+  variantStock,
+  isPreorderMode = false,
+}) {
   const isOutOfStock = isVariantOut;
 
   const ratingAvg =
@@ -1104,6 +1358,11 @@ function InfoCard({ product, discountPct, isVariantOut, variantStock }) {
         : null;
 
   const ratingCount = product.ratingCount ?? product.ratingsQuantity ?? 0;
+  const paymentInfo = isPreorderMode
+    ? product?.allowCod === false
+      ? "Thanh toán: SePay đặt cọc"
+      : "Thanh toán: SePay đặt cọc, COD phần còn lại"
+    : "Thanh toán: SePay hoặc COD";
 
   return (
     <Card>
@@ -1143,6 +1402,7 @@ function InfoCard({ product, discountPct, isVariantOut, variantStock }) {
       </View>
 
       {!isOutOfStock && variantStock > 0 ? <Text style={styles.stockInfo}>Còn {variantStock} sản phẩm</Text> : null}
+      <Text style={styles.paymentInfo}>{paymentInfo}</Text>
     </Card>
   );
 }
@@ -1264,10 +1524,13 @@ function LensOptions({
   );
 }
 
-function TryOnCard({ tryOn, onOpenTryOn }) {
+function TryOnCard({ tryOn, onOpenTryOn, canOpen, modelCount = 0, isLaunching = false }) {
   const status = String(tryOn?.status || "").trim().toLowerCase();
   const statusLabel = TRY_ON_STATUS_LABEL[status] || "Không có trạng thái try-on";
-  const canOpen = Boolean(tryOn?.ready);
+  const hintText =
+    modelCount > 1
+      ? `${statusLabel}. Có ${modelCount} mẫu để thử.`
+      : statusLabel;
 
   return (
     <Card>
@@ -1283,19 +1546,153 @@ function TryOnCard({ tryOn, onOpenTryOn }) {
         </View>
       </View>
 
-      <Text style={styles.tryOnHint}>{statusLabel}</Text>
+      <Text style={styles.tryOnHint}>{hintText}</Text>
 
       <TouchableOpacity
         activeOpacity={0.9}
-        disabled={!canOpen}
+        disabled={!canOpen || isLaunching}
         onPress={onOpenTryOn}
-        style={[styles.tryOnButton, !canOpen && styles.btnDisabled]}
+        style={[styles.tryOnButton, (!canOpen || isLaunching) && styles.btnDisabled]}
       >
-        <Ionicons name="camera-outline" size={18} color="#FFFFFF" />
-        <Text style={[styles.tryOnButtonText, !canOpen && styles.btnDisabledText]}>
-          {canOpen ? "Mở Try-On" : "Try-On chưa khả dụng"}
+        {isLaunching ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Ionicons name="camera-outline" size={18} color="#FFFFFF" />
+        )}
+        <Text style={[styles.tryOnButtonText, (!canOpen || isLaunching) && styles.btnDisabledText]}>
+          {isLaunching ? "Đang mở Try-On..." : canOpen ? "Mở Try-On" : "Try-On chưa khả dụng"}
         </Text>
       </TouchableOpacity>
+    </Card>
+  );
+}
+
+function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSelectStore }) {
+  const mode = String(storeScope?.mode || "all").trim().toLowerCase();
+  const scopedStores = Array.isArray(storeScope?.stores) ? storeScope.stores : [];
+  const availableStores =
+    mode === "all"
+      ? (Array.isArray(stores) ? stores : []).filter((store) => toIdString(store?.id))
+      : scopedStores;
+  const selectedStore =
+    availableStores.find((store) => store.id === selectedStoreId) ||
+    scopedStores.find((store) => store.id === selectedStoreId) ||
+    null;
+  const canSwitchStore = availableStores.length > 0 && typeof onSelectStore === "function";
+
+  return (
+    <Card>
+      <Text style={styles.sectionTitle}>Cua hang</Text>
+
+      {mode === "all" ? (
+        <>
+          <Text style={styles.mutedText}>
+            San pham nay dang duoc mo ban theo mo hinh tat ca cua hang dang hoat dong.
+          </Text>
+
+          {selectedStore ? (
+            <View style={styles.storeHintBox}>
+              <Ionicons name="business-outline" size={16} color="#1D4ED8" />
+              <Text style={styles.storeHintText}>
+                Ban dang xem theo cua hang: {selectedStore.name} ({selectedStore.code})
+              </Text>
+            </View>
+          ) : null}
+
+          {availableStores.length > 0 ? (
+            <View style={{ gap: 10, marginTop: selectedStore ? 12 : 8 }}>
+              {availableStores.map((store) => (
+                <TouchableOpacity
+                key={store.id}
+                activeOpacity={0.88}
+                onPress={() => onSelectStore?.(store)}
+                style={[
+                  styles.storeCardRow,
+                  selectedStoreId === store.id && styles.storeCardRowActive,
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.storeCardTitle}>
+                    {store.name} ({store.code})
+                  </Text>
+                  <Text style={styles.storeCardMeta}>
+                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chua co dia chi"}
+                  </Text>
+                  <Text style={styles.storeCardMeta}>
+                    Try-on: {store.supportsTryOn ? "Co" : "Khong"} | Pickup: {store.supportsPickup ? "Co" : "Khong"}
+                  </Text>
+                </View>
+                {selectedStoreId === store.id ? (
+                  <Ionicons name="checkmark-circle" size={18} color="#1D4ED8" />
+                ) : canSwitchStore ? (
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                ) : null}
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.mutedText, { marginTop: 8 }]}>
+              Chua tai duoc danh sach cua hang dang hoat dong.
+            </Text>
+          )}
+        </>
+      ) : scopedStores.length > 0 ? (
+        <>
+          {selectedStore ? (
+            <View style={styles.storeHintBox}>
+              <Ionicons name="business-outline" size={16} color="#1D4ED8" />
+              <Text style={styles.storeHintText}>
+                Ban dang xem theo cua hang: {selectedStore.name} ({selectedStore.code})
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={{ gap: 10, marginTop: selectedStore ? 12 : 8 }}>
+            {scopedStores.map((store) => (
+              <TouchableOpacity
+                key={store.id}
+                activeOpacity={0.88}
+                onPress={() => onSelectStore?.(store)}
+                style={[
+                  styles.storeCardRow,
+                  selectedStoreId === store.id && styles.storeCardRowActive,
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.storeCardTitle}>
+                    {store.name} ({store.code})
+                  </Text>
+                  <Text style={styles.storeCardMeta}>
+                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chua co dia chi"}
+                  </Text>
+                  <Text style={styles.storeCardMeta}>
+                    Try-on: {store.supportsTryOn ? "Co" : "Khong"} | Pickup: {store.supportsPickup ? "Co" : "Khong"}
+                  </Text>
+                </View>
+                {selectedStoreId === store.id ? (
+                  <Ionicons name="checkmark-circle" size={18} color="#1D4ED8" />
+                ) : canSwitchStore ? (
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      ) : (
+        <Text style={styles.mutedText}>
+          San pham nay dang duoc quan ly theo cua hang, nhung chua co danh sach cua hang duoc map.
+        </Text>
+      )}
+
+      {canSwitchStore ? (
+        <Text style={[styles.mutedText, { marginTop: 10 }]}>
+          Bam vao tung cua hang de doi nhanh cua hang dang ap dung cho san pham nay.
+        </Text>
+      ) : null}
+
+      {storeScope?.note ? (
+        <Text style={[styles.mutedText, { marginTop: 10 }]}>Ghi chu: {storeScope.note}</Text>
+      ) : null}
     </Card>
   );
 }
@@ -1700,6 +2097,31 @@ const styles = StyleSheet.create({
   tryOnStatusTextReady: { color: "#159947" },
   tryOnStatusTextPending: { color: "#D33A2C" },
   tryOnHint: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  storeHintBox: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  storeHintText: { flex: 1, fontSize: 12, fontWeight: "700", color: "#1D4ED8" },
+  storeCardRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  storeCardRowActive: {
+    borderColor: "#2563EB",
+    backgroundColor: "#EFF6FF",
+  },
+  storeCardTitle: { fontSize: 12.5, fontWeight: "800", color: "#111827" },
+  storeCardMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "600", color: "#6B7280" },
   tryOnButton: {
     marginTop: 12,
     height: 44,
@@ -1725,6 +2147,7 @@ const styles = StyleSheet.create({
   outOfStockBadgeText: { color: "#EF4444", fontWeight: "900", fontSize: 12 },
 
   stockInfo: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#159947" },
+  paymentInfo: { marginTop: 8, fontSize: 12, fontWeight: "700", color: "#4B5563" },
 
   priceRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 10 },
   price: { fontSize: 18, fontWeight: "900", color: "green" },

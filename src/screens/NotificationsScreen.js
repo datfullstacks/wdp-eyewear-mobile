@@ -63,6 +63,12 @@ function formatStatus(value) {
   return labels[raw] || raw;
 }
 
+function normalizeRefundStatus(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
 function NotificationCard({ item, onPress }) {
   const read = Boolean(item?.readAt);
   const orderCode = String(item?.data?.orderCode || "").trim();
@@ -197,7 +203,23 @@ export default function NotificationsScreen({ navigation, onNotificationsChanged
       setItems(list);
       onNotificationsChanged?.();
 
-      if (item?.data?.orderId) {
+      const refundStatus = normalizeRefundStatus(item?.data?.refundStatus);
+      const refundNextAction = normalizeRefundStatus(item?.data?.nextActionCode);
+
+      if (
+        item?.data?.orderId &&
+        (refundStatus === "waiting_customer_info" ||
+          refundNextAction === "customer_submit_info")
+      ) {
+        navigation.navigate("CartFlow", {
+          screen: "RefundRequest",
+          params: {
+            orderId: item.data.orderId,
+            refundAction: "customer_submit_info",
+            source: "notification",
+          },
+        });
+      } else if (item?.data?.orderId) {
         navigation.navigate("ProfileTab", {
           screen: "OrderDetail",
           params: {

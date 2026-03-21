@@ -5,13 +5,24 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.SurfaceView
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
+
+private data class TryOnModelOption(
+  val id: String,
+  val label: String,
+  val effectPath: String,
+  val ready: Boolean,
+  val fallbackUrl: String
+)
 
 class WdpTryOnActivity : AppCompatActivity() {
   companion object {
@@ -21,10 +32,13 @@ class WdpTryOnActivity : AppCompatActivity() {
     const val EXTRA_EFFECT_PATH = "wdp.tryon.extra.EFFECT_PATH"
     const val EXTRA_FALLBACK_URL = "wdp.tryon.extra.FALLBACK_URL"
     const val EXTRA_RESOURCE_PATHS = "wdp.tryon.extra.RESOURCE_PATHS"
+    const val EXTRA_MODELS_JSON = "wdp.tryon.extra.MODELS_JSON"
+    const val EXTRA_SELECTED_MODEL_ID = "wdp.tryon.extra.SELECTED_MODEL_ID"
 
     const val RESULT_STATUS = "wdp.tryon.result.STATUS"
     const val RESULT_MESSAGE = "wdp.tryon.result.MESSAGE"
     const val RESULT_EFFECT_PATH = "wdp.tryon.result.EFFECT_PATH"
+    const val RESULT_MODEL_ID = "wdp.tryon.result.MODEL_ID"
 
     private const val CAMERA_PERMISSION_REQUEST_CODE = 8754
     private var isBanubaInitialized = false
@@ -32,10 +46,13 @@ class WdpTryOnActivity : AppCompatActivity() {
 
   private lateinit var surfaceView: SurfaceView
   private lateinit var statusLabel: TextView
+  private lateinit var modelButtonsContainer: LinearLayout
 
   private var sdkManagerClass: Class<*>? = null
   private var sdkManager: Any? = null
   private var sessionStarted = false
+  private var activeModel: TryOnModelOption? = null
+  private var currentEffectPath: String = ""
 
   private val productId: String by lazy {
     intent?.getStringExtra(EXTRA_PRODUCT_ID)?.trim().orEmpty()
@@ -46,11 +63,17 @@ class WdpTryOnActivity : AppCompatActivity() {
   private val sdkKey: String by lazy {
     intent?.getStringExtra(EXTRA_SDK_KEY)?.trim().orEmpty()
   }
-  private val effectPath: String by lazy {
+  private val initialEffectPath: String by lazy {
     intent?.getStringExtra(EXTRA_EFFECT_PATH)?.trim().orEmpty()
   }
   private val fallbackUrl: String by lazy {
     intent?.getStringExtra(EXTRA_FALLBACK_URL)?.trim().orEmpty()
+  }
+  private val selectedModelId: String by lazy {
+    intent?.getStringExtra(EXTRA_SELECTED_MODEL_ID)?.trim().orEmpty()
+  }
+  private val modelsJson: String by lazy {
+    intent?.getStringExtra(EXTRA_MODELS_JSON)?.trim().orEmpty()
   }
   private val resourcePaths: List<String> by lazy {
     val paths = intent?.getStringArrayListExtra(EXTRA_RESOURCE_PATHS) ?: arrayListOf()
@@ -58,9 +81,28 @@ class WdpTryOnActivity : AppCompatActivity() {
       .map { normalizeBanubaPath(it.trim()) }
       .filter { it.isNotEmpty() }
   }
+  private val availableModels: List<TryOnModelOption> by lazy {
+    val parsed = parseModelsJson(modelsJson)
+    if (parsed.isNotEmpty()) parsed
+    else if (initialEffectPath.isNotEmpty()) {
+      listOf(
+        TryOnModelOption(
+          id = "default",
+          label = if (productName.isNotEmpty()) productName else "Default",
+          effectPath = initialEffectPath,
+          ready = true,
+          fallbackUrl = fallbackUrl
+        )
+      )
+    } else {
+      emptyList()
+    }
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    activeModel = resolveInitialModel()
+    currentEffectPath = activeModel?.effectPath ?: initialEffectPath
     setupUi()
     ensureCameraPermissionAndStart()
   }
@@ -102,27 +144,69 @@ class WdpTryOnActivity : AppCompatActivity() {
       )
     )
 
+    val overlay = LinearLayout(this).apply {
+      orientation = LinearLayout.VERTICAL
+      setPadding(24, 20, 24, 0)
+    }
+
     statusLabel = TextView(this).apply {
       setTextColor(0xFFFFFFFF.toInt())
       textSize = 12f
       setPadding(24, 20, 24, 20)
       setBackgroundColor(0x66000000)
-      text =
-        buildString {
-          append("Banuba AR session")
-          append("\nProduct: ")
-          append(if (productName.isNotEmpty()) productName else "N/A")
-          append("\nProduct ID: ")
-          append(if (productId.isNotEmpty()) productId else "N/A")
-        }
+      text = buildStatusText("Preparing native AR session...")
+    }
+    overlay.addView(
+      statusLabel,
+      LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT,
+        LinearLayout.LayoutParams.WRAP_CONTENT
+      )
+    )
+
+    if (availableModels.size > 1) {
+      val selectorLabel = TextView(this).apply {
+        setTextColor(0xFFFFFFFF.toInt())
+        textSize = 12f
+        text = "Switch model"
+        setPadding(4, 18, 4, 8)
+      }
+      overlay.addView(selectorLabel)
+
+      val scrollView = HorizontalScrollView(this).apply {
+        isHorizontalScrollBarEnabled = false
+      }
+      modelButtonsContainer = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+      }
+      scrollView.addView(
+        modelButtonsContainer,
+        FrameLayout.LayoutParams(
+          FrameLayout.LayoutParams.WRAP_CONTENT,
+          FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+      )
+      overlay.addView(
+        scrollView,
+        LinearLayout.LayoutParams(
+          LinearLayout.LayoutParams.MATCH_PARENT,
+          LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+      )
+      renderModelButtons()
+    } else {
+      modelButtonsContainer = LinearLayout(this)
     }
 
-    val statusParams =
+    root.addView(
+      overlay,
       FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.MATCH_PARENT,
         FrameLayout.LayoutParams.WRAP_CONTENT
-      )
-    root.addView(statusLabel, statusParams)
+      ).apply {
+        gravity = Gravity.TOP
+      }
+    )
 
     val closeButton =
       Button(this).apply {
@@ -159,16 +243,134 @@ class WdpTryOnActivity : AppCompatActivity() {
         )
       }
 
-    val actionParams =
+    root.addView(
+      actions,
       FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.MATCH_PARENT,
         FrameLayout.LayoutParams.WRAP_CONTENT
       ).apply {
-        gravity = android.view.Gravity.BOTTOM
+        gravity = Gravity.BOTTOM
       }
-    root.addView(actions, actionParams)
+    )
 
     setContentView(root)
+  }
+
+  private fun renderModelButtons() {
+    if (!::modelButtonsContainer.isInitialized) return
+    modelButtonsContainer.removeAllViews()
+
+    availableModels.forEach { model ->
+      val isActive = activeModel?.id == model.id
+      val button = TextView(this).apply {
+        text = buildString {
+          append(model.label)
+          append("\n")
+          append(if (model.ready) "Ready" else "Not ready")
+        }
+        textSize = 11f
+        setTextColor(if (isActive) 0xFFDBEAFE.toInt() else 0xFFFFFFFF.toInt())
+        setPadding(28, 18, 28, 18)
+        setBackgroundColor(
+          when {
+            isActive -> 0xFF1D4ED8.toInt()
+            model.ready -> 0x66000000
+            else -> 0x44FFFFFF
+          }
+        )
+        alpha = if (model.ready) 1f else 0.55f
+        setOnClickListener {
+          if (model.ready) switchToModel(model)
+        }
+      }
+
+      modelButtonsContainer.addView(
+        button,
+        LinearLayout.LayoutParams(
+          LinearLayout.LayoutParams.WRAP_CONTENT,
+          LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+          rightMargin = 12
+        }
+      )
+    }
+  }
+
+  private fun resolveInitialModel(): TryOnModelOption? {
+    if (availableModels.isEmpty()) return null
+    if (selectedModelId.isNotEmpty()) {
+      availableModels.firstOrNull { it.id == selectedModelId }?.let { return it }
+    }
+    if (initialEffectPath.isNotEmpty()) {
+      availableModels.firstOrNull { it.effectPath == initialEffectPath }?.let { return it }
+    }
+    return availableModels.firstOrNull { it.ready } ?: availableModels.first()
+  }
+
+  private fun parseModelsJson(raw: String): List<TryOnModelOption> {
+    if (raw.isBlank()) return emptyList()
+
+    return try {
+      val json = JSONArray(raw)
+      buildList {
+        for (index in 0 until json.length()) {
+          val item = json.optJSONObject(index) ?: continue
+          val id = item.optString("id").trim().ifEmpty { "model-${index + 1}" }
+          val label = item.optString("label").trim().ifEmpty { "Model ${index + 1}" }
+          val effectPath = item.optString("effectPath").trim()
+          val ready = item.optBoolean("ready", effectPath.isNotEmpty())
+          val modelFallbackUrl = item.optString("fallbackUrl").trim()
+
+          if (!ready && effectPath.isBlank() && modelFallbackUrl.isBlank()) continue
+          add(
+            TryOnModelOption(
+              id = id,
+              label = label,
+              effectPath = effectPath,
+              ready = ready,
+              fallbackUrl = modelFallbackUrl
+            )
+          )
+        }
+      }
+    } catch (_: Throwable) {
+      emptyList()
+    }
+  }
+
+  private fun switchToModel(model: TryOnModelOption) {
+    activeModel = model
+    currentEffectPath = model.effectPath
+    renderModelButtons()
+
+    if (!sessionStarted) {
+      updateStatus("Selected model: ${model.label}")
+      return
+    }
+
+    val effectToLoad = currentEffectPath
+    if (effectToLoad.isBlank()) {
+      if (model.fallbackUrl.isNotEmpty()) {
+        openFallbackAndFinish("Selected model does not have a local effect. Opening fallback URL instead.")
+      } else {
+        updateStatus("Selected model is not ready.")
+      }
+      return
+    }
+
+    try {
+      val managerInstance = sdkManager ?: return
+      val managerClass = sdkManagerClass ?: managerInstance.javaClass
+      managerClass.getMethod("loadEffect", String::class.java, Boolean::class.javaPrimitiveType!!)
+        .invoke(managerInstance, normalizeBanubaPath(effectToLoad), false)
+      updateStatus("Model: ${model.label}\nEffect: $effectToLoad")
+    } catch (error: Throwable) {
+      if (model.fallbackUrl.isNotEmpty()) {
+        openFallbackAndFinish("Failed to switch model natively. Opening fallback URL instead.")
+      } else {
+        updateStatus("Failed to switch model: ${error.message ?: "Unknown error"}")
+      }
+    }
   }
 
   private fun ensureCameraPermissionAndStart() {
@@ -197,16 +399,22 @@ class WdpTryOnActivity : AppCompatActivity() {
       return
     }
 
-    if (effectPath.isEmpty()) {
-      finishFailure(
-        code = "E_MISSING_EFFECT_PATH",
-        message = "Banuba native try-on requires a local effect path."
-      )
+    val effectToLoad = currentEffectPath.ifEmpty { initialEffectPath }
+
+    if (effectToLoad.isEmpty()) {
+      if (resolveActiveFallbackUrl().isNotEmpty()) {
+        openFallbackAndFinish("effectPath is missing. Opening fallback URL instead.")
+      } else {
+        finishFailure(
+          code = "E_MISSING_EFFECT_PATH",
+          message = "Banuba native try-on requires a local effect path."
+        )
+      }
       return
     }
 
-    if (isHttpUrl(effectPath)) {
-      if (fallbackUrl.isNotEmpty()) {
+    if (isHttpUrl(effectToLoad)) {
+      if (resolveActiveFallbackUrl().isNotEmpty()) {
         openFallbackAndFinish("effectPath is a URL. Opening fallback URL instead.")
       } else {
         finishFailure(
@@ -247,13 +455,23 @@ class WdpTryOnActivity : AppCompatActivity() {
       managerClass.getMethod("openCamera").invoke(managerInstance)
       managerClass.getMethod("effectPlayerPlay").invoke(managerInstance)
       managerClass.getMethod("loadEffect", String::class.java, Boolean::class.javaPrimitiveType!!)
-        .invoke(managerInstance, normalizeBanubaPath(effectPath), false)
+        .invoke(managerInstance, normalizeBanubaPath(effectToLoad), false)
 
       sessionStarted = true
-      updateStatus("Effect: $effectPath")
+      currentEffectPath = effectToLoad
+      updateStatus(
+        buildString {
+          append("Effect: ")
+          append(effectToLoad)
+          activeModel?.let {
+            append("\nModel: ")
+            append(it.label)
+          }
+        }
+      )
     } catch (error: Throwable) {
       stopSession()
-      if (fallbackUrl.isNotEmpty()) {
+      if (resolveActiveFallbackUrl().isNotEmpty()) {
         openFallbackAndFinish(
           "Banuba native launch failed (${error.message}). Opening fallback URL."
         )
@@ -286,22 +504,43 @@ class WdpTryOnActivity : AppCompatActivity() {
     }
   }
 
-  private fun updateStatus(extraLine: String) {
-    statusLabel.text =
-      buildString {
-        append("Banuba AR session")
-        append("\nProduct: ")
-        append(if (productName.isNotEmpty()) productName else "N/A")
-        append("\nProduct ID: ")
-        append(if (productId.isNotEmpty()) productId else "N/A")
-        append("\n")
-        append(extraLine)
+  private fun buildStatusText(extraLine: String): String {
+    return buildString {
+      append("Banuba AR session")
+      append("\nProduct: ")
+      append(if (productName.isNotEmpty()) productName else "N/A")
+      append("\nProduct ID: ")
+      append(if (productId.isNotEmpty()) productId else "N/A")
+      activeModel?.let {
+        append("\nModel: ")
+        append(it.label)
       }
+      append("\n")
+      append(extraLine)
+    }
+  }
+
+  private fun updateStatus(extraLine: String) {
+    statusLabel.text = buildStatusText(extraLine)
+  }
+
+  private fun resolveActiveFallbackUrl(): String {
+    val modelFallback = activeModel?.fallbackUrl?.trim().orEmpty()
+    return if (modelFallback.isNotEmpty()) modelFallback else fallbackUrl
   }
 
   private fun openFallbackAndFinish(message: String) {
+    val resolvedFallbackUrl = resolveActiveFallbackUrl()
+    if (resolvedFallbackUrl.isEmpty()) {
+      finishFailure(
+        code = "E_FALLBACK_OPEN_FAILED",
+        message = "Fallback URL is missing."
+      )
+      return
+    }
+
     try {
-      val uri = Uri.parse(fallbackUrl)
+      val uri = Uri.parse(resolvedFallbackUrl)
       startActivity(Intent(Intent.ACTION_VIEW, uri))
       finishSuccess("fallback_opened", message)
     } catch (error: Throwable) {
@@ -317,7 +556,8 @@ class WdpTryOnActivity : AppCompatActivity() {
       Intent().apply {
         putExtra(RESULT_STATUS, status)
         putExtra(RESULT_MESSAGE, message)
-        putExtra(RESULT_EFFECT_PATH, effectPath)
+        putExtra(RESULT_EFFECT_PATH, currentEffectPath)
+        putExtra(RESULT_MODEL_ID, activeModel?.id.orEmpty())
       }
     setResult(RESULT_OK, resultIntent)
     finish()
@@ -328,7 +568,8 @@ class WdpTryOnActivity : AppCompatActivity() {
       Intent().apply {
         putExtra(RESULT_STATUS, "cancelled")
         putExtra(RESULT_MESSAGE, message)
-        putExtra(RESULT_EFFECT_PATH, effectPath)
+        putExtra(RESULT_EFFECT_PATH, currentEffectPath)
+        putExtra(RESULT_MODEL_ID, activeModel?.id.orEmpty())
       }
     setResult(RESULT_CANCELED, resultIntent)
     finish()
@@ -339,7 +580,8 @@ class WdpTryOnActivity : AppCompatActivity() {
       Intent().apply {
         putExtra(RESULT_STATUS, "failed")
         putExtra(RESULT_MESSAGE, "$code: $message")
-        putExtra(RESULT_EFFECT_PATH, effectPath)
+        putExtra(RESULT_EFFECT_PATH, currentEffectPath.ifEmpty { initialEffectPath })
+        putExtra(RESULT_MODEL_ID, activeModel?.id.orEmpty())
       }
     setResult(RESULT_CANCELED, resultIntent)
     finish()

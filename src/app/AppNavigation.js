@@ -19,6 +19,7 @@ import ProductsScreen from "../screens/ProductsScreen";
 import CartScreen from "../screens/CartScreen";
 import CheckoutScreen from "../screens/CheckoutScreen";
 import CheckoutStatusScreen from "../screens/CheckoutStatusScreen";
+import RefundRequestScreen from "../screens/RefundRequestScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import OrdersScreen from "../screens/OrdersScreen";
 import OrderDetailScreen from "../screens/OrderDetailScreen";
@@ -70,7 +71,14 @@ function CartStackScreen() {
     <CartStack.Navigator screenOptions={{ headerShown: false }}>
       <CartStack.Screen name="Cart" component={CartScreen} />
       <CartStack.Screen name="Checkout" component={CheckoutScreen} />
-      <CartStack.Screen name="CheckoutStatus" component={CheckoutStatusScreen} />
+      <CartStack.Screen
+        name="CheckoutStatus"
+        component={CheckoutStatusScreen}
+      />
+      <CartStack.Screen
+        name="RefundRequest"
+        component={RefundRequestScreen}
+      />
     </CartStack.Navigator>
   );
 }

@@ -11,6 +11,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { CART_TYPES } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
+import { useStoreNetworkStore } from "../store/storeNetworkStore";
 import {
   buildCheckoutPayload,
   buildCheckoutItems,
@@ -47,6 +48,7 @@ const SHIPPING_METHODS = [
 
 const PAYMENT_METHODS = [
   { id: "sepay", label: "SePay (QR)", desc: "Quét QR SePay để thanh toán" },
+  { id: "cod", label: "COD", desc: "Thanh toán khi nhận hàng" },
 ];
 
 const API_CART_TYPE = {
@@ -55,6 +57,52 @@ const API_CART_TYPE = {
 };
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value) + "đ";
+
+const normalizePercent = (value, fallback = 100) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return fallback;
+  return Math.min(100, number);
+};
+
+const getCartItemDepositPercent = (item) =>
+  normalizePercent(
+    item?.depositPercent ??
+      item?.preOrderConfig?.depositPercent ??
+      item?.product?.preOrder?.depositPercent,
+    item?.isPreorder ? 100 : 100,
+  );
+
+const getCartItemPayNow = (item) => {
+  if (Number.isFinite(Number(item?.payNow))) {
+    return Math.max(0, Number(item.payNow));
+  }
+  const unitPrice = Number(item?.product?.price || item?.unitPrice || 0);
+  const quantity = Number(item?.qty || item?.quantity || 0);
+  const lineTotal = unitPrice * quantity;
+  return Math.round(lineTotal * (getCartItemDepositPercent(item) / 100));
+};
+
+const getCartItemPayLater = (item) => {
+  if (Number.isFinite(Number(item?.payLater))) {
+    return Math.max(0, Number(item.payLater));
+  }
+  const unitPrice = Number(item?.product?.price || item?.unitPrice || 0);
+  const quantity = Number(item?.qty || item?.quantity || 0);
+  const lineTotal = unitPrice * quantity;
+  return Math.max(0, lineTotal - getCartItemPayNow(item));
+};
+
+const getShippingCollectionTimingLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "with_balance") return "Thu cùng đợt thanh toán còn lại";
+  if (normalized === "on_delivery") return "Thu khi giao hàng";
+  return "Thu ngay";
+};
+
+const getShippingFeeModeLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "estimated" ? "Tạm tính" : "Đã chốt";
+};
 
 const formatShippingLeadtime = (value, fallback) => {
   if (!value) return fallback;
@@ -165,6 +213,7 @@ export default function CheckoutScreen({ navigation, route }) {
       : CART_TYPES.ORDER;
   const cartItems = initialCartItems;
   const token = useAuthStore((s) => s.token);
+  const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
 
   const [address, setAddress] = useState(null);
   const [savedAddresses, setSavedAddresses] = useState([]);
@@ -198,8 +247,14 @@ export default function CheckoutScreen({ navigation, route }) {
   const cartSubtotal = useMemo(
     () =>
       cartItems.reduce((sum, it) => {
-        const payRate = it?.isPreorder ? 0.3 : 1;
-        return sum + (it.product?.price || 0) * (it.qty || 0) * payRate;
+        return sum + getCartItemPayNow(it);
+      }, 0),
+    [cartItems],
+  );
+  const cartPayLaterSubtotal = useMemo(
+    () =>
+      cartItems.reduce((sum, it) => {
+        return sum + getCartItemPayLater(it);
       }, 0),
     [cartItems],
   );
@@ -210,22 +265,20 @@ export default function CheckoutScreen({ navigation, route }) {
   );
   
 
-  const paymentMethods = PAYMENT_METHODS;
+  const paymentMethods = useMemo(() => {
+    if (hasPreorder) {
+      return PAYMENT_METHODS.filter((method) => method.id === "sepay");
+    }
+    return PAYMENT_METHODS;
+  }, [hasPreorder]);
   const cartDiscountAmount = initialQuoteMeta.discountAmount;
 
   const checkoutItems = useMemo(() => {
     const built = initialCheckoutItems.length
       ? buildCheckoutItems(initialCheckoutItems)
       : buildCheckoutItems(cartItems);
-    return built.map((it, idx) => {
-      const ci = cartItems[idx];
-      return {
-        ...it,
-        isPreorder: Boolean(ci?.isPreorder),
-        payRate: ci?.isPreorder ? 0.3 : 1,
-      };
-    });
-  }, [cartItems]);
+    return built.map((it) => ({ ...it }));
+  }, [cartItems, initialCheckoutItems]);
 
   const subtotal = quote?.subtotal ?? cartSubtotal;
   const discount = quote?.discountAmount ?? 0;
@@ -248,9 +301,17 @@ export default function CheckoutScreen({ navigation, route }) {
 
   const selectedShippingOption = shippingOptions?.[shippingId] || null;
   const shipping = quote?.shippingFee ?? selectedShippingOption?.fee ?? 0;
-  const total = quote?.total ?? Math.max(0, subtotal - discount + shipping);
-  const payNow = quote?.payNow ?? total;
-  const payLater = quote?.payLater ?? Math.max(0, total - payNow);
+  const total =
+    quote?.total ??
+    Math.max(0, cartSubtotal + cartPayLaterSubtotal - discount + shipping);
+  const payNow = quote?.payNow ?? Math.max(0, cartSubtotal - discount + shipping);
+  const payLater = quote?.payLater ?? Math.max(0, cartPayLaterSubtotal);
+  const shippingCollectionTiming = quote?.shippingCollectionTiming ?? "upfront";
+  const shippingFeeMode = quote?.shippingFeeMode ?? "estimated";
+  const payNowMethod = String(quote?.payNowMethod || "sepay").toUpperCase();
+  const payLaterMethod = payLater > 0
+    ? String(quote?.payLaterMethod || "cod").toUpperCase()
+    : null;
 
   useEffect(() => {
     let active = true;
@@ -658,11 +719,13 @@ export default function CheckoutScreen({ navigation, route }) {
 
     const payload = buildCheckoutPayload({
       items: checkoutItems,
+      storeId: selectedStoreId || undefined,
       shippingMethod: shippingId,
       discountAmount:
         typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
       shippingAddress: addressComplete ? address : null,
       voucherCode: appliedVoucherCode || undefined,
+      paymentMethod: paymentId,
       cartType: API_CART_TYPE[cartType] || "ready_stock",
     });
 
@@ -699,7 +762,9 @@ export default function CheckoutScreen({ navigation, route }) {
     skipInitialQuote,
     cartDiscountAmount,
     appliedVoucherCode,
+    paymentId,
     cartType,
+    selectedStoreId,
   ]);
 
   const applyVoucher = async () => {
@@ -739,9 +804,11 @@ export default function CheckoutScreen({ navigation, route }) {
 
       const quotePayload = buildCheckoutPayload({
         items: checkoutItems,
+        storeId: selectedStoreId || undefined,
         shippingMethod: shippingId,
         shippingAddress: addressComplete ? address : null,
         voucherCode: code,
+        paymentMethod: paymentId,
         cartType: API_CART_TYPE[cartType] || "ready_stock",
       });
 
@@ -793,6 +860,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
       const payload = buildCheckoutPayload({
         items: checkoutItems,
+        storeId: selectedStoreId || undefined,
         shippingMethod: shippingId,
         shippingAddress: addressComplete ? address : null,
         note: mergedNote || undefined,
@@ -801,6 +869,7 @@ export default function CheckoutScreen({ navigation, route }) {
             ? cartDiscountAmount
             : undefined,
         voucherCode: appliedVoucherCode || undefined,
+        paymentMethod: paymentId,
         cartType: API_CART_TYPE[cartType] || "ready_stock",
       });
 
@@ -814,8 +883,8 @@ export default function CheckoutScreen({ navigation, route }) {
         data?.paymentInstructions ||
         data?.paymentInstruction ||
         {};
-      const fallbackMethod = "SEPAY";
-      const fallbackStatus = "PENDING_QR";
+      const fallbackMethod = paymentId === "cod" ? "COD" : "SEPAY";
+      const fallbackStatus = paymentId === "cod" ? "PENDING_COD" : "PENDING_QR";
 
       const orderPayment = {
         ...serverPayment,
@@ -1419,28 +1488,30 @@ export default function CheckoutScreen({ navigation, route }) {
             <Text style={styles.sectionTitle}>Phương thức thanh toán</Text>
 
             <View style={styles.radioList}>
-              {(() => {
-                const activeMethod =
-                  paymentMethods.find((m) => m.id === paymentId) ||
-                  paymentMethods[0];
-                if (!activeMethod) return null;
-
+              {paymentMethods.map((method) => {
+                const isActive = method.id === paymentId;
                 return (
-                  <View style={[styles.radioItem, styles.radioItemActive]}>
-                    <View style={[styles.radioDot, styles.radioDotActive]}>
-                      <View style={styles.radioDotInner} />
+                  <TouchableOpacity
+                    key={method.id}
+                    activeOpacity={0.9}
+                    onPress={() => setPaymentId(method.id)}
+                    style={[
+                      styles.radioItem,
+                      isActive && styles.radioItemActive,
+                    ]}
+                  >
+                    <View style={[styles.radioDot, isActive && styles.radioDotActive]}>
+                      {isActive ? <View style={styles.radioDotInner} /> : null}
                     </View>
                     <View style={styles.radioInfo}>
                       <View style={styles.radioRow}>
-                        <Text style={styles.radioLabel}>
-                          {activeMethod.label}
-                        </Text>
+                        <Text style={styles.radioLabel}>{method.label}</Text>
                       </View>
-                      <Text style={styles.radioEta}>{activeMethod.desc}</Text>
+                      <Text style={styles.radioEta}>{method.desc}</Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
-              })()}
+              })}
             </View>
 
             {hasPreorder ? (
@@ -1448,6 +1519,12 @@ export default function CheckoutScreen({ navigation, route }) {
                 <Text style={styles.noticeText}>
                   Đơn đặt trước cần đặt cọc qua SePay, phần còn lại thanh toán
                   khi nhận hàng.
+                </Text>
+              </View>
+            ) : paymentId === "cod" ? (
+              <View style={styles.noticeBox}>
+                <Text style={styles.noticeText}>
+                  Đơn hàng sẽ được thu toàn bộ khi giao hàng thành công (COD).
                 </Text>
               </View>
             ) : null}
@@ -1508,8 +1585,16 @@ export default function CheckoutScreen({ navigation, route }) {
               <Text style={styles.summaryValue}>{formatVND(subtotal)}</Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Phí vận chuyển</Text>
+              <Text style={styles.summaryLabel}>
+                Phí vận chuyển ({getShippingFeeModeLabel(shippingFeeMode)})
+              </Text>
               <Text style={styles.summaryValue}>{formatVND(shipping)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Thu phí ship</Text>
+              <Text style={styles.summaryValue}>
+                {getShippingCollectionTimingLabel(shippingCollectionTiming)}
+              </Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Giảm giá</Text>
@@ -1521,16 +1606,25 @@ export default function CheckoutScreen({ navigation, route }) {
               <Text style={styles.summaryTotalValue}>{formatVND(total)}</Text>
             </View>
 
-            {hasPreorder ? (
+            {hasPreorder || payLater > 0 ? (
               <>
+                {payNow > 0 ? (
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Trả trước ({payNowMethod})</Text>
+                    <Text style={styles.summaryValue}>{formatVND(payNow)}</Text>
+                  </View>
+                ) : null}
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Trả trước (SePay)</Text>
-                  <Text style={styles.summaryValue}>{formatVND(payNow)}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Còn lại (COD)</Text>
+                  <Text style={styles.summaryLabel}>
+                    {hasPreorder ? "Còn lại" : "Thanh toán khi nhận hàng"}{" "}
+                    {payLaterMethod ? `(${payLaterMethod})` : ""}
+                  </Text>
                   <Text style={styles.summaryValue}>{formatVND(payLater)}</Text>
                 </View>
+                <Text style={styles.quoteHint}>
+                  Phí ship: {getShippingFeeModeLabel(shippingFeeMode).toLowerCase()} •{" "}
+                  {getShippingCollectionTimingLabel(shippingCollectionTiming)}
+                </Text>
               </>
             ) : null}
 

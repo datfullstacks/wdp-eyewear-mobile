@@ -83,6 +83,9 @@ const TRYON_DEMO_EFFECT_PATH =
 const TRYON_DEMO_RESOURCE_PATHS = toCsvList(process.env.EXPO_PUBLIC_TRYON_DEMO_RESOURCE_PATHS);
 
 function safeNumber(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -467,17 +470,57 @@ function withDemoTryOn(tryOn, productType) {
   };
 }
 
-export function mapApiProductToUi(product) {
+function normalizeStoreRef(store = {}) {
+  return {
+    id: toIdString(store?._id || store?.id),
+    name: toText(store?.name),
+    code: toText(store?.code),
+    status: toText(store?.status).toLowerCase() || "active",
+    type: toText(store?.type).toLowerCase() || "branch",
+    phone: toText(store?.phone),
+    email: toText(store?.email),
+    addressLine1: toText(store?.addressLine1),
+    ward: toText(store?.ward),
+    district: toText(store?.district),
+    city: toText(store?.city),
+    openingHours: toText(store?.openingHours),
+    supportsTryOn: Boolean(store?.supportsTryOn),
+    supportsPickup: store?.supportsPickup !== false,
+    isDefault: Boolean(store?.isDefault),
+  };
+}
+
+function buildStoreScope(scope = {}) {
+  const primaryStore =
+    scope?.primaryStoreId && typeof scope.primaryStoreId === "object"
+      ? normalizeStoreRef(scope.primaryStoreId)
+      : null;
+  const stores = Array.isArray(scope?.storeIds)
+    ? scope.storeIds
+        .filter((item) => item && typeof item === "object")
+        .map((item) => normalizeStoreRef(item))
+        .filter((store) => store.id)
+    : [];
+
+  return {
+    mode: String(scope?.mode || "").trim().toLowerCase() === "selected" ? "selected" : "all",
+    primaryStoreId:
+      typeof scope?.primaryStoreId === "string"
+        ? scope.primaryStoreId
+        : primaryStore?.id || "",
+    note: toText(scope?.note),
+    primaryStore,
+    stores,
+  };
+}
+
+export function mapApiProductSummaryToUi(product) {
   if (!product) return null;
 
   const assets = normalizeAssets(product?.media?.assets || []);
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   const variantAssetsById = buildVariantAssetMap(variants, assets);
   const mediaTryOn = product?.media?.tryOn || {};
-  const tryOnAssetIds = Array.isArray(mediaTryOn?.assetIds) ? mediaTryOn.assetIds : [];
-  const tryOnAssetIdSet = new Set(tryOnAssetIds.map((id) => toIdString(id)).filter(Boolean));
-  const tryOnAssets = assets.filter((asset) => tryOnAssetIdSet.has(toIdString(asset.id)));
-
   const { price, originalPrice, discountPct } = computePricing(product?.pricing || {});
 
   const totalStock = variants
@@ -486,10 +529,11 @@ export function mapApiProductToUi(product) {
     .reduce((sum, v) => sum + v, 0);
 
   const stockStatus = computeStockStatus(product, variants.length ? totalStock : null);
-
   const uiType = normalizeType(product?.type);
-
   const preorderEnabled = product?.preOrder?.enabled === true;
+  const allowCod = preorderEnabled
+    ? Boolean(product?.preOrder?.allowCod ?? true)
+    : true;
 
   const orderTypes =
     uiType === "LENS"
@@ -499,16 +543,14 @@ export function mapApiProductToUi(product) {
         : ["READY", "CUSTOM"];
 
   const defaultOrderType = stockStatus === "PREORDER" ? "PREORDER" : "READY";
-
   const { colors, sizes, colorDots } = buildVariantsMeta(variants, assets, variantAssetsById);
-
-  // const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
-  // const tryOn = withDemoTryOn(buildTryOnMeta(product?.media || {}), uiType);
-  const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
-  const tryOn = withDemoTryOn(buildTryOnMeta(product?.media || {}), uiType);
-  const default3DAsset = pick3DAsset(assets);
-
   const apiId = product?._id || product?.id || null;
+  const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
+  const tryOnStatus = String(mediaTryOn?.status || "").trim().toLowerCase();
+  const canTryOn =
+    uiType === "FRAME" &&
+    (Boolean(mediaTryOn?.enabled) || tryOnStatus === "published" || has3D);
+  const storeScope = buildStoreScope(product?.storeScope || {});
 
   return {
     id: String(apiId || product?.slug || ""),
@@ -518,29 +560,56 @@ export function mapApiProductToUi(product) {
     name: product?.name || "",
     slug: product?.slug || "",
     brand: product?.brand || "",
+    category: product?.category || null,
+    seasonalTags: Array.isArray(product?.seasonalTags) ? product.seasonalTags : [],
     price,
     originalPrice,
     discountPct,
     status: STATUS_LABEL[stockStatus] || STATUS_LABEL.IN_STOCK,
     stockStatus,
     stockLabel: STOCK_LABEL[stockStatus] || STOCK_LABEL.IN_STOCK,
-    totalStock: totalStock,
-    variants: variants,
+    totalStock,
     image: pickHeroImage(assets),
     color: colorDots,
-
     ratingAvg: safeNumber(product?.ratingsAverage) ?? 0,
     ratingCount: safeNumber(product?.ratingsQuantity) ?? 0,
     soldCount: safeNumber(product?.ratingsQuantity) ?? 0,
-
     shipping: buildShipping(product?.fulfillment),
-
     orderTypes,
     defaultOrderType,
-
     colors,
     sizes,
     qtyLimits: { min: 1, max: 99 },
+    allowCod,
+    preOrder: product?.preOrder ?? { enabled: false, allowCod: true },
+    canTryOn,
+    storeScope,
+  };
+}
+
+export function mapApiProductToUi(product) {
+  const summary = mapApiProductSummaryToUi(product);
+  if (!summary) return null;
+
+  const assets = normalizeAssets(product?.media?.assets || []);
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const variantAssetsById = buildVariantAssetMap(variants, assets);
+  const mediaTryOn = product?.media?.tryOn || {};
+  const tryOnAssetIds = Array.isArray(mediaTryOn?.assetIds) ? mediaTryOn.assetIds : [];
+  const tryOnAssetIdSet = new Set(tryOnAssetIds.map((id) => toIdString(id)).filter(Boolean));
+  const tryOnAssets = assets.filter((asset) => tryOnAssetIdSet.has(toIdString(asset.id)));
+
+  const uiType = summary.type;
+
+  // const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
+  // const tryOn = withDemoTryOn(buildTryOnMeta(product?.media || {}), uiType);
+  const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
+  const tryOn = withDemoTryOn(buildTryOnMeta(product?.media || {}), uiType);
+  const default3DAsset = pick3DAsset(assets);
+
+  return {
+    ...summary,
+    variants,
     // model3D: {
     //   enabled: has3D,
     //   defaultAsset: pick3DAsset(assets),
@@ -565,6 +634,7 @@ export function mapApiProductToUi(product) {
       },
     },
     tryOn,
+    storeScope: summary.storeScope,
 
     specs: buildSpecsList(product),
     sections: {
@@ -574,12 +644,11 @@ export function mapApiProductToUi(product) {
 
     qaCount: 0,
     relatedIds: [],
-    preOrder: product?.preOrder ?? { enabled: false, allowCod: true },
   };
 }
 
 export function mapApiProductsToUi(list = []) {
-  return list.map(mapApiProductToUi).filter(Boolean);
+  return list.map(mapApiProductSummaryToUi).filter(Boolean);
 }
 
 export async function fetchProducts(params = {}) {
@@ -598,8 +667,7 @@ export async function fetchProducts(params = {}) {
     page += 1;
   } while (page <= totalPages);
 
-  const merged = await attachSupabaseTryOnToProducts(all);
-  return mapApiProductsToUi(merged);
+  return mapApiProductsToUi(all);
 }
 
 export function getRelatedProducts(products, product, limit = 8) {
