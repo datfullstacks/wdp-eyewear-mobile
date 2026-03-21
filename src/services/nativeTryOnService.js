@@ -4,6 +4,7 @@ import { prepareBanubaRuntimeEffect } from "./tryOnBanubaEffectService";
 
 const DEFAULT_NATIVE_MODULE_NAME = "WdpTryOnSdk";
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const MAX_TRY_ON_MODELS = 8;
 
 const toText = (value) => String(value ?? "").trim();
 
@@ -115,6 +116,87 @@ export function getNativeTryOnAvailability() {
   };
 }
 
+function uniqueStrings(values = []) {
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => (Array.isArray(value) ? value : [value]))
+        .map((value) => toText(value))
+        .filter(Boolean)
+    )
+  );
+}
+
+function mergeTryOnModel(baseTryOn = {}, model = {}, index = 0) {
+  return {
+    ...baseTryOn,
+    ...model,
+    id: toText(model?.id) || `model-${index + 1}`,
+    label: toText(model?.label) || `Model ${index + 1}`,
+    ready: Boolean(model?.ready ?? baseTryOn?.ready),
+    arUrl: toText(model?.arUrl) || toText(baseTryOn?.arUrl),
+    glbUrl: toText(model?.glbUrl) || toText(baseTryOn?.glbUrl),
+    usdzUrl: toText(model?.usdzUrl) || toText(baseTryOn?.usdzUrl),
+    launchUrl: toText(model?.launchUrl) || toText(baseTryOn?.launchUrl),
+    effectPath:
+      toText(model?.effectPath || model?.effect) ||
+      toText(baseTryOn?.effectPath || baseTryOn?.effect),
+    scene: toText(model?.scene) || toText(baseTryOn?.scene),
+    resourcePaths:
+      toStringArray(model?.resourcePaths).length > 0
+        ? toStringArray(model?.resourcePaths)
+        : toStringArray(baseTryOn?.resourcePaths),
+    prefab:
+      model?.prefab && typeof model.prefab === "object"
+        ? model.prefab
+        : baseTryOn?.prefab && typeof baseTryOn.prefab === "object"
+          ? baseTryOn.prefab
+          : undefined,
+  };
+}
+
+async function prepareTryOnModelForNative({
+  product = {},
+  baseTryOn = {},
+  model = {},
+  index = 0,
+  fallbackUrl = "",
+} = {}) {
+  const originalModel = mergeTryOnModel(baseTryOn, model, index);
+  const cachedTryOn = await prepareTryOnModelCache(originalModel);
+  const runtimeEffect = await prepareBanubaRuntimeEffect({
+    product,
+    originalTryOn: originalModel,
+    cachedTryOn,
+  });
+  const preparedFallbackUrl = resolvePreparedFallbackUrl({
+    fallbackUrl: fallbackUrl || originalModel.fallbackUrl || originalModel.launchUrl || originalModel.arUrl,
+    originalTryOn: originalModel,
+    preparedTryOn: cachedTryOn,
+  });
+  const resolvedEffectPath =
+    toText(runtimeEffect?.effectPath) ||
+    toText(originalModel.effectPath || originalModel.effect);
+  const resourcePaths =
+    runtimeEffect?.resourcePaths?.length
+      ? runtimeEffect.resourcePaths
+      : toStringArray(originalModel.resourcePaths);
+
+  return {
+    ...originalModel,
+    arUrl: toText(cachedTryOn?.arUrl) || toText(originalModel.arUrl),
+    glbUrl: toText(cachedTryOn?.glbUrl) || toText(originalModel.glbUrl),
+    usdzUrl: toText(cachedTryOn?.usdzUrl) || toText(originalModel.usdzUrl),
+    launchUrl: toText(cachedTryOn?.launchUrl) || toText(originalModel.launchUrl),
+    effectPath: resolvedEffectPath,
+    resourcePaths,
+    fallbackUrl: preparedFallbackUrl,
+    ready: Boolean(originalModel.ready || resolvedEffectPath || preparedFallbackUrl),
+    cacheMeta: cachedTryOn?.cacheMeta || null,
+    runtimeEffectMeta: runtimeEffect?.runtimeEffectMeta || null,
+  };
+}
+
 export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl = "" } = {}) {
   const primaryArUrl = toText(tryOn.arUrl);
   const glbUrl = toText(tryOn.glbUrl);
@@ -123,6 +205,32 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
   const effectPath = toText(tryOn.effectPath || tryOn.effect || "");
   const resolvedFallback = canUseExternalFallbackUrl(fallbackUrl) ? toText(fallbackUrl) : "";
   const resourcePaths = toStringArray(tryOn.resourcePaths);
+  const models = Array.isArray(tryOn.models)
+    ? tryOn.models
+        .slice(0, MAX_TRY_ON_MODELS)
+        .map((model, index) => ({
+          id: toText(model?.id) || `model-${index + 1}`,
+          label: toText(model?.label) || `Model ${index + 1}`,
+          ready: Boolean(model?.ready),
+          glbUrl: toText(model?.glbUrl),
+          usdzUrl: toText(model?.usdzUrl),
+          arUrl: toText(model?.arUrl),
+          launchUrl: toText(model?.launchUrl),
+          effectPath: toText(model?.effectPath),
+          fallbackUrl: toText(model?.fallbackUrl),
+          resourcePaths: toStringArray(model?.resourcePaths),
+        }))
+        .filter(
+          (model) =>
+            model.ready ||
+            model.glbUrl ||
+            model.usdzUrl ||
+            model.arUrl ||
+            model.launchUrl ||
+            model.effectPath ||
+            model.fallbackUrl
+        )
+    : [];
 
   const modelUrl =
     Platform.OS === "ios"
@@ -139,6 +247,7 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
     status: toText(tryOn.status).toLowerCase(),
     published: Boolean(tryOn.published),
     ready: Boolean(tryOn.ready),
+    selectedModelId: toText(tryOn.selectedModelId),
     arUrl: canUseAbsoluteHttpUrl(primaryArUrl) ? primaryArUrl : "",
     launchUrl:
       Platform.OS === "ios"
@@ -151,6 +260,7 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
     usdzUrl,
     fallbackUrl: resolvedFallback,
     assetIds: Array.isArray(tryOn.assetIds) ? tryOn.assetIds.map((id) => toText(id)).filter(Boolean) : [],
+    models,
     platform: Platform.OS,
   };
 }
@@ -164,22 +274,56 @@ export async function startNativeTryOnSession({ product = {}, tryOn = {}, fallba
   const { moduleName, module } = getNativeModule();
   const startMethod = availability.startMethod;
   const originalTryOn = tryOn || {};
-  const cachedTryOn = await prepareTryOnModelCache(originalTryOn);
-  const runtimeEffect = await prepareBanubaRuntimeEffect({
-    product,
-    originalTryOn,
-    cachedTryOn,
-  });
-  const preparedFallbackUrl = resolvePreparedFallbackUrl({
-    fallbackUrl,
-    originalTryOn,
-    preparedTryOn: originalTryOn,
-  });
-  const resolvedEffectPath =
-    runtimeEffect.effectPath || originalTryOn.effectPath || originalTryOn.effect || "";
+  const originalModels = Array.isArray(originalTryOn.models)
+    ? originalTryOn.models.slice(0, MAX_TRY_ON_MODELS)
+    : [];
+  const preparedModels = originalModels.length
+    ? await Promise.all(
+        originalModels.map((model, index) =>
+          prepareTryOnModelForNative({
+            product,
+            baseTryOn: originalTryOn,
+            model,
+            index,
+            fallbackUrl,
+          })
+        )
+      )
+    : [];
+  const selectedModelId = toText(originalTryOn.selectedModelId);
+  const selectedPreparedModel =
+    (selectedModelId
+      ? preparedModels.find((model) => toText(model.id) === selectedModelId)
+      : null) ||
+    preparedModels.find((model) => model.ready) ||
+    null;
 
-  if (!toText(resolvedEffectPath)) {
-    const runtimeReason = toText(runtimeEffect?.runtimeEffectMeta?.reason);
+  let activePreparedTryOn = selectedPreparedModel;
+  let primaryCacheMeta = selectedPreparedModel?.cacheMeta || null;
+  let primaryRuntimeEffectMeta = selectedPreparedModel?.runtimeEffectMeta || null;
+
+  if (!activePreparedTryOn) {
+    activePreparedTryOn = await prepareTryOnModelForNative({
+      product,
+      baseTryOn: originalTryOn,
+      model: originalTryOn,
+      fallbackUrl,
+    });
+    primaryCacheMeta = activePreparedTryOn?.cacheMeta || null;
+    primaryRuntimeEffectMeta = activePreparedTryOn?.runtimeEffectMeta || null;
+  }
+
+  const preparedFallbackUrl =
+    toText(activePreparedTryOn?.fallbackUrl) ||
+    resolvePreparedFallbackUrl({
+      fallbackUrl,
+      originalTryOn,
+      preparedTryOn: activePreparedTryOn || originalTryOn,
+    });
+  const resolvedEffectPath = toText(activePreparedTryOn?.effectPath);
+
+  if (!resolvedEffectPath && !preparedFallbackUrl) {
+    const runtimeReason = toText(primaryRuntimeEffectMeta?.reason);
     if (runtimeReason === "local_glb_unavailable") {
       throw new Error(
         "Try-on model was not cached locally. Restart Metro with --clear and try again."
@@ -191,11 +335,25 @@ export async function startNativeTryOnSession({ product = {}, tryOn = {}, fallba
 
   const payloadTryOn = {
     ...originalTryOn,
-    effectPath: resolvedEffectPath,
-    resourcePaths:
-      runtimeEffect.resourcePaths?.length
-        ? runtimeEffect.resourcePaths
-        : toStringArray(originalTryOn.resourcePaths),
+    ...activePreparedTryOn,
+    selectedModelId: toText(activePreparedTryOn?.id || selectedModelId),
+    models: preparedModels.map((model) => ({
+      id: model.id,
+      label: model.label,
+      ready: Boolean(model.ready),
+      glbUrl: toText(model.glbUrl),
+      usdzUrl: toText(model.usdzUrl),
+      arUrl: toText(model.arUrl),
+      launchUrl: toText(model.launchUrl),
+      effectPath: toText(model.effectPath),
+      fallbackUrl: toText(model.fallbackUrl),
+      resourcePaths: toStringArray(model.resourcePaths),
+    })),
+    resourcePaths: uniqueStrings([
+      toStringArray(activePreparedTryOn?.resourcePaths),
+      toStringArray(originalTryOn.resourcePaths),
+      ...preparedModels.map((model) => toStringArray(model.resourcePaths)),
+    ]),
   };
   const payload = buildNativeTryOnPayload({
     product,
@@ -212,15 +370,22 @@ export async function startNativeTryOnSession({ product = {}, tryOn = {}, fallba
     moduleName,
     startMethod,
     result,
-    cacheMeta: cachedTryOn?.cacheMeta || null,
-    runtimeEffectMeta: runtimeEffect?.runtimeEffectMeta || null,
+    cacheMeta: primaryCacheMeta,
+    runtimeEffectMeta: primaryRuntimeEffectMeta,
+    preparedModelCount: preparedModels.length,
   });
   return {
     moduleName,
     startMethod,
     payload,
-    cacheMeta: cachedTryOn?.cacheMeta || null,
-    runtimeEffectMeta: runtimeEffect?.runtimeEffectMeta || null,
+    cacheMeta: primaryCacheMeta,
+    runtimeEffectMeta: primaryRuntimeEffectMeta,
+    preparedModels: preparedModels.map((model) => ({
+      id: model.id,
+      label: model.label,
+      effectPath: model.effectPath,
+      ready: model.ready,
+    })),
     result: result ?? null,
   };
 }

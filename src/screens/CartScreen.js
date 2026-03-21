@@ -36,8 +36,6 @@ const ORDER_TYPE_LABEL = {
   CUSTOM: "Làm theo đơn",
 };
 
-const PREORDER_PAY_RATE = 0.3;
-
 const UI_TO_API_CART_TYPE = {
   [CART_TYPES.ORDER]: API_CART_TYPES.READY_STOCK,
   [CART_TYPES.PREORDER]: API_CART_TYPES.PRE_ORDER,
@@ -75,15 +73,37 @@ function isCartItemComplete(ci) {
   return false;
 }
 
+function getDepositPercent(ci) {
+  const raw =
+    ci?.depositPercent ??
+    ci?.preOrderConfig?.depositPercent ??
+    ci?.product?.preOrder?.depositPercent;
+  const value = Number(raw);
+  if (Number.isFinite(value) && value >= 0) {
+    return Math.min(100, value);
+  }
+  return ci?.isPreorder ? 100 : 100;
+}
+
+function formatPercent(value) {
+  const normalized = Math.max(0, Number(value || 0));
+  return Number.isInteger(normalized) ? `${normalized}%` : `${normalized.toFixed(1)}%`;
+}
+
 function calcLineTotal(ci) {
+  if (Number.isFinite(Number(ci?.payNow))) {
+    return Math.max(0, Number(ci.payNow));
+  }
+
   const unitPrice =
     ci.product?.price ??
     ci.product?.pricing?.salePrice ??
     ci.product?.pricing?.basePrice ??
     ci.unitPrice ??
     0;
-  const payRate = ci?.isPreorder ? PREORDER_PAY_RATE : 1;
-  return unitPrice * (ci.qty || 0) * payRate;
+  const depositPercent = getDepositPercent(ci);
+  const lineTotal = unitPrice * (ci.qty || 0);
+  return Math.round(lineTotal * (depositPercent / 100));
 }
 
 function calcLineTotalFull(ci) {
@@ -94,6 +114,14 @@ function calcLineTotalFull(ci) {
     ci.unitPrice ??
     0;
   return unitPrice * (ci.qty || 0);
+}
+
+function calcLinePayLater(ci) {
+  if (Number.isFinite(Number(ci?.payLater))) {
+    return Math.max(0, Number(ci.payLater));
+  }
+
+  return Math.max(0, calcLineTotalFull(ci) - calcLineTotal(ci));
 }
 
 function TabBadge({ count }) {
@@ -147,6 +175,7 @@ function mapApiCartItemToUi(item, products = []) {
     ? {
         ...matchedProduct,
         image: imageOverride || matchedProduct.image,
+        preOrder: item?.preOrderConfig || matchedProduct.preOrder || null,
       }
     : {
         id: item.productId,
@@ -156,6 +185,7 @@ function mapApiCartItemToUi(item, products = []) {
         image: "",
         price: item.unitPrice || 0,
         originalPrice: null,
+        preOrder: item?.preOrderConfig || null,
       };
 
   let variantText = null;
@@ -176,6 +206,17 @@ function mapApiCartItemToUi(item, products = []) {
     product,
     unitPrice: item.unitPrice || product?.price || 0,
     lineTotal: item.lineTotal || 0,
+    depositPercent: (() => {
+      const value = Number(
+        item.depositPercent ??
+          item?.preOrderConfig?.depositPercent ??
+          product?.preOrder?.depositPercent,
+      );
+      return Number.isFinite(value) ? value : 100;
+    })(),
+    payNow: item.payNow != null ? Number(item.payNow) : undefined,
+    payLater: item.payLater != null ? Number(item.payLater) : undefined,
+    preOrderConfig: item?.preOrderConfig || product?.preOrder || null,
     variantText,
     readyNote: item?.customization?.note || "",
     customization: item?.customization || {},
@@ -201,8 +242,6 @@ function buildCheckoutItemsFromApiUi(cartItems) {
       variantId: ci.variantId || undefined,
       quantity: ci.qty || 1,
       customization: ci.customization || {},
-      isPreorder: Boolean(ci.isPreorder),
-      payRate: ci?.isPreorder ? PREORDER_PAY_RATE : 1,
     }));
 }
 
@@ -328,6 +367,11 @@ export default function CartScreen({ navigation, route }) {
     () => cartItems.reduce((sum, ci) => sum + calcLineTotal(ci), 0),
     [cartItems]
   );
+  const payLaterTotal = useMemo(
+    () => cartItems.reduce((sum, ci) => sum + calcLinePayLater(ci), 0),
+    [cartItems]
+  );
+  const grandTotal = Math.max(0, subtotal + payLaterTotal);
 
   const discount = 0;
   const shipping = 0;
@@ -681,17 +725,35 @@ export default function CartScreen({ navigation, route }) {
               ) : null}
 
               <View style={styles.sumRow}>
-                <Text style={styles.sumLabel}>Tạm tính (cần thanh toán)</Text>
+                <Text style={styles.sumLabel}>
+                  {activeCartType === CART_TYPES.PREORDER
+                    ? "Tạm tính cần trả trước"
+                    : "Tạm tính (cần thanh toán)"}
+                </Text>
                 <Text style={styles.sumValue}>{formatVND(subtotal)}</Text>
               </View>
+              {activeCartType === CART_TYPES.PREORDER ? (
+                <View style={styles.sumRow}>
+                  <Text style={styles.sumLabel}>COD còn lại</Text>
+                  <Text style={styles.sumValue}>{formatVND(payLaterTotal)}</Text>
+                </View>
+              ) : null}
               <View style={styles.sumRow}>
                 <Text style={styles.sumLabel}>Giảm giá</Text>
                 <Text style={styles.sumValue}>-{formatVND(discount)}</Text>
               </View>
               <View style={styles.sumDivider} />
               <View style={styles.sumRow}>
-                <Text style={styles.sumTotalLabel}>Tổng cần thanh toán</Text>
-                <Text style={styles.sumTotalValue}>{formatVND(total)}</Text>
+                <Text style={styles.sumTotalLabel}>
+                  {activeCartType === CART_TYPES.PREORDER
+                    ? "Tổng giá trị sản phẩm"
+                    : "Tổng cần thanh toán"}
+                </Text>
+                <Text style={styles.sumTotalValue}>
+                  {formatVND(
+                    activeCartType === CART_TYPES.PREORDER ? grandTotal : total,
+                  )}
+                </Text>
               </View>
             </View>
 
@@ -753,7 +815,9 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
           : "Chưa tải ảnh đơn kính";
 
   const payNow = calcLineTotal(ci);
+  const payLater = calcLinePayLater(ci);
   const full = calcLineTotalFull(ci);
+  const depositPercent = getDepositPercent(ci);
 
   const pairedLabel = ci.combineWithName ? `Đã kết hợp: ${ci.combineWithName}` : null;
 
@@ -804,7 +868,9 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
             {ci.isPreorder ? (
               <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
                 <View style={[styles.pill, { backgroundColor: "#FFF7ED" }]}>
-                  <Text style={[styles.pillText, { color: "#B45309" }]}>Cọc 30%</Text>
+                  <Text style={[styles.pillText, { color: "#B45309" }]}>
+                    Cọc {formatPercent(depositPercent)}
+                  </Text>
                 </View>
                 <View style={[styles.pill, { backgroundColor: "#E8F5E9" }]}>
                   <Text style={[styles.pillText, { color: "green" }]}>Đặt trước</Text>
@@ -820,7 +886,7 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
 
           {ci.isPreorder ? (
             <Text style={[styles.variantText, { marginTop: 6, color: "#B45309" }]}>
-              Thanh toán hôm nay: {formatVND(payNow)} • Tổng: {formatVND(full)}
+              Trả trước: {formatVND(payNow)} • COD: {formatVND(payLater)} • Tổng: {formatVND(full)}
             </Text>
           ) : null}
 

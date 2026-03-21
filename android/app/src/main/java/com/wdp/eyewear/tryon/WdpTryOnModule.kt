@@ -4,16 +4,18 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
-import com.wdp.eyewear.BuildConfig
 import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReadableArray
+import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableType
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.bridge.ReadableType
 import com.facebook.react.bridge.WritableNativeMap
+import com.wdp.eyewear.BuildConfig
+import org.json.JSONArray
+import org.json.JSONObject
 
 class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -146,6 +148,8 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
     val effectPath = readString(payload, "effectPath")
     val fallbackUrl = resolveLaunchUrl(payload)
     val resourcePaths = readStringArray(payload, "resourcePaths")
+    val selectedModelId = readString(payload, "selectedModelId")
+    val modelsJson = readModelsJson(payload)
 
     val intent = Intent(reactContext, WdpTryOnActivity::class.java).apply {
       putExtra(WdpTryOnActivity.EXTRA_PRODUCT_ID, productId)
@@ -153,6 +157,8 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
       putExtra(WdpTryOnActivity.EXTRA_SDK_KEY, sdkKey)
       putExtra(WdpTryOnActivity.EXTRA_EFFECT_PATH, effectPath)
       putExtra(WdpTryOnActivity.EXTRA_FALLBACK_URL, fallbackUrl)
+      putExtra(WdpTryOnActivity.EXTRA_SELECTED_MODEL_ID, selectedModelId)
+      putExtra(WdpTryOnActivity.EXTRA_MODELS_JSON, modelsJson)
       putStringArrayListExtra(
         WdpTryOnActivity.EXTRA_RESOURCE_PATHS,
         ArrayList(resourcePaths)
@@ -187,6 +193,45 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
+  private fun readModelsJson(payload: ReadableMap?): String {
+    if (payload == null || !payload.hasKey("models") || payload.isNull("models")) return ""
+    if (payload.getType("models") != ReadableType.Array) return ""
+
+    val source = payload.getArray("models") ?: return ""
+    val output = JSONArray()
+
+    for (index in 0 until source.size()) {
+      if (source.isNull(index) || source.getType(index) != ReadableType.Map) continue
+      val model = source.getMap(index) ?: continue
+      val node = JSONObject()
+
+      putString(node, "id", readString(model, "id"))
+      putString(node, "label", readString(model, "label"))
+      putString(node, "glbUrl", readString(model, "glbUrl"))
+      putString(node, "usdzUrl", readString(model, "usdzUrl"))
+      putString(node, "arUrl", readString(model, "arUrl"))
+      putString(node, "launchUrl", readString(model, "launchUrl"))
+      putString(node, "effectPath", readString(model, "effectPath"))
+      putString(node, "fallbackUrl", readString(model, "fallbackUrl"))
+      node.put("ready", readBoolean(model, "ready", false))
+
+      val resourcePaths = readStringArray(model, "resourcePaths")
+      if (resourcePaths.isNotEmpty()) {
+        val resourcesJson = JSONArray()
+        resourcePaths.forEach { resourcesJson.put(it) }
+        node.put("resourcePaths", resourcesJson)
+      }
+
+      output.put(node)
+    }
+
+    return if (output.length() > 0) output.toString() else ""
+  }
+
+  private fun putString(target: JSONObject, key: String, value: String) {
+    if (value.isNotEmpty()) target.put(key, value)
+  }
+
   private fun resolvePendingTryOnResult(resultCode: Int, data: Intent?) {
     val promise = pendingPromise ?: return
     pendingPromise = null
@@ -207,6 +252,10 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
         "effectPath",
         data?.getStringExtra(WdpTryOnActivity.RESULT_EFFECT_PATH) ?: ""
       )
+      putString(
+        "selectedModelId",
+        data?.getStringExtra(WdpTryOnActivity.RESULT_MODEL_ID) ?: ""
+      )
     }
     pendingProductId = ""
     promise.resolve(result)
@@ -215,6 +264,15 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
   private fun readString(payload: ReadableMap?, key: String): String {
     if (payload == null || !payload.hasKey(key) || payload.isNull(key)) return ""
     return payload.getString(key)?.trim().orEmpty()
+  }
+
+  private fun readBoolean(payload: ReadableMap?, key: String, defaultValue: Boolean = false): Boolean {
+    if (payload == null || !payload.hasKey(key) || payload.isNull(key)) return defaultValue
+    return when (payload.getType(key)) {
+      ReadableType.Boolean -> payload.getBoolean(key)
+      ReadableType.String -> payload.getString(key)?.trim()?.equals("true", ignoreCase = true) == true
+      else -> defaultValue
+    }
   }
 
   private fun readStringArray(payload: ReadableMap?, key: String): List<String> {
@@ -258,10 +316,11 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
   }
 
   private fun isOpenableUrl(value: String): Boolean {
-    return value.startsWith("https://", ignoreCase = true) ||
-      value.startsWith("http://", ignoreCase = true) ||
-      value.startsWith("file://", ignoreCase = true) ||
-      value.startsWith("content://", ignoreCase = true)
+    val normalized = value.lowercase()
+    return normalized.startsWith("file://") ||
+      normalized.startsWith("content://") ||
+      normalized.startsWith("http://") ||
+      normalized.startsWith("https://")
   }
 
   private fun openExternalUrl(
@@ -272,42 +331,31 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
     message: String,
     promise: Promise
   ) {
-    val uri = Uri.parse(url)
-    if (uri.scheme.isNullOrEmpty()) {
-      promise.reject("E_INVALID_URL", "Try-on URL is invalid: $url")
-      return
-    }
-
-    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+    val target = Uri.parse(url)
+    val intent = Intent(Intent.ACTION_VIEW, target).apply {
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
     try {
-      val hostActivity = reactContext.currentActivity
-      if (hostActivity != null) {
-        hostActivity.startActivity(intent)
-      } else {
-        reactContext.startActivity(intent)
-      }
-
+      reactContext.startActivity(intent)
       val result = WritableNativeMap().apply {
         putString("status", status)
         putString("message", message)
-        putString("url", url)
         putString("productId", productId)
         putBoolean("nativeAvailable", nativeAvailable)
+        putString("fallbackUrl", url)
       }
       promise.resolve(result)
-    } catch (_: ActivityNotFoundException) {
-      promise.reject("E_ACTIVITY_NOT_FOUND", "No app can handle URL: $url")
+    } catch (error: ActivityNotFoundException) {
+      promise.reject("E_FALLBACK_OPEN_FAILED", "No activity can open fallback URL.", error)
     } catch (error: Throwable) {
-      promise.reject("E_OPEN_URL_FAILED", error.message, error)
+      promise.reject("E_FALLBACK_OPEN_FAILED", error.message, error)
     }
   }
 
-  private fun hasClass(className: String): Boolean {
+  private fun hasClass(name: String): Boolean {
     return try {
-      Class.forName(className)
+      Class.forName(name)
       true
     } catch (_: Throwable) {
       false

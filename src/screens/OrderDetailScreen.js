@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { CART_TYPES } from "../store/cartStore";
 import { getOrderByIdApi, cancelOrderApi } from "../services/orderService";
 
@@ -118,6 +119,60 @@ function normalizeStatusText(value) {
     created: "Đã tạo",
   };
   return map[raw] || value || "--";
+}
+
+function getShippingCollectionTimingLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "with_balance") return "Thu cùng đợt thanh toán còn lại";
+  if (normalized === "on_delivery") return "Thu khi giao hàng";
+  return "Thu ngay";
+}
+
+function getShippingFeeModeLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "estimated" ? "Tạm tính" : "Đã chốt";
+}
+
+function getRefundOwnerLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "sales") return "Sale/Staff";
+  if (normalized === "manager") return "Manager";
+  if (normalized === "operations") return "Operations";
+  if (normalized === "customer") return "Ban";
+  return "Da dong case";
+}
+
+function getRefundNextStepLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "customer_submit_info") return "Ban bo sung thong tin";
+  if (normalized === "manager_approve") return "Manager quyet dinh";
+  if (normalized === "confirm_return_received") return "Operations nhan / QC hang";
+  if (normalized === "start_processing") return "Operations bat dau payout";
+  if (normalized === "complete") return "Operations xac nhan da chuyen tien";
+  if (normalized === "start_review") return "Staff review ho so";
+  return "--";
+}
+
+function getRefundInspectionLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "pending") return "Dang doi soat";
+  if (normalized === "passed") return "Da dat";
+  if (normalized === "failed") return "Khong dat";
+  return "Khong yeu cau";
+}
+
+function getRefundHistoryEntries(refund) {
+  if (!Array.isArray(refund?.history)) return [];
+
+  return refund.history.map((entry) => ({
+    action: String(entry?.action || "").trim().toLowerCase(),
+    fromStatus: String(entry?.fromStatus || "none").trim().toLowerCase(),
+    toStatus: String(entry?.toStatus || "none").trim().toLowerCase(),
+    actorRole: String(entry?.actorRole || "").trim().toLowerCase(),
+    actorName: String(entry?.actorName || "").trim(),
+    note: String(entry?.note || "").trim(),
+    createdAt: entry?.createdAt || null,
+  }));
 }
 
 function normalizeOrderProgressStatus(status, opsStage) {
@@ -258,10 +313,28 @@ export default function OrderDetailScreen({ navigation, route }) {
     loadOrder();
   }, [loadOrder]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (order) {
+        loadOrder({ silent: true });
+      }
+    }, [loadOrder, order])
+  );
+
   const statusKey = String(order?.status || "").toLowerCase();
   const paymentKey = String(order?.paymentStatus || order?.payment?.status || "").toLowerCase();
   const isPaid = ["paid", "success", "succeeded"].includes(paymentKey);
-  const canCancel = ["pending", "confirmed", "processing"].includes(statusKey) && !isPaid;
+  const canCancel = ["pending", "confirmed", "processing"].includes(statusKey);
+  const refundStatus = String(order?.refund?.status || "").trim().toLowerCase();
+  const hasClosedRefund = ["completed", "rejected"].includes(refundStatus);
+  const hasActiveRefund = Boolean(order?.refund && !hasClosedRefund);
+  const paidAmount = Math.max(0, Number(order?.paidAmount || 0));
+  const canRequestRefund =
+    Boolean(order?._id || order?.id || orderId) &&
+    !hasActiveRefund &&
+    ["pending", "cancelled", "delivered", "returned"].includes(statusKey) &&
+    paidAmount > 0;
+  const canSubmitRefundInfo = refundStatus === "waiting_customer_info";
 
   const canPayNow =
     !isPaid &&
@@ -290,6 +363,42 @@ export default function OrderDetailScreen({ navigation, route }) {
 
   const handleCancelOrder = useCallback(() => {
     if (!order?._id || isCancelling) return;
+    const cancelConfirmMessage =
+      paidAmount > 0
+        ? "Ban chac chan muon huy don nay? He thong se tao luong hoan tien cho khoan da thanh toan."
+        : "Ban chac chan muon huy don nay? Thao tac khong the hoan tac.";
+    const cancelSuccessMessage =
+      paidAmount > 0
+        ? "Da huy don hang. Yeu cau hoan tien da duoc khoi tao cho khoan da thanh toan."
+        : "Da huy don hang.";
+
+    if (paidAmount > 0) {
+      Alert.alert("Huy don hang?", cancelConfirmMessage, [
+        { text: "Khong", style: "cancel" },
+        {
+          text: "Huy don",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setIsCancelling(true);
+              await cancelOrderApi(order._id);
+              await loadOrder({ silent: true });
+              Alert.alert("Thanh cong", cancelSuccessMessage);
+            } catch (err) {
+              const message =
+                err?.response?.data?.message ||
+                err?.response?.data?.error ||
+                err?.message ||
+                "Khong the huy don hang";
+              Alert.alert("Huy that bai", message);
+            } finally {
+              setIsCancelling(false);
+            }
+          },
+        },
+      ]);
+      return;
+    }
 
     Alert.alert(
       "Huỷ đơn hàng?",
@@ -319,7 +428,7 @@ export default function OrderDetailScreen({ navigation, route }) {
         },
       ]
     );
-  }, [order, isCancelling, loadOrder]);
+  }, [order, isCancelling, loadOrder, paidAmount]);
 
   const handlePayNow = useCallback(() => {
     if (!order) return;
@@ -336,6 +445,21 @@ export default function OrderDetailScreen({ navigation, route }) {
       },
     });
   }, [navigation, order]);
+
+  const handleRefundRequest = useCallback(() => {
+    if (!order) return;
+    if (!canRequestRefund && !canSubmitRefundInfo) return;
+
+    navigation.navigate("CartFlow", {
+      screen: "RefundRequest",
+      params: {
+        orderId: order?._id || order?.id || orderId,
+        order,
+        refundAction: canSubmitRefundInfo ? "customer_submit_info" : undefined,
+        source: "order_detail",
+      },
+    });
+  }, [canRequestRefund, canSubmitRefundInfo, navigation, order, orderId]);
 
   const openTrackingUrl = useCallback(async () => {
     const url = order?.shipment?.trackingUrl;
@@ -560,7 +684,11 @@ export default function OrderDetailScreen({ navigation, route }) {
         <SectionCard title="Thanh toán" icon="card-outline">
           <InfoRow
             label="Phương thức"
-            value={String(order?.paymentMethod || order?.payment?.method || "--").toUpperCase()}
+            value={String(
+              Number(order?.payNowTotal || 0) > 0
+                ? order?.paymentMethod || order?.payment?.method || "--"
+                : order?.payLaterMethod || order?.paymentMethod || order?.payment?.method || "--",
+            ).toUpperCase()}
           />
           <InfoRow
             label="Trạng thái"
@@ -568,9 +696,20 @@ export default function OrderDetailScreen({ navigation, route }) {
           />
           <InfoRow label="Tạm tính" value={formatVND(order?.subtotal)} />
           <InfoRow label="Giảm giá" value={formatVND(order?.discountAmount)} />
-          <InfoRow label="Phí vận chuyển" value={formatVND(order?.shippingFee)} />
+          <InfoRow
+            label={`Phí vận chuyển (${getShippingFeeModeLabel(order?.shippingFeeMode)})`}
+            value={formatVND(order?.shippingFee)}
+          />
+          <InfoRow
+            label="Thu phí ship"
+            value={getShippingCollectionTimingLabel(order?.shippingCollectionTiming)}
+          />
           <InfoRow label="Thanh toán ngay" value={formatVND(order?.payNowTotal)} />
           <InfoRow label="Thanh toán sau" value={formatVND(order?.payLaterTotal)} />
+          <InfoRow
+            label="Phương thức thu sau"
+            value={order?.payLaterMethod ? String(order.payLaterMethod).toUpperCase() : "--"}
+          />
           <InfoRow
             label="Tổng thanh toán"
             value={formatVND(order?.total)}
@@ -654,9 +793,137 @@ export default function OrderDetailScreen({ navigation, route }) {
           <SectionCard title="Hoàn tiền" icon="return-down-back-outline">
             <InfoRow label="Trạng thái" value={normalizeStatusText(order?.refund?.status)} />
             <InfoRow label="Số tiền" value={formatVND(order?.refund?.amount)} />
+            <InfoRow label="Đã thanh toán" value={formatVND(order?.paidAmount)} />
+            <InfoRow
+              label="Chưa thu"
+              value={formatVND(Math.max(0, Number(order?.total || 0) - Number(order?.paidAmount || 0)))}
+            />
             <InfoRow label="Lý do" value={order?.refund?.reason || "--"} />
             <InfoRow label="Ghi chú" value={order?.refund?.contactNote || "--"} />
             <InfoRow label="Từ chối" value={order?.refund?.rejectReason || "--"} />
+            <InfoRow
+              label="Owner hiện tại"
+              value={getRefundOwnerLabel(order?.refund?.currentOwnerRole)}
+            />
+            <InfoRow
+              label="Bước tiếp theo"
+              value={getRefundNextStepLabel(order?.refund?.nextActionCode)}
+            />
+
+            {(order?.refund?.inspectionStatus &&
+              order.refund.inspectionStatus !== "not_required") ||
+            order?.refund?.returnShipmentCode ||
+            order?.refund?.returnCarrier ? (
+              <View style={styles.refundInfoBox}>
+                <Text style={styles.refundInfoTitle}>Return / QC</Text>
+                <Text style={styles.refundInfoText}>
+                  QC: {getRefundInspectionLabel(order?.refund?.inspectionStatus)}
+                </Text>
+                {order?.refund?.inspectionNote ? (
+                  <Text style={styles.refundInfoText}>
+                    Ghi chú QC: {order.refund.inspectionNote}
+                  </Text>
+                ) : null}
+                {order?.refund?.inspectionAt ? (
+                  <Text style={styles.refundInfoText}>
+                    Kiểm tra lúc: {formatDateTime(order.refund.inspectionAt)}
+                  </Text>
+                ) : null}
+                {order?.refund?.returnCarrier ? (
+                  <Text style={styles.refundInfoText}>
+                    Đơn vị hoàn: {String(order.refund.returnCarrier).toUpperCase()}
+                  </Text>
+                ) : null}
+                {order?.refund?.returnShipmentCode ? (
+                  <Text style={styles.refundInfoText}>
+                    Mã vận đơn trả: {order.refund.returnShipmentCode}
+                  </Text>
+                ) : null}
+                {order?.refund?.returnReceivedAt ? (
+                  <Text style={styles.refundInfoText}>
+                    Đã nhận hàng hoàn: {formatDateTime(order.refund.returnReceivedAt)}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {order?.refund?.transactionRef ? (
+              <InfoRow label="Mã payout" value={order.refund.transactionRef} />
+            ) : null}
+
+            {Array.isArray(order?.refund?.evidence) && order.refund.evidence.length > 0 ? (
+              <View style={styles.refundTimelineWrap}>
+                <Text style={styles.refundInfoTitle}>Bằng chứng đã gửi</Text>
+                <View style={styles.refundEvidenceRow}>
+                  {order.refund.evidence.slice(0, 4).map((url, index) => (
+                    <TouchableOpacity
+                      key={`${url}-${index}`}
+                      activeOpacity={0.85}
+                      onPress={() => Linking.openURL(url).catch(() => {})}
+                    >
+                      <Image source={{ uri: url }} style={styles.refundEvidenceImage} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {getRefundHistoryEntries(order?.refund).length > 0 ? (
+              <View style={styles.refundTimelineWrap}>
+                <Text style={styles.refundInfoTitle}>Tiến trình refund</Text>
+                {getRefundHistoryEntries(order?.refund)
+                  .slice()
+                  .reverse()
+                  .slice(0, 4)
+                  .map((entry, index) => (
+                    <View
+                      key={`${entry.createdAt || entry.action || "refund"}-${index}`}
+                      style={styles.refundTimelineItem}
+                    >
+                      <View style={styles.refundTimelineRow}>
+                        <Text style={styles.refundTimelineActor}>
+                          {entry.actorName ||
+                            (entry.actorRole
+                              ? getRefundOwnerLabel(entry.actorRole)
+                              : "System")}
+                        </Text>
+                        <Text style={styles.refundTimelineTime}>
+                          {formatDateTime(entry.createdAt)}
+                        </Text>
+                      </View>
+                      <Text style={styles.refundTimelineNote}>
+                        {(entry.fromStatus || "none").toUpperCase()} {"->"}{" "}
+                        {(entry.toStatus || "none").toUpperCase()}
+                      </Text>
+                      {entry.note ? (
+                        <Text style={styles.refundTimelineNote}>{entry.note}</Text>
+                      ) : null}
+                    </View>
+                  ))}
+              </View>
+            ) : null}
+          </SectionCard>
+        )}
+        {(canSubmitRefundInfo || canRequestRefund) && (
+          <SectionCard title="Yeu cau hoan tien" icon="return-down-back-outline">
+            <Text style={styles.refundHelperText}>
+              {canSubmitRefundInfo
+                ? "Refund nay dang cho ban bo sung thong tin de staff tiep tuc review."
+                : "Neu don hang co van de, ban co the gui yeu cau refund de staff tiep nhan va xu ly."}
+            </Text>
+            <TouchableOpacity
+              style={styles.refundActionBtn}
+              onPress={handleRefundRequest}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.refundActionText}>
+                {canSubmitRefundInfo
+                  ? "Bo sung thong tin hoan tien"
+                  : order?.refund
+                    ? "Tao yeu cau hoan tien moi"
+                    : "Tao yeu cau hoan tien"}
+              </Text>
+            </TouchableOpacity>
           </SectionCard>
         )}
       </ScrollView>
@@ -1046,5 +1313,106 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: "#6B7280",
+  },
+
+  refundHelperText: {
+    marginTop: 2,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#4B5563",
+    lineHeight: 18,
+  },
+
+  refundActionBtn: {
+    marginTop: 12,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  refundActionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  refundInfoBox: {
+    marginTop: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    padding: 12,
+  },
+
+  refundInfoTitle: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  refundInfoText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+    lineHeight: 17,
+  },
+
+  refundTimelineWrap: {
+    marginTop: 14,
+  },
+
+  refundEvidenceRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+
+  refundEvidenceImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    backgroundColor: "#E2E8F0",
+  },
+
+  refundTimelineItem: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    padding: 12,
+  },
+
+  refundTimelineRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  refundTimelineActor: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  refundTimelineTime: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#64748B",
+    textAlign: "right",
+  },
+
+  refundTimelineNote: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+    lineHeight: 17,
   },
 });

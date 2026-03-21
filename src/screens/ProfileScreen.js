@@ -227,7 +227,7 @@ export default function ProfileScreen({ navigation }) {
     try {
       const [ordersResult, favoriteResult, addressesResult, prescriptionsResult] =
         await Promise.all([
-          getMyOrdersApi({ page: 1, limit: 1000 }),
+          getMyOrdersApi({ page: 1, limit: 1000 }, { includeItems: false }),
           getMyFavoriteIdsApi(),
           getMyAddressesApi(),
           getMyPrescriptionsApi(),

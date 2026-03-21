@@ -29,12 +29,14 @@ import HomeBanner from "../components/HomeBanner";
 import HomeFooter from "../components/HomeFooter";
 import ProductCard from "../components/ProductCard";
 import { useProducts } from "../hooks/useProducts";
+import { useStores } from "../hooks/useStores";
 import {
   getMyAddressesApi,
   setDefaultMyAddressApi,
   getMyFavoriteIdsApi,
 } from "../services/userService";
 import { useAuthStore } from "../store/authStore";
+import { useStoreNetworkStore } from "../store/storeNetworkStore";
 
 const { width } = Dimensions.get("window");
 const GAP = 12;
@@ -378,8 +380,16 @@ export default function HomeScreen({ navigation }) {
   const [addresses, setAddresses] = useState([]);
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressModalVisible, setAddressModalVisible] = useState(false);
+  const [storeModalVisible, setStoreModalVisible] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
-  const { products } = useProducts();
+  const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
+  const hydrateStoreSelection = useStoreNetworkStore((s) => s.hydrate);
+  const setSelectedStoreId = useStoreNetworkStore((s) => s.setSelectedStoreId);
+  const ensureDefaultStore = useStoreNetworkStore((s) => s.ensureDefaultStore);
+  const { stores } = useStores();
+  const { products } = useProducts({
+    storeId: selectedStoreId || undefined,
+  });
   const [currentSeason, setCurrentSeason] = useState(getCurrentSeason());
 
   const [settingDefaultId, setSettingDefaultId] = useState(null);
@@ -387,6 +397,15 @@ export default function HomeScreen({ navigation }) {
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   const [favoriteIds, setFavoriteIds] = useState([]);
+
+  useEffect(() => {
+    void hydrateStoreSelection();
+  }, [hydrateStoreSelection]);
+
+  useEffect(() => {
+    if (!stores.length) return;
+    void ensureDefaultStore(stores);
+  }, [ensureDefaultStore, stores]);
 
   useEffect(() => {
     Animated.parallel([
@@ -432,6 +451,11 @@ export default function HomeScreen({ navigation }) {
     () => getSeasonalProducts(products, currentSeason),
     [products, currentSeason]
   );
+
+  const selectedStoreLabel = useMemo(() => {
+    const selectedStore = stores.find((store) => store.id === selectedStoreId);
+    return selectedStore?.name || "Tat ca cua hang";
+  }, [selectedStoreId, stores]);
 
   const loadAddress = useCallback(async () => {
     setAddressLoading(true);
@@ -584,6 +608,20 @@ export default function HomeScreen({ navigation }) {
                 <Ionicons name="location-outline" size={16} color="#111827" />
                 <Text style={styles.locationText} numberOfLines={1}>
                   Giao đến: {locationLabel || "Chọn địa chỉ"}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.headerRow1}>
+              <TouchableOpacity
+                onPress={() => setStoreModalVisible(true)}
+                style={styles.locationRow}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="business-outline" size={16} color="#111827" />
+                <Text style={styles.locationText} numberOfLines={1}>
+                  Cua hang: {selectedStoreLabel}
                 </Text>
                 <Ionicons name="chevron-down" size={14} color="#6B7280" />
               </TouchableOpacity>
@@ -745,6 +783,78 @@ export default function HomeScreen({ navigation }) {
           </View>
         </ScrollView>
       </Animated.View>
+
+      <Modal
+        visible={storeModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setStoreModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Cua hang dang xem</Text>
+              <TouchableOpacity onPress={() => setStoreModalVisible(false)}>
+                <Ionicons name="close" size={20} color="#111827" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.addressList}>
+              <TouchableOpacity
+                style={styles.addressItem}
+                activeOpacity={0.8}
+                onPress={() => {
+                  void setSelectedStoreId(null);
+                  setStoreModalVisible(false);
+                }}
+              >
+                <Ionicons
+                  name={!selectedStoreId ? "radio-button-on" : "radio-button-off"}
+                  size={18}
+                  color={!selectedStoreId ? "#2563EB" : "#6B7280"}
+                  style={{ marginRight: 10 }}
+                />
+                <Text style={styles.addressText}>Tat ca cua hang</Text>
+              </TouchableOpacity>
+
+              {stores.map((store) => {
+                const selected = selectedStoreId === store.id;
+                const label = [store.addressLine1, store.district, store.city]
+                  .filter(Boolean)
+                  .join(", ");
+                return (
+                  <TouchableOpacity
+                    key={store.id}
+                    style={styles.addressItem}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      void setSelectedStoreId(store.id);
+                      setStoreModalVisible(false);
+                    }}
+                  >
+                    <Ionicons
+                      name={selected ? "radio-button-on" : "radio-button-off"}
+                      size={18}
+                      color={selected ? "#2563EB" : "#6B7280"}
+                      style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.addressText}>
+                        {store.name} ({store.code})
+                      </Text>
+                      {label ? (
+                        <Text style={{ marginTop: 4, fontSize: 12, color: "#6B7280" }}>
+                          {label}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {store.isDefault ? <Text style={styles.defaultBadge}>Mac dinh</Text> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={addressModalVisible}

@@ -8,6 +8,7 @@ const DEFAULT_TRANSLATION = "0 0 0";
 const DEFAULT_GRAVITY = "0 0 0";
 const DEFAULT_CUT = "head";
 const DEFAULT_SCENE = "effect wdp_runtime_tryon";
+const pendingRuntimeEffects = new Map();
 
 const toText = (value) => String(value ?? "").trim();
 
@@ -155,40 +156,92 @@ export async function prepareBanubaRuntimeEffect({
   const effectModelUri = `${assetsFolderUri}${meshFileName}`;
   const effectConfigUri = `${effectFolderUri}config.json`;
   const effectMetaUri = `${effectFolderUri}wdp-runtime-effect.json`;
+  const pendingKey = effectFolderName;
 
-  await FileSystem.deleteAsync(effectFolderUri, { idempotent: true });
-  await ensureDirectory(effectFolderUri);
-  await ensureDirectory(assetsFolderUri);
-  await FileSystem.copyAsync({
-    from: modelUri,
-    to: effectModelUri,
-  });
-  await writeJsonFile(
-    effectConfigUri,
-    buildEffectConfig({
-      meshFileName,
-      prefabConfig,
-    })
-  );
-  await writeJsonFile(effectMetaUri, {
-    productId: toText(product.apiId || product.id),
-    sourceModelUri: modelUri,
-    prefabConfig,
-  });
+  if (pendingRuntimeEffects.has(pendingKey)) {
+    return pendingRuntimeEffects.get(pendingKey);
+  }
 
   const resourcePaths = Array.isArray(cachedTryOn.resourcePaths)
     ? cachedTryOn.resourcePaths.map((it) => toText(it)).filter(Boolean)
     : [];
+  const generationPromise = (async () => {
+    const modelInfo = await FileSystem.getInfoAsync(modelUri);
+    if (!modelInfo.exists || !modelInfo.size || modelInfo.size <= 0) {
+      return {
+        effectPath: existingEffectPath,
+        resourcePaths,
+        runtimeEffectMeta: {
+          generated: false,
+          reason: "local_glb_missing_or_empty",
+        },
+      };
+    }
 
-  return {
-    effectPath: effectFolderName,
-    resourcePaths: Array.from(new Set([EFFECTS_ROOT_URI, ...resourcePaths])),
-    runtimeEffectMeta: {
-      generated: true,
-      effectFolderName,
-      effectFolderUri,
-      effectModelUri,
+    await FileSystem.deleteAsync(effectFolderUri, { idempotent: true });
+    await ensureDirectory(effectFolderUri);
+    await ensureDirectory(assetsFolderUri);
+
+    try {
+      await FileSystem.copyAsync({
+        from: modelUri,
+        to: effectModelUri,
+      });
+    } catch (error) {
+      console.warn(`[TryOn Native] Runtime effect copy failed: ${error?.message || error}`);
+      return {
+        effectPath: existingEffectPath,
+        resourcePaths,
+        runtimeEffectMeta: {
+          generated: false,
+          reason: "runtime_copy_failed",
+          error: error?.message || String(error),
+        },
+      };
+    }
+
+    const copiedInfo = await FileSystem.getInfoAsync(effectModelUri);
+    if (!copiedInfo.exists || !copiedInfo.size || copiedInfo.size <= 0) {
+      return {
+        effectPath: existingEffectPath,
+        resourcePaths,
+        runtimeEffectMeta: {
+          generated: false,
+          reason: "runtime_copy_empty",
+        },
+      };
+    }
+
+    await writeJsonFile(
+      effectConfigUri,
+      buildEffectConfig({
+        meshFileName,
+        prefabConfig,
+      })
+    );
+    await writeJsonFile(effectMetaUri, {
+      productId: toText(product.apiId || product.id),
+      sourceModelUri: modelUri,
       prefabConfig,
-    },
-  };
+    });
+
+    return {
+      effectPath: effectFolderName,
+      resourcePaths: Array.from(new Set([EFFECTS_ROOT_URI, ...resourcePaths])),
+      runtimeEffectMeta: {
+        generated: true,
+        effectFolderName,
+        effectFolderUri,
+        effectModelUri,
+        prefabConfig,
+      },
+    };
+  })();
+
+  pendingRuntimeEffects.set(pendingKey, generationPromise);
+  try {
+    return await generationPromise;
+  } finally {
+    pendingRuntimeEffects.delete(pendingKey);
+  }
 }

@@ -16,8 +16,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import ProductCard from "../components/ProductCard";
 import { useProducts } from "../hooks/useProducts";
+import { useStores } from "../hooks/useStores";
 import { getMyFavoriteIdsApi } from "../services/userService";
 import { useAuthStore } from "../store/authStore";
+import { useStoreNetworkStore } from "../store/storeNetworkStore";
 
 const { width } = Dimensions.get("window");
 const PAGE_PADDING = 16;
@@ -82,7 +84,14 @@ export default function ProductsScreen({ navigation }) {
   const route = useRoute();
   const token = useAuthStore((s) => s.token);
   const [query, setQuery] = useState("");
-  const { products, isLoading, isError } = useProducts();
+  const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
+  const hydrateStoreSelection = useStoreNetworkStore((s) => s.hydrate);
+  const setSelectedStoreId = useStoreNetworkStore((s) => s.setSelectedStoreId);
+  const ensureDefaultStore = useStoreNetworkStore((s) => s.ensureDefaultStore);
+  const { stores } = useStores();
+  const { products, isLoading, isError } = useProducts({
+    storeId: selectedStoreId || undefined,
+  });
   const [favoriteIds, setFavoriteIds] = useState([]);
 
   const [onlyInStock, setOnlyInStock] = useState(false);
@@ -99,6 +108,16 @@ export default function ProductsScreen({ navigation }) {
 
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [storeOpen, setStoreOpen] = useState(false);
+
+  useEffect(() => {
+    void hydrateStoreSelection();
+  }, [hydrateStoreSelection]);
+
+  useEffect(() => {
+    if (!stores.length) return;
+    void ensureDefaultStore(stores);
+  }, [ensureDefaultStore, stores]);
 
   useEffect(() => {
     const params = route?.params || {};
@@ -361,6 +380,11 @@ export default function ProductsScreen({ navigation }) {
     return SORT_OPTIONS.find((x) => x.key === sortKey)?.label ?? "Mặc định";
   }, [sortKey]);
 
+  const selectedStoreLabel = useMemo(() => {
+    const selectedStore = stores.find((store) => store.id === selectedStoreId);
+    return selectedStore?.name || "Tat ca cua hang";
+  }, [selectedStoreId, stores]);
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
@@ -400,13 +424,26 @@ export default function ProductsScreen({ navigation }) {
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <>
-            <View style={styles.topBar}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.countText}>{data.length} sản phẩm</Text>
-                <Text style={styles.subText}>
-                  {sortKey === "default" ? "Theo bộ lọc hiện tại" : `Đang: ${sortLabel}`}
-                </Text>
-              </View>
+            <View style={styles.headerMeta}>
+              <Text style={styles.countText}>{data.length} sản phẩm</Text>
+              <Text style={styles.subText}>
+                {sortKey === "default" ? "Theo bộ lọc hiện tại" : `Đang: ${sortLabel}`}
+              </Text>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.actionRow}
+            >
+              <TouchableOpacity
+                style={styles.pillBtn}
+                activeOpacity={0.85}
+                onPress={() => setStoreOpen(true)}
+              >
+                <Ionicons name="business-outline" size={16} color="#111827" />
+                <Text style={styles.pillBtnText}>{selectedStoreLabel}</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.pillBtn}
@@ -425,7 +462,7 @@ export default function ProductsScreen({ navigation }) {
                 <Ionicons name="options-outline" size={16} color="#111827" />
                 <Text style={styles.pillBtnText}>Bộ lọc</Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
 
             <ScrollView
               horizontal
@@ -512,6 +549,59 @@ export default function ProductsScreen({ navigation }) {
             );
           })}
         </View>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={storeOpen}
+        title="Chon cua hang"
+        onClose={() => setStoreOpen(false)}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator
+          contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}
+        >
+          <TouchableOpacity
+            style={[
+              styles.optionRow,
+              !selectedStoreId && styles.optionRowActive,
+            ]}
+            activeOpacity={0.85}
+            onPress={() => {
+              void setSelectedStoreId(null);
+              setStoreOpen(false);
+            }}
+          >
+            <Text style={[styles.optionText, !selectedStoreId && styles.optionTextActive]}>
+              Tat ca cua hang
+            </Text>
+            {!selectedStoreId ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
+          </TouchableOpacity>
+
+          {stores.map((store) => {
+            const active = selectedStoreId === store.id;
+            return (
+              <TouchableOpacity
+                key={store.id}
+                style={[styles.optionRow, active && styles.optionRowActive]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  void setSelectedStoreId(store.id);
+                  setStoreOpen(false);
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.optionText, active && styles.optionTextActive]}>
+                    {store.name} ({store.code})
+                  </Text>
+                  <Text style={styles.optionSubText}>
+                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chua co dia chi"}
+                  </Text>
+                </View>
+                {active ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </BottomSheet>
 
       <BottomSheet
@@ -737,16 +827,19 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  topBar: {
-    paddingHorizontal: PAGE_PADDING,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 8,
+  headerMeta: {
     marginTop: 2,
+    marginBottom: 10,
   },
   countText: { fontSize: 13, fontWeight: "800", color: "#111827" },
   subText: { fontSize: 12, fontWeight: "600", color: "#6B7280", marginTop: 2 },
+
+  actionRow: {
+    paddingBottom: 10,
+    paddingRight: 2,
+    gap: 10,
+    alignItems: "center",
+  },
 
   pillBtn: {
     flexDirection: "row",
@@ -760,8 +853,8 @@ const styles = StyleSheet.create({
   pillBtnText: { fontSize: 12.5, fontWeight: "800", color: "#111827" },
 
   appliedRow: {
-    paddingHorizontal: PAGE_PADDING,
     paddingBottom: 10,
+    paddingRight: 2,
     gap: 8,
     alignItems: "center",
   },
@@ -847,6 +940,12 @@ const styles = StyleSheet.create({
   },
   optionText: { fontSize: 13, fontWeight: "800", color: "#111827" },
   optionTextActive: { color: "#111827" },
+  optionSubText: {
+    marginTop: 4,
+    fontSize: 11.5,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
 
   rowWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
 

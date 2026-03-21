@@ -68,7 +68,7 @@ function buildVariantText(productType, variant) {
   return null;
 }
 
-function normalizeOrderItem(raw) {
+function normalizeOrderItemDetail(raw) {
   const orderType = buildOrderType(raw);
   const productType = normalizeProductType(raw?.type);
 
@@ -139,6 +139,27 @@ function normalizeOrderItem(raw) {
     image: null,
     productColors: [],
     productSizes: [],
+  };
+}
+
+function normalizeOrderItemSummary(raw) {
+  return {
+    itemId: raw?._id ?? null,
+    productId: raw?.productId ?? null,
+    variantId: raw?.variantId ?? null,
+    name: raw?.name ?? "Sản phẩm",
+    type: raw?.type ?? "other",
+    qty: raw?.quantity ?? 1,
+    quantity: raw?.quantity ?? 1,
+    price: raw?.unitPrice ?? 0,
+    unitPrice: raw?.unitPrice ?? 0,
+    lineTotal: raw?.lineTotal ?? 0,
+    preOrder: Boolean(raw?.preOrder),
+    preorder: Boolean(raw?.preOrder),
+    depositPercent: raw?.depositPercent ?? 100,
+    payNow: raw?.payNow ?? 0,
+    payLater: raw?.payLater ?? 0,
+    image: null,
   };
 }
 
@@ -316,17 +337,60 @@ function buildPatchPayload(orderItem, patch = {}) {
   return payload;
 }
 
-export async function getMyOrdersApi(params = {}, enrichProducts = false) {
+function resolveOrderFetchOptions(options) {
+  if (typeof options === "boolean") {
+    return {
+      enrichProducts: options,
+      includeItems: true,
+      detailLevel: "summary",
+    };
+  }
+
+  return {
+    enrichProducts: Boolean(options?.enrichProducts),
+    includeItems: options?.includeItems !== false,
+    detailLevel: options?.detailLevel === "detail" ? "detail" : "summary",
+  };
+}
+
+function normalizeOrderForList(raw, options = {}) {
+  const includeItems = options?.includeItems !== false;
+  const detailLevel = options?.detailLevel === "detail" ? "detail" : "summary";
+  const itemMapper =
+    detailLevel === "detail" ? normalizeOrderItemDetail : normalizeOrderItemSummary;
+
+  return {
+    _id: raw?._id ?? raw?.id ?? null,
+    id: raw?._id ?? raw?.id ?? null,
+    paymentCode: raw?.paymentCode ?? raw?.payment?.code ?? "",
+    status: raw?.status ?? "pending",
+    paymentStatus: raw?.paymentStatus ?? raw?.payment?.status ?? "",
+    createdAt: raw?.createdAt ?? null,
+    updatedAt: raw?.updatedAt ?? null,
+    total: raw?.total ?? 0,
+    subTotal: raw?.subTotal ?? raw?.subtotal ?? 0,
+    shippingFee: raw?.shippingFee ?? 0,
+    discountAmount: raw?.discountAmount ?? 0,
+    payNowTotal: raw?.payNowTotal ?? 0,
+    payLaterTotal: raw?.payLaterTotal ?? 0,
+    paidAmount: raw?.paidAmount ?? 0,
+    refund: raw?.refund ?? null,
+    items:
+      includeItems && Array.isArray(raw?.items)
+        ? raw.items.map(itemMapper)
+        : [],
+  };
+}
+
+export async function getMyOrdersApi(params = {}, options = {}) {
+  const resolvedOptions = resolveOrderFetchOptions(options);
   const res = await api.get("/api/orders/me", { params });
   const rawOrders = pickData(res);
   const pagination = pickPagination(res);
 
-  let orders = rawOrders.map((order) => ({
-    ...order,
-    items: Array.isArray(order?.items) ? order.items.map(normalizeOrderItem) : [],
-  }));
+  let orders = rawOrders.map((order) => normalizeOrderForList(order, resolvedOptions));
 
-  if (enrichProducts) {
+  if (resolvedOptions.enrichProducts && resolvedOptions.includeItems) {
     orders = await Promise.all(
       orders.map(async (order) => ({
         ...order,
@@ -345,7 +409,7 @@ export async function getOrderByIdApi(orderId, enrichProducts = true) {
 
   const order = {
     ...raw,
-    items: Array.isArray(raw?.items) ? raw.items.map(normalizeOrderItem) : [],
+    items: Array.isArray(raw?.items) ? raw.items.map(normalizeOrderItemDetail) : [],
   };
 
   if (!enrichProducts) return order;
@@ -371,5 +435,19 @@ export async function cancelOrderApi(orderId) {
 
   // API doc: PUT /api/orders/{id}/cancel
   const res = await api.put(`/api/orders/${orderId}/cancel`);
+  return res?.data?.data ?? res?.data ?? null;
+}
+
+export async function requestRefundApi(orderId, payload = {}) {
+  if (!orderId) throw new Error("Missing orderId");
+
+  const res = await api.post(`/api/orders/${orderId}/refund-request`, payload);
+  return res?.data?.data ?? res?.data ?? null;
+}
+
+export async function updateRefundApi(orderId, payload = {}) {
+  if (!orderId) throw new Error("Missing orderId");
+
+  const res = await api.put(`/api/orders/${orderId}/refund`, payload);
   return res?.data?.data ?? res?.data ?? null;
 }

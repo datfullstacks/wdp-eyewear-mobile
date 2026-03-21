@@ -201,10 +201,12 @@ export function buildCheckoutPayload({
   items,
   shippingMethod,
   shippingAddress,
+  storeId,
   note,
   shippingFee,
   discountAmount,
   voucherCode,
+  paymentMethod,
   cartType,
 }) {
   const payload = {
@@ -213,10 +215,12 @@ export function buildCheckoutPayload({
 
   if (shippingMethod) payload.shippingMethod = shippingMethod;
   if (shippingAddress) payload.shippingAddress = compactAddress(shippingAddress);
+  if (storeId) payload.storeId = storeId;
   if (note) payload.note = note;
   if (typeof shippingFee === "number") payload.shippingFee = shippingFee;
   if (typeof discountAmount === "number") payload.discountAmount = discountAmount;
   if (voucherCode) payload.voucherCode = voucherCode;
+  if (paymentMethod) payload.paymentMethod = paymentMethod;
   if (cartType) payload.cartType = cartType;
 
   return payload;
