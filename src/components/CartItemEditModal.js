@@ -28,6 +28,75 @@ function toLegacyEye(eye = {}) {
   };
 }
 
+function buildPrescriptionPatch(orderType, rxOD, rxOS, rxPhoto, currentPrescription = {}) {
+  const base = {
+    ...(currentPrescription || {}),
+    rightEye: {
+      ...(currentPrescription?.rightEye || {}),
+      cyl: String(rxOD?.CYL ?? ""),
+      axis: String(rxOD?.AXIS ?? ""),
+    },
+    leftEye: {
+      ...(currentPrescription?.leftEye || {}),
+      cyl: String(rxOS?.CYL ?? ""),
+      axis: String(rxOS?.AXIS ?? ""),
+    },
+    attachmentUrls: rxPhoto?.uri ? [rxPhoto.uri] : [],
+  };
+
+  if (orderType === "CUSTOM") {
+    return {
+      ...base,
+      mode: rxPhoto?.uri ? "upload" : "none",
+      isMyopic: Boolean(rxPhoto?.uri),
+      rightEye: {
+        ...(currentPrescription?.rightEye || {}),
+        cyl: "",
+        axis: "",
+      },
+      leftEye: {
+        ...(currentPrescription?.leftEye || {}),
+        cyl: "",
+        axis: "",
+      },
+    };
+  }
+
+  if (orderType === "PREORDER") {
+    if (isRxFilled(rxOD, rxOS)) {
+      return {
+        ...base,
+        mode: "manual",
+        isMyopic: true,
+        attachmentUrls: [],
+      };
+    }
+
+    return {
+      ...base,
+      mode: rxPhoto?.uri ? "upload" : "none",
+      isMyopic: Boolean(rxPhoto?.uri),
+      rightEye: {
+        ...(currentPrescription?.rightEye || {}),
+        cyl: "",
+        axis: "",
+      },
+      leftEye: {
+        ...(currentPrescription?.leftEye || {}),
+        cyl: "",
+        axis: "",
+      },
+    };
+  }
+
+  return {
+    ...base,
+    mode: "manual",
+    isMyopic: true,
+    attachmentUrls: [],
+  };
+}
+
 export default function CartItemEditModal({ visible, cartItem, onClose, onSave }) {
   const ci = cartItem;
   const product = ci?.product;
@@ -97,21 +166,13 @@ export default function CartItemEditModal({ visible, cartItem, onClose, onSave }
       onSave?.({
         customization: {
           ...(ci?.customization || {}),
-          prescription: {
-            ...(ci?.customization?.prescription || {}),
-            mode: ot === "CUSTOM" ? "upload" : "manual",
-            rightEye: {
-              ...(ci?.customization?.prescription?.rightEye || {}),
-              cyl: String(rxOD?.CYL ?? ""),
-              axis: String(rxOD?.AXIS ?? ""),
-            },
-            leftEye: {
-              ...(ci?.customization?.prescription?.leftEye || {}),
-              cyl: String(rxOS?.CYL ?? ""),
-              axis: String(rxOS?.AXIS ?? ""),
-            },
-            attachmentUrls: rxPhoto?.uri ? [rxPhoto.uri] : [],
-          },
+          prescription: buildPrescriptionPatch(
+            ot,
+            rxOD,
+            rxOS,
+            rxPhoto,
+            ci?.customization?.prescription || {},
+          ),
         },
       });
     } else {

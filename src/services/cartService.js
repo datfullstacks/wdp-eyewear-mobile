@@ -90,19 +90,83 @@ function normalizeEyePayload(eye = {}) {
   };
 }
 
+function hasManualPrescriptionValues(prescription = {}) {
+  const rightEye = prescription?.rightEye || {};
+  const leftEye = prescription?.leftEye || {};
+
+  return Boolean(
+    toText(rightEye?.sphere) ||
+      toText(rightEye?.cyl) ||
+      toText(rightEye?.axis) ||
+      toText(rightEye?.add) ||
+      toText(leftEye?.sphere) ||
+      toText(leftEye?.cyl) ||
+      toText(leftEye?.axis) ||
+      toText(leftEye?.add) ||
+      toText(prescription?.pd)
+  );
+}
+
+function resolveIsMyopicFlag(prescription, hasPayload) {
+  if (typeof prescription?.isMyopic === "boolean") {
+    return prescription.isMyopic;
+  }
+
+  return Boolean(hasPayload);
+}
+
 function normalizePrescriptionPayload(prescription = {}) {
   const attachmentUrls = Array.isArray(prescription?.attachmentUrls)
     ? prescription.attachmentUrls.map((item) => toText(item)).filter(Boolean)
     : [];
+  const mode = toText(prescription?.mode || "none").toLowerCase() || "none";
+  const normalizedMode = mode === "attachment" ? "upload" : mode;
+  const rightEye = normalizeEyePayload(prescription?.rightEye);
+  const leftEye = normalizeEyePayload(prescription?.leftEye);
+  const pd = toText(prescription?.pd);
+  const note = toText(prescription?.note);
+  const hasManualValues = hasManualPrescriptionValues({
+    rightEye,
+    leftEye,
+    pd,
+  });
+
+  if (normalizedMode === "upload") {
+    return {
+      mode: attachmentUrls.length > 0 ? "upload" : "none",
+      isMyopic: attachmentUrls.length > 0
+        ? resolveIsMyopicFlag(prescription, attachmentUrls.length > 0)
+        : false,
+      rightEye: normalizeEyePayload(),
+      leftEye: normalizeEyePayload(),
+      pd: "",
+      note,
+      attachmentUrls,
+    };
+  }
+
+  if (normalizedMode === "manual") {
+    return {
+      mode: hasManualValues ? "manual" : "none",
+      isMyopic: hasManualValues
+        ? resolveIsMyopicFlag(prescription, hasManualValues)
+        : false,
+      rightEye,
+      leftEye,
+      pd,
+      note,
+      attachmentUrls: [],
+    };
+  }
 
   return {
-    mode: toText(prescription?.mode || "none") || "none",
-    isMyopic: Boolean(prescription?.isMyopic),
-    rightEye: normalizeEyePayload(prescription?.rightEye),
-    leftEye: normalizeEyePayload(prescription?.leftEye),
-    pd: toText(prescription?.pd),
-    note: toText(prescription?.note),
-    attachmentUrls,
+    mode: "none",
+    isMyopic: false,
+    rightEye: normalizeEyePayload(),
+    leftEye: normalizeEyePayload(),
+    pd: "",
+    note,
+    attachmentUrls: [],
   };
 }
 

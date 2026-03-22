@@ -55,7 +55,7 @@ function hasPrescriptionAttachment(customization) {
 function inferOrderTypeFromItem(item) {
   if (item?.preOrder) return "PREORDER";
   const mode = String(item?.customization?.prescription?.mode || "").toLowerCase();
-  if (mode === "attachment") return "CUSTOM";
+  if (mode === "attachment" || mode === "upload") return "CUSTOM";
   return "READY";
 }
 
@@ -243,6 +243,33 @@ function buildCheckoutItemsFromApiUi(cartItems) {
       quantity: ci.qty || 1,
       customization: ci.customization || {},
     }));
+}
+
+function getItemShippingCollectionTiming(ci) {
+  return String(
+    ci?.preOrderConfig?.shippingCollectionTiming ||
+      ci?.product?.preOrder?.shippingCollectionTiming ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function getMixedPreorderShippingTiming(cartItems = []) {
+  const grouped = new Map();
+
+  for (const ci of cartItems) {
+    if (!ci?.isPreorder) continue;
+
+    const timing = getItemShippingCollectionTiming(ci);
+    if (!timing) continue;
+    const names = grouped.get(timing) || [];
+    names.push(ci?.product?.name || ci?.name || "Sản phẩm");
+    grouped.set(timing, names);
+  }
+
+  if (grouped.size <= 1) return null;
+  return grouped;
 }
 
 function isCombinableType(type) {
@@ -554,6 +581,15 @@ export default function CartScreen({ navigation, route }) {
     }
 
     const autoNote = buildAutoPairingNote(cartItems);
+    const mixedPreorderShippingTiming = getMixedPreorderShippingTiming(cartItems);
+
+    if (activeCartType === CART_TYPES.PREORDER && mixedPreorderShippingTiming) {
+      Alert.alert(
+        "Không thể thanh toán chung",
+        "Các sản phẩm đặt trước trong cùng một đơn phải có cùng thời điểm thu phí vận chuyển. Vui lòng tách thành các đơn riêng hoặc xóa bớt sản phẩm trong giỏ.",
+      );
+      return;
+    }
 
     try {
       setIsQuoting(true);
@@ -588,7 +624,13 @@ export default function CartScreen({ navigation, route }) {
       const errors = Array.isArray(data.errors)
         ? data.errors.map((e) => e.msg).filter(Boolean).join("\n")
         : null;
-      const message = errors || data.message || data.error || err?.message;
+      const rawMessage = errors || data.message || data.error || err?.message;
+      const message =
+        String(rawMessage || "").includes(
+          "Pre-order items in the same order must share the same shipping collection timing",
+        )
+          ? "Các sản phẩm đặt trước trong cùng một đơn phải có cùng thời điểm thu phí vận chuyển. Vui lòng tách thành các đơn riêng hoặc xóa bớt sản phẩm trong giỏ."
+          : rawMessage;
       Alert.alert("Không lấy được báo giá", message || "Vui lòng thử lại.");
     } finally {
       setIsQuoting(false);

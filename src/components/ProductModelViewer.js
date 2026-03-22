@@ -4,6 +4,37 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Canvas } from "@react-three/fiber/native";
 import { OrbitControls, useGLTF } from "@react-three/drei/native";
 
+function sanitizeSceneMaterials(root) {
+  root?.traverse?.((child) => {
+    if (!child?.isMesh) {
+      return;
+    }
+
+    const materials = Array.isArray(child.material)
+      ? child.material
+      : [child.material];
+
+    materials.forEach((material) => {
+      if (!material) {
+        return;
+      }
+
+      // Expo GL on Android does not implement the multisampled transmission pass.
+      if ("transmission" in material && material.transmission > 0) {
+        material.transmission = 0;
+        material.opacity = Math.min(material.opacity ?? 1, 0.85);
+        material.transparent = true;
+      }
+
+      if ("thickness" in material) {
+        material.thickness = 0;
+      }
+
+      material.needsUpdate = true;
+    });
+  });
+}
+
 function Model({
   uri,
   scale = [4.5, 4.5, 4.5],
@@ -11,6 +42,10 @@ function Model({
   rotation = [0, 0, 0],
 }) {
   const gltf = useGLTF(uri);
+
+  useEffect(() => {
+    sanitizeSceneMaterials(gltf?.scene);
+  }, [gltf]);
 
   return (
     <primitive
@@ -93,7 +128,11 @@ export default function ProductModelViewer({
 
   return (
     <View style={[styles.viewerContainer, style]}>
-      <Canvas style={styles.canvas} camera={{ position: [0, 0, cameraZ], fov }}>
+      <Canvas
+        style={styles.canvas}
+        gl={{ antialias: false }}
+        camera={{ position: [0, 0, cameraZ], fov }}
+      >
         <ambientLight intensity={2} />
         <directionalLight position={[20, 20, 20]} intensity={2} />
         <directionalLight position={[-20, -10, 15]} intensity={1.5} />

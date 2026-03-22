@@ -382,7 +382,7 @@ export default function ProductsScreen({ navigation }) {
 
   const selectedStoreLabel = useMemo(() => {
     const selectedStore = stores.find((store) => store.id === selectedStoreId);
-    return selectedStore?.name || "Tat ca cua hang";
+    return selectedStore?.name || "Tất cả cửa hàng";
   }, [selectedStoreId, stores]);
 
   return (
@@ -553,7 +553,7 @@ export default function ProductsScreen({ navigation }) {
 
       <BottomSheet
         visible={storeOpen}
-        title="Chon cua hang"
+        title="Chọn cửa hàng"
         onClose={() => setStoreOpen(false)}
       >
         <ScrollView
@@ -572,7 +572,7 @@ export default function ProductsScreen({ navigation }) {
             }}
           >
             <Text style={[styles.optionText, !selectedStoreId && styles.optionTextActive]}>
-              Tat ca cua hang
+              Tất cả cửa hàng
             </Text>
             {!selectedStoreId ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
           </TouchableOpacity>
@@ -594,7 +594,7 @@ export default function ProductsScreen({ navigation }) {
                     {store.name} ({store.code})
                   </Text>
                   <Text style={styles.optionSubText}>
-                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chua co dia chi"}
+                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
                   </Text>
                 </View>
                 {active ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}

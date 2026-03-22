@@ -937,6 +937,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const rawOrderStatusKey = String(order.status || "")
     .trim()
     .toUpperCase();
+  const isCancelledOrder = rawOrderStatusKey === "CANCELLED";
 
   const canCancelOrder =
     ["PENDING", "CONFIRMED", "PROCESSING"].includes(rawOrderStatusKey);
@@ -978,6 +979,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
   const handleViewOrderDetail = () => navigateToTab("ProfileTab", "Orders");
+  const handleBackToHome = () => navigateToTab("HomeTab", "Home");
   const handleRequestRefund = () => {
     if (!canOpenRefundForm) return;
 
@@ -1313,6 +1315,30 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        ) : null}
+
+        {isCancelledOrder ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Thanh toán đã bị hủy</Text>
+            <Text style={styles.mutedText}>
+              Đơn hàng này đã được hủy. Bạn có thể quay về giỏ hàng để tiếp tục
+              chỉnh sửa hoặc đặt lại.
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                styles.actionBtnPrimary,
+                { marginTop: 12 },
+              ]}
+              activeOpacity={0.85}
+              onPress={handleBackToHome}
+            >
+              <Text style={[styles.actionText, styles.actionTextPrimary]}>
+                Quay về trang chủ
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 

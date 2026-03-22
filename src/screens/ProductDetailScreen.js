@@ -16,7 +16,7 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { AntDesign, Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 
@@ -54,7 +54,7 @@ const ORDER_TYPES = {
 };
 
 const TRY_ON_STATUS_LABEL = {
-  draft: "Try-on chưa được publish",
+  draft: "Try-on chưa được phát hành",
   pending_review: "Try-on đang chờ duyệt",
   approved: "Try-on đã duyệt, chờ phát hành",
   published: "Try-on đã sẵn sàng",
@@ -363,9 +363,10 @@ function buildCartCustomization({
   };
 
   if (product?.type === "LENS") {
-    if (orderType === "READY") {
+    if (orderType === "READY" && isRxFilled(rxOD, rxOS)) {
       customization.prescription = {
         mode: "manual",
+        isMyopic: true,
         rightEye: {
           cyl: rxOD?.CYL || "",
           axis: rxOD?.AXIS || "",
@@ -379,9 +380,33 @@ function buildCartCustomization({
 
     if (orderType === "CUSTOM" && rxPhoto?.uri) {
       customization.prescription = {
-        mode: "attachment",
+        mode: "upload",
+        isMyopic: true,
         attachmentUrls: [rxPhoto.uri],
       };
+    }
+
+    if (orderType === "PREORDER") {
+      if (isRxFilled(rxOD, rxOS)) {
+        customization.prescription = {
+          mode: "manual",
+          isMyopic: true,
+          rightEye: {
+            cyl: rxOD?.CYL || "",
+            axis: rxOD?.AXIS || "",
+          },
+          leftEye: {
+            cyl: rxOS?.CYL || "",
+            axis: rxOS?.AXIS || "",
+          },
+        };
+      } else if (rxPhoto?.uri) {
+        customization.prescription = {
+          mode: "upload",
+          isMyopic: true,
+          attachmentUrls: [rxPhoto.uri],
+        };
+      }
     }
   }
 
@@ -414,6 +439,102 @@ function buildCartItemPayload({
       rxOS,
       rxPhoto,
     }),
+  };
+}
+
+function normalizeTextValue(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeAttachmentUrl(value) {
+  return String(value ?? "").trim();
+}
+
+function hasPrescriptionValues(prescription = {}) {
+  return Boolean(
+    normalizeTextValue(prescription?.rightEye?.cyl) ||
+      normalizeTextValue(prescription?.rightEye?.axis) ||
+      normalizeTextValue(prescription?.leftEye?.cyl) ||
+      normalizeTextValue(prescription?.leftEye?.axis)
+  );
+}
+
+function arePrescriptionEqual(left = {}, right = {}) {
+  const leftMode = normalizeTextValue(left?.mode);
+  const rightMode = normalizeTextValue(right?.mode);
+  const leftHasValues = hasPrescriptionValues(left);
+  const rightHasValues = hasPrescriptionValues(right);
+  const leftFirstUrl = normalizeAttachmentUrl(left?.attachmentUrls?.[0]);
+  const rightFirstUrl = normalizeAttachmentUrl(right?.attachmentUrls?.[0]);
+
+  if (leftHasValues || rightHasValues || leftMode === "manual" || rightMode === "manual") {
+    return (
+      normalizeTextValue(left?.rightEye?.cyl) === normalizeTextValue(right?.rightEye?.cyl) &&
+      normalizeTextValue(left?.rightEye?.axis) === normalizeTextValue(right?.rightEye?.axis) &&
+      normalizeTextValue(left?.leftEye?.cyl) === normalizeTextValue(right?.leftEye?.cyl) &&
+      normalizeTextValue(left?.leftEye?.axis) === normalizeTextValue(right?.leftEye?.axis)
+    );
+  }
+
+  if (
+    leftFirstUrl ||
+    rightFirstUrl ||
+    leftMode === "attachment" ||
+    leftMode === "upload" ||
+    rightMode === "attachment" ||
+    rightMode === "upload"
+  ) {
+    return leftFirstUrl === rightFirstUrl;
+  }
+
+  return true;
+}
+
+function isSameCartConfiguration(cartItem = {}, payload = {}) {
+  if (String(cartItem?.productId || "") !== String(payload?.productId || "")) return false;
+  if (String(cartItem?.variantId || "") !== String(payload?.variantId || "")) return false;
+
+  const cartCustomization = cartItem?.customization || {};
+  const payloadCustomization = payload?.customization || {};
+
+  if (
+    normalizeTextValue(cartCustomization?.selectedColor) !==
+      normalizeTextValue(payloadCustomization?.selectedColor) ||
+    normalizeTextValue(cartCustomization?.selectedSize) !==
+      normalizeTextValue(payloadCustomization?.selectedSize) ||
+    normalizeTextValue(cartCustomization?.note) !==
+      normalizeTextValue(payloadCustomization?.note)
+  ) {
+    return false;
+  }
+
+  return arePrescriptionEqual(
+    cartCustomization?.prescription || {},
+    payloadCustomization?.prescription || {},
+  );
+}
+
+function isSameCartIdentity(cartItem = {}, payload = {}) {
+  return (
+    String(cartItem?.productId || "") === String(payload?.productId || "") &&
+    String(cartItem?.variantId || "") === String(payload?.variantId || "")
+  );
+}
+
+function summarizePrescriptionForDebug(prescription = {}) {
+  return {
+    mode: normalizeTextValue(prescription?.mode) || "none",
+    rightEye: {
+      cyl: normalizeTextValue(prescription?.rightEye?.cyl ?? prescription?.rightEye?.CYL),
+      axis: normalizeTextValue(prescription?.rightEye?.axis ?? prescription?.rightEye?.AXIS),
+    },
+    leftEye: {
+      cyl: normalizeTextValue(prescription?.leftEye?.cyl ?? prescription?.leftEye?.CYL),
+      axis: normalizeTextValue(prescription?.leftEye?.axis ?? prescription?.leftEye?.AXIS),
+    },
+    attachmentUrls: Array.isArray(prescription?.attachmentUrls)
+      ? prescription.attachmentUrls.filter(Boolean)
+      : [],
   };
 }
 
@@ -742,7 +863,7 @@ export default function ProductDetailScreen({ navigation, route }) {
       const uiCartType = isPreorderMode ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
       const apiCartType = UI_TO_API_CART_TYPE[uiCartType] || API_CART_TYPES.READY_STOCK;
 
-      const payload = buildCartItemPayload({
+      const nextPayload = buildCartItemPayload({
         product,
         qty,
         colorId,
@@ -755,7 +876,79 @@ export default function ProductDetailScreen({ navigation, route }) {
         selectedVariant,
       });
 
+      const currentCart = await getMyCartApi(apiCartType);
+      const currentItems = Array.isArray(currentCart?.items) ? currentCart.items : [];
+      const matchedItem =
+        currentItems.find((item) => isSameCartConfiguration(item, nextPayload)) ||
+        (() => {
+          const sameIdentityItems = currentItems.filter((item) =>
+            isSameCartIdentity(item, nextPayload)
+          );
+          return sameIdentityItems.length === 1 ? sameIdentityItems[0] : null;
+        })();
+
+      const payload = matchedItem
+        ? {
+            ...nextPayload,
+            itemId: matchedItem._id || matchedItem.id,
+            quantity: Number(matchedItem.quantity || 0) + Number(qty || 1),
+          }
+        : nextPayload;
+
       await upsertCartItemApi(apiCartType, payload);
+
+      if (typeof __DEV__ !== "undefined" && __DEV__ && product?.type === "LENS") {
+        console.log(
+          "[Cart] lens add payload",
+          JSON.stringify(
+            {
+              productId: payload.productId,
+              variantId: payload.variantId || "",
+              quantity: payload.quantity,
+              customization: {
+                selectedColor: payload?.customization?.selectedColor || "",
+                selectedSize: payload?.customization?.selectedSize || "",
+                prescription: summarizePrescriptionForDebug(
+                  payload?.customization?.prescription
+                ),
+              },
+            },
+            null,
+            2
+          )
+        );
+
+        const latestCart = await getMyCartApi(apiCartType);
+        const latestItems = Array.isArray(latestCart?.items) ? latestCart.items : [];
+        const savedItem =
+          latestItems.find((item) => isSameCartConfiguration(item, payload)) ||
+          latestItems.find((item) => isSameCartIdentity(item, payload)) ||
+          null;
+
+        console.log(
+          "[Cart] lens saved customization",
+          JSON.stringify(
+            savedItem
+              ? {
+                  itemId: savedItem?._id || savedItem?.id || "",
+                  productId: savedItem?.productId || "",
+                  variantId: savedItem?.variantId || "",
+                  quantity: Number(savedItem?.quantity || 0),
+                  customization: {
+                    selectedColor: savedItem?.customization?.selectedColor || "",
+                    selectedSize: savedItem?.customization?.selectedSize || "",
+                    prescription: summarizePrescriptionForDebug(
+                      savedItem?.customization?.prescription
+                    ),
+                  },
+                }
+              : null,
+            null,
+            2
+          )
+        );
+      }
+
       changeCartBadgeQty(qty);
 
       Toast.show({
@@ -918,7 +1111,7 @@ export default function ProductDetailScreen({ navigation, route }) {
             "Không tải được dữ liệu try-on đầy đủ cho sản phẩm này. Kiểm tra kết nối rồi thử lại."
           );
         } else {
-          Alert.alert("Try-on", "Dữ liệu try-on của sản phẩm này chưa đầy đủ hoặc chưa publish.");
+          Alert.alert("Try-on", "Dữ liệu try-on của sản phẩm này chưa đầy đủ hoặc chưa phát hành.");
         }
         return;
       }
@@ -1138,18 +1331,6 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
       </View>
 
       <View style={styles.headerRight}>
-        <TouchableOpacity
-          style={styles.headerIconBtn}
-          activeOpacity={0.8}
-          onPress={() =>
-            navigation.navigate("Tabs", {
-              screen: "FavTab",
-              params: { screen: "Favorites" },
-            })
-          }
-        >
-          <Ionicons name="heart" size={24} color="#EF4444" />
-        </TouchableOpacity>
 
         <CartIconButton
           onPress={() =>
@@ -1159,6 +1340,9 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
             })
           }
         />
+        <View  style={styles.headerIconBtn}>
+          <AntDesign name="comment" size={24} color="black" />
+        </View>
       </View>
     </View>
   );
@@ -1582,19 +1766,19 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
 
   return (
     <Card>
-      <Text style={styles.sectionTitle}>Cua hang</Text>
+      <Text style={styles.sectionTitle}>Cửa hàng</Text>
 
       {mode === "all" ? (
         <>
           <Text style={styles.mutedText}>
-            San pham nay dang duoc mo ban theo mo hinh tat ca cua hang dang hoat dong.
+            Sản phẩm này đang được mở bán theo mô hình tất cả cửa hàng đang hoạt động.
           </Text>
 
           {selectedStore ? (
             <View style={styles.storeHintBox}>
               <Ionicons name="business-outline" size={16} color="#1D4ED8" />
               <Text style={styles.storeHintText}>
-                Ban dang xem theo cua hang: {selectedStore.name} ({selectedStore.code})
+                Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
               </Text>
             </View>
           ) : null}
@@ -1616,10 +1800,10 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
                     {store.name} ({store.code})
                   </Text>
                   <Text style={styles.storeCardMeta}>
-                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chua co dia chi"}
+                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
                   </Text>
                   <Text style={styles.storeCardMeta}>
-                    Try-on: {store.supportsTryOn ? "Co" : "Khong"} | Pickup: {store.supportsPickup ? "Co" : "Khong"}
+                    Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
                   </Text>
                 </View>
                 {selectedStoreId === store.id ? (
@@ -1632,7 +1816,7 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
             </View>
           ) : (
             <Text style={[styles.mutedText, { marginTop: 8 }]}>
-              Chua tai duoc danh sach cua hang dang hoat dong.
+              Chưa tải được danh sách cửa hàng đang hoạt động.
             </Text>
           )}
         </>
@@ -1642,7 +1826,7 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
             <View style={styles.storeHintBox}>
               <Ionicons name="business-outline" size={16} color="#1D4ED8" />
               <Text style={styles.storeHintText}>
-                Ban dang xem theo cua hang: {selectedStore.name} ({selectedStore.code})
+                Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
               </Text>
             </View>
           ) : null}
@@ -1663,10 +1847,10 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
                     {store.name} ({store.code})
                   </Text>
                   <Text style={styles.storeCardMeta}>
-                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chua co dia chi"}
+                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
                   </Text>
                   <Text style={styles.storeCardMeta}>
-                    Try-on: {store.supportsTryOn ? "Co" : "Khong"} | Pickup: {store.supportsPickup ? "Co" : "Khong"}
+                    Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
                   </Text>
                 </View>
                 {selectedStoreId === store.id ? (
@@ -1680,18 +1864,18 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
         </>
       ) : (
         <Text style={styles.mutedText}>
-          San pham nay dang duoc quan ly theo cua hang, nhung chua co danh sach cua hang duoc map.
+          Sản phẩm này đang được quản lý theo cửa hàng, nhưng chưa có danh sách cửa hàng được map.
         </Text>
       )}
 
       {canSwitchStore ? (
         <Text style={[styles.mutedText, { marginTop: 10 }]}>
-          Bam vao tung cua hang de doi nhanh cua hang dang ap dung cho san pham nay.
+          Bấm vào từng cửa hàng để đổi nhanh cửa hàng đang áp dụng cho sản phẩm này.
         </Text>
       ) : null}
 
       {storeScope?.note ? (
-        <Text style={[styles.mutedText, { marginTop: 10 }]}>Ghi chu: {storeScope.note}</Text>
+        <Text style={[styles.mutedText, { marginTop: 10 }]}>Ghi chú: {storeScope.note}</Text>
       ) : null}
     </Card>
   );

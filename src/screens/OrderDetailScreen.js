@@ -230,10 +230,23 @@ function InfoRow({ label, value, valueStyle }) {
   );
 }
 
+function isLensItem(item) {
+  const productType = String(item?.productType || "").toUpperCase();
+  const type = String(item?.type || "").toUpperCase();
+  return productType === "LENS" || type === "LENS" || type === "CONTACT_LENS";
+}
+
+function hasManualRx(item) {
+  return Boolean(item?.rxOD?.CYL && item?.rxOD?.AXIS && item?.rxOS?.CYL && item?.rxOS?.AXIS);
+}
+
 function ProductRow({ item }) {
   const qty = item?.qty ?? item?.quantity ?? 1;
   const price = item?.price ?? item?.unitPrice ?? 0;
   const lineTotal = item?.lineTotal ?? price * qty;
+  const showLensSpecs = isLensItem(item);
+  const showManualRx = hasManualRx(item);
+  const hasRxPhoto = Boolean(item?.rxPhoto?.uri);
 
   return (
     <View style={styles.productRow}>
@@ -253,6 +266,29 @@ function ProductRow({ item }) {
         {!!item?.variantText && (
           <Text style={styles.productVariant}>{item.variantText}</Text>
         )}
+
+        {showLensSpecs ? (
+          <View style={styles.lensSpecsWrap}>
+            {showManualRx ? (
+              <>
+                <Text style={styles.lensSpecText}>
+                  Mắt phải (OD): CYL {item.rxOD.CYL} • AXIS {item.rxOD.AXIS}
+                </Text>
+                <Text style={styles.lensSpecText}>
+                  Mắt trái (OS): CYL {item.rxOS.CYL} • AXIS {item.rxOS.AXIS}
+                </Text>
+              </>
+            ) : null}
+
+            {hasRxPhoto ? (
+              <Text style={styles.lensSpecText}>Đã đính kèm ảnh đơn kính</Text>
+            ) : null}
+
+            {!!item?.readyNote && (
+              <Text style={styles.lensSpecText}>Ghi chú: {item.readyNote}</Text>
+            )}
+          </View>
+        ) : null}
 
         <View style={styles.productMetaRow}>
           <Text style={styles.productMeta}>SL: {qty}</Text>
@@ -1218,6 +1254,18 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: "600",
     color: "#6B7280",
+  },
+
+  lensSpecsWrap: {
+    marginTop: 6,
+    gap: 4,
+  },
+
+  lensSpecText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#4B5563",
+    lineHeight: 16,
   },
 
   productMetaRow: {
