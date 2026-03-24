@@ -29,6 +29,7 @@ import AddressBookScreen from "../screens/AddressBookScreen";
 import PrescriptionScreen from "../screens/PrescriptionScreen";
 import PaymentsScreen from "../screens/PaymentsScreen";
 import SupportScreen from "../screens/SupportScreen";
+import SupportTicketDetailScreen from "../screens/SupportTicketDetailScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import TryOnARScreen from "../screens/TryOnARScreen";
 
@@ -93,6 +94,10 @@ function ProfileStackScreen() {
       <ProfileStack.Screen name="Prescription" component={PrescriptionScreen} />
       <ProfileStack.Screen name="Payments" component={PaymentsScreen} />
       <ProfileStack.Screen name="Support" component={SupportScreen} />
+      <ProfileStack.Screen
+        name="SupportTicketDetail"
+        component={SupportTicketDetailScreen}
+      />
       <ProfileStack.Screen name="Notifications" component={NotificationsScreen} />
     </ProfileStack.Navigator>
   );

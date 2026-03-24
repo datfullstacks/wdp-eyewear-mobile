@@ -5,6 +5,8 @@ node_modules/
 
 # Expo
 .expo/
+.expo-*/
+.expo-mobile-demo-smoke/
 dist/
 web-build/
 expo-env.d.ts
@@ -60,6 +62,7 @@ android/*.log
 .idea/workspace.xml
 
 # local docs and data
+docs/
 product.md
 seeds/
 

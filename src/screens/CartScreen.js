@@ -27,6 +27,18 @@ import {
 } from "../services/cartService";
 import { useProducts } from "../hooks/useProducts";
 import CartItemEditModal from "../components/CartItemEditModal";
+import {
+  getCatalogDisplayLabel,
+  normalizeCatalogType,
+  normalizeType,
+  productRequiresLensRxFlow,
+  productSupportsLensPairing,
+} from "../services/productService";
+import {
+  inferLensPrescriptionMethod,
+  summarizeLensPrescription,
+  validateLensPrescriptionDraft,
+} from "../services/lensPrescriptionService";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v || 0) + "đ";
 
@@ -41,36 +53,29 @@ const UI_TO_API_CART_TYPE = {
   [CART_TYPES.PREORDER]: API_CART_TYPES.PRE_ORDER,
 };
 
-function isRxFilledFromCustomization(customization) {
-  const p = customization?.prescription;
-  const okOD = Boolean(p?.rightEye?.cyl) && Boolean(p?.rightEye?.axis);
-  const okOS = Boolean(p?.leftEye?.cyl) && Boolean(p?.leftEye?.axis);
-  return okOD && okOS;
-}
-
-function hasPrescriptionAttachment(customization) {
-  return Boolean(customization?.prescription?.attachmentUrls?.length);
-}
-
 function inferOrderTypeFromItem(item) {
   if (item?.preOrder) return "PREORDER";
   const mode = String(item?.customization?.prescription?.mode || "").toLowerCase();
-  if (mode === "attachment") return "CUSTOM";
+  if (mode === "attachment" || mode === "upload") return "CUSTOM";
   return "READY";
 }
 
+function buildLensPrescriptionState(product, customization) {
+  const prescription = customization?.prescription || {};
+  const method = inferLensPrescriptionMethod(prescription);
+  const summary = summarizeLensPrescription(prescription);
+  const validation = validateLensPrescriptionDraft({
+    method,
+    draft: prescription,
+    product,
+  });
+
+  return { method, summary, validation };
+}
+
 function isCartItemComplete(ci) {
-  const type = ci.product?.type || ci.type;
-  if (type !== "LENS") return true;
-
-  const hasRx = isRxFilledFromCustomization(ci.customization);
-  const hasPhoto = hasPrescriptionAttachment(ci.customization);
-  const orderType = ci.orderType;
-
-  if (orderType === "READY") return hasRx;
-  if (orderType === "CUSTOM") return hasPhoto;
-  if (orderType === "PREORDER") return hasRx || hasPhoto;
-  return false;
+  if (!productRequiresLensRxFlow(ci?.product)) return true;
+  return buildLensPrescriptionState(ci?.product, ci?.customization).validation.valid;
 }
 
 function getDepositPercent(ci) {
@@ -143,7 +148,7 @@ function buildAutoPairingNote(cartItems) {
     const lensName = ci?.product?.name || ci?.name || "Tròng";
     const frameName = ci?.combineWithName || combineWith?.note || "Gọng";
 
-    if ((ci?.product?.type || ci?.type) === "LENS") {
+    if (productRequiresLensRxFlow(ci?.product)) {
       lines.push(`Tròng ${lensName} gắn với gọng ${frameName}.`);
     }
   }
@@ -166,10 +171,18 @@ function mapApiCartItemToUi(item, products = []) {
     matchedProduct?.colors?.find(
       (c) =>
         String(c.name || c.label || c.id).toLowerCase() ===
-        String(selectedColor || "").toLowerCase()
+      String(selectedColor || "").toLowerCase()
     ) || null;
 
   const imageOverride = colorObj?.imageOverride || null;
+  const catalogType = matchedProduct?.catalogType || normalizeCatalogType(item?.type);
+  const displayLabel = matchedProduct?.displayLabel || getCatalogDisplayLabel(catalogType);
+  const requiresLensRxFlow = matchedProduct
+    ? productRequiresLensRxFlow(matchedProduct)
+    : catalogType === "LENS";
+  const supportsLensPairing = matchedProduct
+    ? productSupportsLensPairing(matchedProduct)
+    : catalogType === "FRAME";
 
   const product = matchedProduct
     ? {
@@ -181,7 +194,12 @@ function mapApiCartItemToUi(item, products = []) {
         id: item.productId,
         apiId: item.productId,
         name: item.name || "Sản phẩm",
-        type: item.type || "PRODUCT",
+        type: normalizeType(catalogType),
+        apiType: item.type || null,
+        catalogType,
+        displayLabel,
+        requiresLensRxFlow,
+        supportsLensPairing,
         image: "",
         price: item.unitPrice || 0,
         originalPrice: null,
@@ -189,7 +207,7 @@ function mapApiCartItemToUi(item, products = []) {
       };
 
   let variantText = null;
-  if ((product?.type || item?.type) === "FRAME") {
+  if (catalogType === "FRAME" || catalogType === "SUNGLASSES") {
     variantText = [selectedColor, selectedSize].filter(Boolean).join(" • ") || null;
   } else if (selectedColor) {
     variantText = selectedColor;
@@ -221,6 +239,9 @@ function mapApiCartItemToUi(item, products = []) {
     readyNote: item?.customization?.note || "",
     customization: item?.customization || {},
     combineWithName: item?.customization?.combineWith?.note || "",
+    prescriptionState: requiresLensRxFlow
+      ? buildLensPrescriptionState(product, item?.customization || {})
+      : null,
   };
 }
 
@@ -246,8 +267,8 @@ function buildCheckoutItemsFromApiUi(cartItems) {
 }
 
 function isCombinableType(type) {
-  const normalized = String(type || "").toUpperCase();
-  return normalized === "LENS" || normalized === "FRAME";
+  if (!type || typeof type !== "object") return false;
+  return productRequiresLensRxFlow(type) || productSupportsLensPairing(type);
 }
 
 function findCombinedPartner(cartItems, ci) {
@@ -450,21 +471,23 @@ export default function CartScreen({ navigation, route }) {
   };
 
   const openCombine = (ci) => {
-    const type = String(ci?.product?.type || ci?.type || "").toUpperCase();
-    if (!isCombinableType(type)) return;
+    const sourceProduct = ci?.product || null;
+    const isLensFlow = productRequiresLensRxFlow(sourceProduct);
+    if (!isCombinableType(sourceProduct)) return;
 
-    const targetType = type === "LENS" ? "FRAME" : "LENS";
     const candidates = cartItems.filter(
       (item) =>
         item?._id !== ci?._id &&
-        String(item?.product?.type || item?.type || "").toUpperCase() === targetType,
+        (isLensFlow
+          ? productSupportsLensPairing(item?.product)
+          : productRequiresLensRxFlow(item?.product)),
     );
 
     if (!candidates.length) {
       Alert.alert(
         "Chưa có sản phẩm để kết hợp",
-        targetType === "FRAME"
-          ? "Bạn cần thêm gọng vào giỏ để kết hợp."
+        isLensFlow
+          ? "Bạn cần thêm gọng tương thích vào giỏ để kết hợp."
           : "Bạn cần thêm tròng vào giỏ để kết hợp.",
       );
       return;
@@ -536,7 +559,7 @@ export default function CartScreen({ navigation, route }) {
     buttons.push({ text: "Hủy", style: "cancel" });
 
     Alert.alert(
-      type === "LENS" ? "Chọn gọng để gắn" : "Chọn tròng để gắn",
+      isLensFlow ? "Chọn gọng để gắn" : "Chọn tròng để gắn",
       "Kết hợp 1-1 để ghi chú rõ cho đơn.",
       buttons,
     );
@@ -704,7 +727,7 @@ export default function CartScreen({ navigation, route }) {
               onRemove={() => removeItem(ci)}
               onEdit={() => openEdit(ci)}
               onCombine={
-                isCombinableType(ci?.product?.type || ci?.type) ? () => openCombine(ci) : null
+                isCombinableType(ci?.product) ? () => openCombine(ci) : null
               }
             />
           ))
@@ -802,17 +825,19 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
   const unitPrice =
     p?.price ?? p?.pricing?.salePrice ?? p?.pricing?.basePrice ?? ci.unitPrice ?? 0;
   const complete = isCartItemComplete(ci);
-
-  const lensStatus =
-    p?.type !== "LENS"
-      ? null
-      : ci.orderType === "READY"
-        ? isRxFilledFromCustomization(ci.customization)
-          ? "Đã nhập Rx"
-          : "Chưa nhập Rx"
-        : hasPrescriptionAttachment(ci.customization)
-          ? "Đã tải ảnh đơn kính"
-          : "Chưa tải ảnh đơn kính";
+  const prescriptionState = ci?.prescriptionState;
+  const orderTypeLabel = productRequiresLensRxFlow(p)
+    ? prescriptionState?.method === "upload"
+      ? "Tải ảnh đơn"
+      : "Nhập thông số"
+    : ci.orderType === "CUSTOM"
+      ? ORDER_TYPE_LABEL.CUSTOM
+      : ci.isPreorder
+        ? ORDER_TYPE_LABEL.PREORDER
+        : "Mua ngay";
+  const lensStatus = productRequiresLensRxFlow(p)
+    ? prescriptionState?.summary?.shortLabel || null
+    : null;
 
   const payNow = calcLineTotal(ci);
   const payLater = calcLinePayLater(ci);
@@ -861,8 +886,13 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
           {pairedLabel ? <Text style={[styles.variantText, { marginTop: 6 }]}>{pairedLabel}</Text> : null}
 
           <View style={styles.pillRow}>
+            <View style={[styles.pill, { backgroundColor: "#F3F4F6" }]}>
+              <Text style={[styles.pillText, { color: "#374151" }]}>
+                {p.displayLabel || "Sản phẩm"}
+              </Text>
+            </View>
             <View style={styles.pill}>
-              <Text style={styles.pillText}>{ORDER_TYPE_LABEL[ci.orderType] || "-"}</Text>
+              <Text style={styles.pillText}>{orderTypeLabel}</Text>
             </View>
 
             {ci.isPreorder ? (
@@ -890,10 +920,20 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
             </Text>
           ) : null}
 
-          {p?.type === "LENS" ? (
+          {productRequiresLensRxFlow(p) ? (
             <Text style={[styles.variantText, { marginTop: 8, color: complete ? "#159947" : "#EF4444" }]}>
               {lensStatus}
             </Text>
+          ) : null}
+
+          {productRequiresLensRxFlow(p) && prescriptionState?.summary?.lines?.length ? (
+            <View style={{ marginTop: 6, gap: 4 }}>
+              {prescriptionState.summary.lines.map((line) => (
+                <Text key={`${ci.key}-${line}`} style={styles.variantText}>
+                  {line}
+                </Text>
+              ))}
+            </View>
           ) : null}
 
           {ci.readyNote ? (

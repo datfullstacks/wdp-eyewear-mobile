@@ -546,7 +546,17 @@ export default function ProfileScreen({ navigation }) {
             icon="chatbubble-ellipses-outline"
             title="Hỗ trợ"
             subtitle="Nhắn tin với chúng tôi"
-            onPress={() => navigation.navigate("Support")}
+            onPress={() =>
+              navigation.navigate("Support", {
+                prefillCategory: "general",
+                lockCategory: false,
+                orderId: "",
+                orderCode: "",
+                orderItemId: "",
+                orderItemName: "",
+                draftSubject: "",
+              })
+            }
             accent={SETTING_ACCENTS.support}
           />
           <Divider />

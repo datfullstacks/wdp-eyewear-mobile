@@ -18,6 +18,7 @@ import {
   fetchCheckoutQuote,
   createCheckout,
 } from "../services/checkoutService";
+import { getOrderByIdApi } from "../services/orderService";
 import {
   addMyAddressApi,
   getMyAddressesApi,
@@ -57,6 +58,18 @@ const API_CART_TYPE = {
 };
 
 const formatVND = (value) => new Intl.NumberFormat("vi-VN").format(value) + "đ";
+
+const extractApiErrorMessage = (error) => {
+  const data = error?.response?.data || {};
+  const errors = Array.isArray(data?.errors)
+    ? data.errors
+        .map((item) => item?.msg)
+        .filter(Boolean)
+        .join("\n")
+    : "";
+
+  return errors || data?.message || data?.error || error?.message || "";
+};
 
 const normalizePercent = (value, fallback = 100) => {
   const number = Number(value);
@@ -109,13 +122,6 @@ const formatShippingLeadtime = (value, fallback) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return fallback;
   return `Dự kiến ${date.toLocaleDateString("vi-VN")}`;
-};
-
-const pickValue = (...values) => {
-  for (const value of values) {
-    if (value !== undefined && value !== null && value !== "") return value;
-  }
-  return null;
 };
 
 const EMPTY_ADDRESS = {
@@ -739,10 +745,22 @@ export default function CheckoutScreen({ navigation, route }) {
       })
       .catch((err) => {
         if (!active) return;
+        const message = extractApiErrorMessage(err);
         console.warn(
           "checkout quote failed",
           err?.response?.data || err?.message || err,
         );
+        if (appliedVoucherCode && /voucher/i.test(message || "")) {
+          setAppliedVoucherCode("");
+          setVoucherMeta(null);
+          setQuote(null);
+          setQuoteError(null);
+          Alert.alert(
+            "Voucher không còn áp dụng",
+            message || "Voucher hiện không còn hợp lệ với đơn hàng này.",
+          );
+          return;
+        }
         setQuoteError(err);
         setQuote(null);
       })
@@ -791,6 +809,7 @@ export default function CheckoutScreen({ navigation, route }) {
         items: checkoutItems,
         shippingMethod: shippingId,
         shippingAddress: addressComplete ? address : undefined,
+        paymentMethod: paymentId,
         cartType: API_CART_TYPE[cartType] || "ready_stock",
       };
 
@@ -818,14 +837,7 @@ export default function CheckoutScreen({ navigation, route }) {
       setSkipInitialQuote(false);
       Alert.alert("Áp mã thành công", `Đã áp dụng voucher ${code}.`);
     } catch (err) {
-      const data = err?.response?.data || {};
-      const errors = Array.isArray(data?.errors)
-        ? data.errors
-            .map((e) => e?.msg)
-            .filter(Boolean)
-            .join("\n")
-        : null;
-      const message = errors || data?.message || data?.error || err?.message;
+      const message = extractApiErrorMessage(err);
       Alert.alert(
         "Không áp dụng được voucher",
         message || "Vui lòng thử mã khác.",
@@ -874,136 +886,64 @@ export default function CheckoutScreen({ navigation, route }) {
       });
 
       const data = await createCheckout(payload);
-      const now = new Date().toISOString();
-      const orderId =
-        data?.orderId || data?.id || `OD${Date.now().toString().slice(-6)}`;
-      const breakdown = data?.breakdown || data || {};
-      const serverPayment =
-        data?.payment ||
-        data?.paymentInstructions ||
-        data?.paymentInstruction ||
-        {};
-      const fallbackMethod = paymentId === "cod" ? "COD" : "SEPAY";
-      const fallbackStatus = paymentId === "cod" ? "PENDING_COD" : "PENDING_QR";
+      const orderId = data?.orderId || data?._id || data?.id || null;
+      if (!orderId) {
+        throw new Error("API checkout did not return orderId.");
+      }
 
-      const orderPayment = {
-        ...serverPayment,
-        method:
-          pickValue(
-            serverPayment.method,
-            serverPayment.paymentMethod,
-            data?.paymentMethod,
-            data?.method,
-          ) || fallbackMethod,
-        status:
-          pickValue(
-            serverPayment.status,
-            serverPayment.paymentStatus,
-            data?.paymentStatus,
-            data?.status,
-          ) || fallbackStatus,
-        paymentCode:
-          pickValue(
-            serverPayment.paymentCode,
-            serverPayment.code,
-            data?.paymentCode,
-            data?.code,
-          ) || null,
-        content:
-          pickValue(
-            serverPayment.content,
-            serverPayment.description,
-            data?.content,
-            serverPayment.paymentCode,
-            data?.paymentCode,
-          ) || null,
-        bankAccountId:
-          pickValue(
-            serverPayment.bankAccountId,
-            serverPayment.bank_account_id,
-            data?.bankAccountId,
-            data?.bank_account_id,
-          ) || null,
-        bankAccountNumber:
-          pickValue(
-            serverPayment.bankAccountNumber,
-            serverPayment.bank_account_number,
-            data?.bankAccountNumber,
-            data?.bank_account_number,
-            serverPayment.bankAccountId,
-            data?.bankAccountId,
-          ) || null,
-        bankName:
-          pickValue(
-            serverPayment.bankName,
-            serverPayment.bank_name,
-            data?.bankName,
-            data?.bank_name,
-          ) || null,
-        bankAccountName:
-          pickValue(
-            serverPayment.bankAccountName,
-            serverPayment.bank_account_name,
-            data?.bankAccountName,
-            data?.bank_account_name,
-          ) || null,
-        qrUrl:
-          pickValue(
-            serverPayment.qrUrl,
-            serverPayment.qr_url,
-            data?.qrUrl,
-            data?.qr_url,
-          ) || null,
-        paymentUrl:
-          pickValue(
-            serverPayment.paymentUrl,
-            serverPayment.payment_url,
-            serverPayment.checkoutUrl,
-            data?.paymentUrl,
-            data?.payment_url,
-          ) || null,
-        createdAt:
-          pickValue(serverPayment.createdAt, data?.createdAt, now) || now,
-        paidAt: pickValue(serverPayment.paidAt, data?.paidAt, null),
-      };
+      let orderPayload = null;
 
-      const orderPayload = {
-        orderId,
-        createdAt: now,
-        status: "CONFIRMED",
-        shippingMethod: shippingId,
-        breakdown: {
-          subtotal: breakdown.subtotal ?? subtotal,
-          shippingFee: breakdown.shippingFee ?? shipping,
-          discountAmount: breakdown.discountAmount ?? discount,
-          total: breakdown.total ?? total,
-          payNow: breakdown.payNow ?? payNow,
-          payLater: breakdown.payLater ?? payLater,
-        },
-        voucherCode: appliedVoucherCode || null,
-        payment: {
-          ...orderPayment,
-        },
-        shippingAddress: address,
-        items: checkoutItems.map((it) => ({
-          name:
-            cartItems.find(
-              (x) =>
-                String(x?.productId || x?.product?.apiId || x?.product?._id || x?.product?.id || "") ===
-                String(it.productId),
-            )?.product?.name || "Sản phẩm",
-          qty: it.quantity,
-          price:
-            cartItems.find(
-              (x) =>
-                String(x?.productId || x?.product?.apiId || x?.product?._id || x?.product?.id || "") ===
-                String(it.productId),
-            )?.product?.price || 0,
-          preorder: Boolean(it.isPreorder),
-        })),
-      };
+      try {
+        orderPayload = await getOrderByIdApi(orderId, false);
+      } catch (fetchOrderError) {
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.log(
+            "checkout order detail fetch failed",
+            fetchOrderError?.response?.data ||
+              fetchOrderError?.message ||
+              fetchOrderError,
+          );
+        }
+      }
 
-      console.log("Note: ", mergedNote);
+      if (!orderPayload) {
+        const breakdown = data?.breakdown || {};
+        const serverPayment =
+          data?.payment ||
+          data?.paymentInstructions ||
+          data?.paymentInstruction ||
+          null;
+
+        orderPayload = {
+          _id: orderId,
+          id: orderId,
+          orderId,
+          createdAt: data?.createdAt || null,
+          shippingMethod: data?.shippingMethod || shippingId || null,
+          shippingAddress: data?.shippingAddress || (addressComplete ? address : null),
+          subtotal: breakdown.subtotal ?? null,
+          shippingFee: breakdown.shippingFee ?? null,
+          discountAmount: breakdown.discountAmount ?? null,
+          total: breakdown.total ?? null,
+          payNowTotal: breakdown.payNow ?? null,
+          payLaterTotal: breakdown.payLater ?? null,
+          voucherCode: data?.voucherCode || appliedVoucherCode || null,
+          paymentMethod:
+            data?.paymentMethod ||
+            serverPayment?.method ||
+            serverPayment?.paymentMethod ||
+            paymentId ||
+            null,
+          paymentStatus:
+            data?.paymentStatus ||
+            serverPayment?.status ||
+            serverPayment?.paymentStatus ||
+            null,
+          payment: serverPayment,
+          items: [],
+        };
+      }
+
       navigation.navigate("CheckoutStatus", { order: orderPayload, cartType });
     } catch (err) {
       const data = err?.response?.data || {};

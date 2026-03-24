@@ -1,4 +1,9 @@
 import { api } from "./apiClient";
+import { productRequiresLensRxFlow } from "./productService";
+import {
+  buildLensPrescriptionPayload,
+  normalizeLensPrescriptionDraft,
+} from "./lensPrescriptionService";
 
 function toText(value) {
   if (value == null) return "";
@@ -26,12 +31,6 @@ function compactAddress(address) {
     country: address.country || "VN",
     note: address.note || "",
   };
-}
-
-function isRxFilled(rxOD, rxOS) {
-  const okOD = Boolean(rxOD?.CYL) && Boolean(rxOD?.AXIS);
-  const okOS = Boolean(rxOS?.CYL) && Boolean(rxOS?.AXIS);
-  return okOD && okOS;
 }
 
 function normalizeEyePayload(eye = {}) {
@@ -97,46 +96,27 @@ function buildPrescription(it) {
   const rxOD = it?.rxOD || null;
   const rxOS = it?.rxOS || null;
   const photoUrl = it?.rxPhotoAssetId || it?.rxPhoto?.uri || null;
+  const draft = normalizeLensPrescriptionDraft({
+    rightEye: rxOD,
+    leftEye: rxOS,
+    pd: it?.pd,
+    note: it?.readyNote,
+    attachmentUrls: photoUrl ? [photoUrl] : [],
+  });
 
-  if (orderType === "READY") {
-    if (!isRxFilled(rxOD, rxOS)) return normalizePrescriptionPayload();
-    return normalizePrescriptionPayload({
-      mode: "manual",
-      isMyopic: false,
-      rightEye: normalizeEyePayload(rxOD),
-      leftEye: normalizeEyePayload(rxOS),
-    });
-  }
+  const method =
+    orderType === "CUSTOM"
+      ? "upload"
+      : photoUrl && orderType === "PREORDER" && !rxOD && !rxOS
+        ? "upload"
+        : "manual";
 
-  if (orderType === "CUSTOM") {
-    if (!photoUrl) return normalizePrescriptionPayload();
-    return normalizePrescriptionPayload({
-      mode: "upload",
-      isMyopic: true,
-      attachmentUrls: [photoUrl],
-    });
-  }
-
-  if (orderType === "PREORDER") {
-    if (isRxFilled(rxOD, rxOS)) {
-      return normalizePrescriptionPayload({
-        mode: "manual",
-        isMyopic: false,
-        rightEye: normalizeEyePayload(rxOD),
-        leftEye: normalizeEyePayload(rxOS),
-      });
-    }
-
-    if (photoUrl) {
-      return normalizePrescriptionPayload({
-        mode: "upload",
-        isMyopic: true,
-        attachmentUrls: [photoUrl],
-      });
-    }
-  }
-
-  return normalizePrescriptionPayload();
+  return normalizePrescriptionPayload(
+    buildLensPrescriptionPayload({
+      method,
+      draft,
+    })
+  );
 }
 
 export function buildCheckoutItems(items = []) {
@@ -188,7 +168,7 @@ export function buildCheckoutItems(items = []) {
             (orderType === "READY" && it?.readyNote ? String(it.readyNote).trim() : ""),
           combineWith: it?.customization?.combineWith,
           prescription:
-            it.product?.type === "LENS"
+            productRequiresLensRxFlow(it?.product)
               ? buildPrescription(it)
               : it?.customization?.prescription,
         }),

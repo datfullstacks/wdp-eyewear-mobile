@@ -16,17 +16,38 @@ import {
   deleteMyPrescriptionApi,
   getMyPrescriptionsApi,
   setDefaultMyPrescriptionApi,
+  updateMyPrescriptionApi,
 } from "../services/userService";
 
 const EMPTY_FORM = {
   name: "",
   pd: "",
   note: "",
-  rightEye: { sphere: "", cyl: "", axis: "" },
-  leftEye: { sphere: "", cyl: "", axis: "" },
+  rightEye: { sphere: "", cyl: "", axis: "", add: "" },
+  leftEye: { sphere: "", cyl: "", axis: "", add: "" },
 };
 
-function PrescriptionCard({ item, onSetDefault, onDelete }) {
+function normalizeFormFromPrescription(item = {}) {
+  return {
+    name: item?.name || "",
+    pd: item?.pd || "",
+    note: item?.note || "",
+    rightEye: {
+      sphere: item?.rightEye?.sphere || "",
+      cyl: item?.rightEye?.cyl || "",
+      axis: item?.rightEye?.axis || "",
+      add: item?.rightEye?.add || "",
+    },
+    leftEye: {
+      sphere: item?.leftEye?.sphere || "",
+      cyl: item?.leftEye?.cyl || "",
+      axis: item?.leftEye?.axis || "",
+      add: item?.leftEye?.add || "",
+    },
+  };
+}
+
+function PrescriptionCard({ item, onSetDefault, onDelete, onEdit }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
@@ -42,12 +63,19 @@ function PrescriptionCard({ item, onSetDefault, onDelete }) {
         )}
       </View>
 
-      <Text style={styles.meta}>OD: SPH {item?.rightEye?.sphere || "--"} / CYL {item?.rightEye?.cyl || "--"} / AXIS {item?.rightEye?.axis || "--"}</Text>
-      <Text style={styles.meta}>OS: SPH {item?.leftEye?.sphere || "--"} / CYL {item?.leftEye?.cyl || "--"} / AXIS {item?.leftEye?.axis || "--"}</Text>
+      <Text style={styles.meta}>
+        OD: SPH {item?.rightEye?.sphere || "--"} / CYL {item?.rightEye?.cyl || "--"} / AXIS {item?.rightEye?.axis || "--"} / ADD {item?.rightEye?.add || "--"}
+      </Text>
+      <Text style={styles.meta}>
+        OS: SPH {item?.leftEye?.sphere || "--"} / CYL {item?.leftEye?.cyl || "--"} / AXIS {item?.leftEye?.axis || "--"} / ADD {item?.leftEye?.add || "--"}
+      </Text>
       <Text style={styles.meta}>PD: {item?.pd || "--"}</Text>
       {!!item?.note ? <Text style={styles.meta}>Ghi chú: {item.note}</Text> : null}
 
       <View style={styles.actions}>
+        <TouchableOpacity activeOpacity={0.85} onPress={() => onEdit(item)}>
+          <Text style={styles.linkText}>Sửa</Text>
+        </TouchableOpacity>
         <TouchableOpacity activeOpacity={0.85} onPress={() => onDelete(item?._id)}>
           <Text style={styles.deleteText}>Xóa</Text>
         </TouchableOpacity>
@@ -61,6 +89,7 @@ export default function PrescriptionScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState("");
 
   const loadData = useCallback(async () => {
     try {
@@ -87,15 +116,31 @@ export default function PrescriptionScreen({ navigation }) {
 
     try {
       setSubmitting(true);
-      const data = await addMyPrescriptionApi(form);
+      const data = editingId
+        ? await updateMyPrescriptionApi(editingId, form)
+        : await addMyPrescriptionApi(form);
       setItems(Array.isArray(data) ? data : []);
       setForm(EMPTY_FORM);
+      setEditingId("");
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Không tạo được prescription";
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        (editingId ? "Không cập nhật được prescription" : "Không tạo được prescription");
       Alert.alert("Prescription", message);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const startEdit = (item) => {
+    setEditingId(String(item?._id || ""));
+    setForm(normalizeFormFromPrescription(item));
+  };
+
+  const cancelEdit = () => {
+    setEditingId("");
+    setForm(EMPTY_FORM);
   };
 
   const onSetDefault = async (id) => {
@@ -143,7 +188,16 @@ export default function PrescriptionScreen({ navigation }) {
       </View>
 
       <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Thêm prescription</Text>
+        <View style={styles.formHeader}>
+          <Text style={styles.formTitle}>
+            {editingId ? "Chỉnh sửa prescription" : "Thêm prescription"}
+          </Text>
+          {editingId ? (
+            <TouchableOpacity activeOpacity={0.85} onPress={cancelEdit}>
+              <Text style={styles.linkText}>Hủy sửa</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
         <TextInput
           style={styles.input}
           placeholder="Name *"
@@ -152,7 +206,7 @@ export default function PrescriptionScreen({ navigation }) {
         />
         <View style={styles.row}>
           <TextInput
-            style={[styles.input, styles.third]}
+            style={[styles.input, styles.quarter]}
             placeholder="OD SPH"
             value={form.rightEye.sphere}
             onChangeText={(v) =>
@@ -160,7 +214,7 @@ export default function PrescriptionScreen({ navigation }) {
             }
           />
           <TextInput
-            style={[styles.input, styles.third]}
+            style={[styles.input, styles.quarter]}
             placeholder="OD CYL"
             value={form.rightEye.cyl}
             onChangeText={(v) =>
@@ -168,17 +222,25 @@ export default function PrescriptionScreen({ navigation }) {
             }
           />
           <TextInput
-            style={[styles.input, styles.third]}
+            style={[styles.input, styles.quarter]}
             placeholder="OD AXIS"
             value={form.rightEye.axis}
             onChangeText={(v) =>
               setForm((p) => ({ ...p, rightEye: { ...p.rightEye, axis: v } }))
             }
           />
+          <TextInput
+            style={[styles.input, styles.third]}
+            placeholder="OD ADD"
+            value={form.rightEye.add}
+            onChangeText={(v) =>
+              setForm((p) => ({ ...p, rightEye: { ...p.rightEye, add: v } }))
+            }
+          />
         </View>
         <View style={styles.row}>
           <TextInput
-            style={[styles.input, styles.third]}
+            style={[styles.input, styles.quarter]}
             placeholder="OS SPH"
             value={form.leftEye.sphere}
             onChangeText={(v) =>
@@ -186,7 +248,7 @@ export default function PrescriptionScreen({ navigation }) {
             }
           />
           <TextInput
-            style={[styles.input, styles.third]}
+            style={[styles.input, styles.quarter]}
             placeholder="OS CYL"
             value={form.leftEye.cyl}
             onChangeText={(v) =>
@@ -194,11 +256,19 @@ export default function PrescriptionScreen({ navigation }) {
             }
           />
           <TextInput
-            style={[styles.input, styles.third]}
+            style={[styles.input, styles.quarter]}
             placeholder="OS AXIS"
             value={form.leftEye.axis}
             onChangeText={(v) =>
               setForm((p) => ({ ...p, leftEye: { ...p.leftEye, axis: v } }))
+            }
+          />
+          <TextInput
+            style={[styles.input, styles.quarter]}
+            placeholder="OS ADD"
+            value={form.leftEye.add}
+            onChangeText={(v) =>
+              setForm((p) => ({ ...p, leftEye: { ...p.leftEye, add: v } }))
             }
           />
         </View>
@@ -220,7 +290,13 @@ export default function PrescriptionScreen({ navigation }) {
           onPress={submit}
           disabled={submitting}
         >
-          <Text style={styles.submitText}>{submitting ? "Đang lưu..." : "Lưu prescription"}</Text>
+          <Text style={styles.submitText}>
+            {submitting
+              ? "Đang lưu..."
+              : editingId
+                ? "Cập nhật prescription"
+                : "Lưu prescription"}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -234,7 +310,12 @@ export default function PrescriptionScreen({ navigation }) {
           keyExtractor={(item) => String(item?._id)}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
-            <PrescriptionCard item={item} onSetDefault={onSetDefault} onDelete={onDelete} />
+            <PrescriptionCard
+              item={item}
+              onSetDefault={onSetDefault}
+              onDelete={onDelete}
+              onEdit={startEdit}
+            />
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -266,7 +347,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "#FFFFFF",
   },
-  formTitle: { fontSize: 13, fontWeight: "900", color: "#111827", marginBottom: 10 },
+  formHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 10,
+  },
+  formTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
   input: {
     height: 42,
     borderWidth: 1,
@@ -281,6 +369,7 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", gap: 8 },
   third: { flex: 1 },
+  quarter: { flex: 1 },
   submitBtn: {
     marginTop: 4,
     height: 42,
@@ -304,7 +393,7 @@ const styles = StyleSheet.create({
   defaultBadgeText: { color: "#15803D", fontWeight: "900", fontSize: 11 },
   linkText: { color: "#2563EB", fontWeight: "900", fontSize: 12 },
   meta: { marginTop: 4, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
-  actions: { marginTop: 10, flexDirection: "row", justifyContent: "flex-end" },
+  actions: { marginTop: 10, flexDirection: "row", justifyContent: "flex-end", gap: 12 },
   deleteText: { color: "#DC2626", fontWeight: "900", fontSize: 12.5 },
   empty: { paddingTop: 20, alignItems: "center" },
   emptyText: { color: "#6B7280", fontWeight: "700" },
