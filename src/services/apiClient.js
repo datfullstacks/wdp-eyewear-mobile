@@ -1,7 +1,8 @@
-﻿import axios from "axios";
-import { useAuthStore } from "../store/authStore";
+import axios from "axios";
+import { getToken } from "./tokenStorage";
+import { getApiBaseUrl } from "./runtimeConfig";
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+const BASE_URL = getApiBaseUrl();
 
 if (typeof __DEV__ !== "undefined" && __DEV__) {
   console.log("API baseURL =>", BASE_URL);
@@ -13,8 +14,8 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use(
-  (config) => {
-    const token = useAuthStore.getState().token;
+  async (config) => {
+    const token = await getToken();
     config.headers = config.headers || {};
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -22,7 +23,7 @@ api.interceptors.request.use(
     config.headers.accept = "application/json";
     return config;
   },
-  (error) => Promise.reject(error),
+  (error) => Promise.reject(error)
 );
 
 api.interceptors.response.use(
@@ -31,5 +32,5 @@ api.interceptors.response.use(
     if (error?.response?.status === 401) {
     }
     return Promise.reject(error);
-  },
+  }
 );

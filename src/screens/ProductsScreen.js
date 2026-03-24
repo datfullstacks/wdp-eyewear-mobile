@@ -99,6 +99,7 @@ export default function ProductsScreen({ navigation }) {
   const [typeFrame, setTypeFrame] = useState(false);
   const [typeLens, setTypeLens] = useState(false);
   const [typeSunglasses, setTypeSunglasses] = useState(false);
+  const [typeContactLens, setTypeContactLens] = useState(false);
   const [typeAccessory, setTypeAccessory] = useState(false);
   const [priceKey, setPriceKey] = useState("all");
   const [brandFilter, setBrandFilter] = useState(null);
@@ -126,6 +127,7 @@ export default function ProductsScreen({ navigation }) {
       setTypeFrame(false);
       setTypeLens(false);
       setTypeSunglasses(false);
+      setTypeContactLens(false);
       setTypeAccessory(false);
 
       switch (params.filterType) {
@@ -137,6 +139,9 @@ export default function ProductsScreen({ navigation }) {
           break;
         case "sunglasses":
           setTypeSunglasses(true);
+          break;
+        case "contact_lens":
+          setTypeContactLens(true);
           break;
         case "accessory":
           setTypeAccessory(true);
@@ -186,6 +191,7 @@ export default function ProductsScreen({ navigation }) {
     if (typeFrame) out.push({ key: "type_frame", label: "Gọng kính" });
     if (typeLens) out.push({ key: "type_lens", label: "Tròng kính" });
     if (typeSunglasses) out.push({ key: "type_sunglasses", label: "Kính mát" });
+    if (typeContactLens) out.push({ key: "type_contact_lens", label: "Kính áp tròng" });
     if (typeAccessory) out.push({ key: "type_accessory", label: "Phụ kiện" });
 
     if (onlyInStock) out.push({ key: "in_stock", label: "Có sẵn" });
@@ -222,6 +228,7 @@ export default function ProductsScreen({ navigation }) {
     typeFrame,
     typeLens,
     typeSunglasses,
+    typeContactLens,
     typeAccessory,
     onlyInStock,
     onlyPreorder,
@@ -242,6 +249,9 @@ export default function ProductsScreen({ navigation }) {
         return;
       case "type_sunglasses":
         setTypeSunglasses(false);
+        return;
+      case "type_contact_lens":
+        setTypeContactLens(false);
         return;
       case "type_accessory":
         setTypeAccessory(false);
@@ -283,6 +293,7 @@ export default function ProductsScreen({ navigation }) {
     setTypeFrame(false);
     setTypeLens(false);
     setTypeSunglasses(false);
+    setTypeContactLens(false);
     setTypeAccessory(false);
     setPriceKey("all");
     setSortKey("default");
@@ -303,10 +314,11 @@ export default function ProductsScreen({ navigation }) {
     if (typeFrame) activeTypes.push("FRAME");
     if (typeLens) activeTypes.push("LENS");
     if (typeSunglasses) activeTypes.push("SUNGLASSES");
+    if (typeContactLens) activeTypes.push("CONTACT_LENS");
     if (typeAccessory) activeTypes.push("ACCESSORY");
 
     if (activeTypes.length > 0) {
-      arr = arr.filter((p) => activeTypes.includes(p.type?.toUpperCase()));
+      arr = arr.filter((p) => activeTypes.includes(String(p.catalogType || "").toUpperCase()));
     }
 
     if (onlyInStock && !onlyPreorder) {
@@ -366,6 +378,7 @@ export default function ProductsScreen({ navigation }) {
     typeFrame,
     typeLens,
     typeSunglasses,
+    typeContactLens,
     typeAccessory,
     onlyInStock,
     onlyPreorder,
@@ -632,6 +645,33 @@ export default function ProductsScreen({ navigation }) {
               >
                 <Text style={[styles.toggleText, typeLens && styles.toggleTextActive]}>
                   Tròng kính
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.togglePill, typeSunglasses && styles.togglePillActive]}
+                activeOpacity={0.85}
+                onPress={() => setTypeSunglasses((v) => !v)}
+              >
+                <Text style={[styles.toggleText, typeSunglasses && styles.toggleTextActive]}>
+                  Kính mát
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.togglePill, typeContactLens && styles.togglePillActive]}
+                activeOpacity={0.85}
+                onPress={() => setTypeContactLens((v) => !v)}
+              >
+                <Text style={[styles.toggleText, typeContactLens && styles.toggleTextActive]}>
+                  Kính áp tròng
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.togglePill, typeAccessory && styles.togglePillActive]}
+                activeOpacity={0.85}
+                onPress={() => setTypeAccessory((v) => !v)}
+              >
+                <Text style={[styles.toggleText, typeAccessory && styles.toggleTextActive]}>
+                  Phụ kiện
                 </Text>
               </TouchableOpacity>
             </View>

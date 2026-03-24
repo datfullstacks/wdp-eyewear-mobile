@@ -1,5 +1,15 @@
 ﻿import { api } from "./apiClient";
-import { fetchProductById } from "./productService";
+import {
+  fetchProductById,
+  getCatalogDisplayLabel,
+  normalizeCatalogType,
+} from "./productService";
+import {
+  buildLensPrescriptionPayload,
+  inferLensPrescriptionMethod,
+  normalizeLensPrescriptionDraft,
+  summarizeLensPrescription,
+} from "./lensPrescriptionService";
 
 function pickData(res) {
   const raw = res?.data;
@@ -20,23 +30,24 @@ function pickPagination(res) {
 }
 
 function normalizeProductType(apiType) {
-  const t = String(apiType || "").toLowerCase();
-  if (t === "lens" || t === "contact_lens") return "LENS";
-  if (t === "frame" || t === "sunglasses") return "FRAME";
-  return "OTHER";
+  return normalizeCatalogType(apiType);
 }
 
-function isRxFilled(rxOD, rxOS) {
-  const okOD = Boolean(rxOD?.CYL) && Boolean(rxOD?.AXIS);
-  const okOS = Boolean(rxOS?.CYL) && Boolean(rxOS?.AXIS);
-  return okOD && okOS;
+function isFrameLikeProductType(productType) {
+  return productType === "FRAME" || productType === "SUNGLASSES";
+}
+
+function requiresLensRxFlowType(productType) {
+  return productType === "LENS";
 }
 
 function toRxEye(eye) {
-  if (!eye) return { CYL: "", AXIS: "" };
+  if (!eye) return { SPH: "", CYL: "", AXIS: "", ADD: "" };
   return {
+    SPH: String(eye?.sphere ?? eye?.SPH ?? ""),
     CYL: String(eye?.cyl ?? eye?.CYL ?? ""),
     AXIS: String(eye?.axis ?? eye?.AXIS ?? ""),
+    ADD: String(eye?.add ?? eye?.ADD ?? ""),
   };
 }
 
@@ -45,7 +56,7 @@ function buildOrderType(raw) {
   if (isPreOrder) return "PREORDER";
 
   const mode = String(raw?.customization?.prescription?.mode || "none").toLowerCase();
-  if (mode === "upload") return "CUSTOM";
+  if (mode === "upload" || mode === "attachment") return "CUSTOM";
   return "READY";
 }
 
@@ -53,17 +64,15 @@ function buildVariantText(productType, variant) {
   const colorName = variant?.colorName || null;
   const size = variant?.size || null;
 
-  if (productType === "FRAME") {
+  if (isFrameLikeProductType(productType)) {
     if (colorName && size) return `Màu: ${colorName}, Size: ${size}`;
     if (colorName) return `Màu: ${colorName}`;
     if (size) return `Size: ${size}`;
     return null;
   }
 
-  if (productType === "LENS") {
-    if (colorName) return `Màu: ${colorName}`;
-    if (size) return `Size: ${size}`;
-  }
+  if (colorName) return `Màu: ${colorName}`;
+  if (size) return `Size: ${size}`;
 
   return null;
 }
@@ -91,10 +100,12 @@ function normalizeOrderItemDetail(raw) {
   };
 
   const prescription = raw?.customization?.prescription || {};
-  const mode = String(prescription?.mode || "none").toLowerCase();
+  const prescriptionMethod = inferLensPrescriptionMethod(prescription);
+  const prescriptionDraft = normalizeLensPrescriptionDraft(prescription);
+  const prescriptionSummary = summarizeLensPrescription(prescription);
 
-  const rxOD = mode === "manual" ? toRxEye(prescription?.rightEye) : null;
-  const rxOS = mode === "manual" ? toRxEye(prescription?.leftEye) : null;
+  const rxOD = prescriptionMethod !== "upload" ? toRxEye(prescription?.rightEye) : null;
+  const rxOS = prescriptionMethod !== "upload" ? toRxEye(prescription?.leftEye) : null;
 
   const attachmentUrls = Array.isArray(prescription?.attachmentUrls)
     ? prescription.attachmentUrls
@@ -113,6 +124,10 @@ function normalizeOrderItemDetail(raw) {
     name: raw?.name ?? "Sản phẩm",
     type: raw?.type ?? "other",
     productType,
+    catalogType: productType,
+    displayLabel: getCatalogDisplayLabel(productType),
+    requiresLensRxFlow: requiresLensRxFlowType(productType),
+    customization: raw?.customization || {},
 
     qty: raw?.quantity ?? 1,
     quantity: raw?.quantity ?? 1,
@@ -128,6 +143,9 @@ function normalizeOrderItemDetail(raw) {
     payLater: raw?.payLater ?? 0,
 
     orderType,
+    prescriptionMethod,
+    prescriptionDraft,
+    prescriptionSummary,
     rxOD,
     rxOS,
     rxPhoto,
@@ -143,12 +161,15 @@ function normalizeOrderItemDetail(raw) {
 }
 
 function normalizeOrderItemSummary(raw) {
+  const catalogType = normalizeProductType(raw?.type);
   return {
     itemId: raw?._id ?? null,
     productId: raw?.productId ?? null,
     variantId: raw?.variantId ?? null,
     name: raw?.name ?? "Sản phẩm",
     type: raw?.type ?? "other",
+    catalogType,
+    displayLabel: getCatalogDisplayLabel(catalogType),
     qty: raw?.quantity ?? 1,
     quantity: raw?.quantity ?? 1,
     price: raw?.unitPrice ?? 0,
@@ -200,6 +221,7 @@ function enrichVariantWithProduct(item, product) {
 
   return {
     ...item,
+    product,
     variant: nextVariant,
     variantText: buildVariantText(item?.productType, nextVariant),
     image: product?.image ?? item?.image ?? null,
@@ -220,71 +242,23 @@ async function enrichItemWithProduct(item) {
   }
 }
 
-function buildPrescriptionPayload(orderType, rxOD, rxOS, rxPhoto) {
-  if (orderType === "READY") {
-    if (!isRxFilled(rxOD, rxOS)) return { mode: "none", isMyopic: false };
-    return {
-      mode: "manual",
-      isMyopic: true,
-      rightEye: {
-        cyl: String(rxOD?.CYL ?? ""),
-        axis: String(rxOD?.AXIS ?? ""),
-      },
-      leftEye: {
-        cyl: String(rxOS?.CYL ?? ""),
-        axis: String(rxOS?.AXIS ?? ""),
-      },
-    };
-  }
-
-  if (orderType === "CUSTOM") {
-    const photoUrl = rxPhoto?.uri || null;
-    if (!photoUrl) return { mode: "none", isMyopic: false };
-    return {
-      mode: "upload",
-      isMyopic: true,
-      attachmentUrls: [photoUrl],
-    };
-  }
-
-  if (orderType === "PREORDER") {
-    if (isRxFilled(rxOD, rxOS)) {
-      return {
-        mode: "manual",
-        isMyopic: true,
-        rightEye: {
-          cyl: String(rxOD?.CYL ?? ""),
-          axis: String(rxOD?.AXIS ?? ""),
-        },
-        leftEye: {
-          cyl: String(rxOS?.CYL ?? ""),
-          axis: String(rxOS?.AXIS ?? ""),
-        },
-      };
-    }
-
-    const photoUrl = rxPhoto?.uri || null;
-    if (photoUrl) {
-      return {
-        mode: "upload",
-        isMyopic: true,
-        attachmentUrls: [photoUrl],
-      };
-    }
-  }
-
-  return { mode: "none", isMyopic: false };
-}
-
 function buildPatchPayload(orderItem, patch = {}) {
   const nextVariant = {
     ...(orderItem?.variant || {}),
     ...(patch?.variant || {}),
   };
 
-  const nextRxOD = patch?.rxOD ?? orderItem?.rxOD ?? null;
-  const nextRxOS = patch?.rxOS ?? orderItem?.rxOS ?? null;
-  const nextRxPhoto = patch?.rxPhoto ?? orderItem?.rxPhoto ?? null;
+  const existingCustomization = orderItem?.customization || {};
+  const nextPrescriptionDraft =
+    patch?.prescriptionDraft ??
+    normalizeLensPrescriptionDraft(
+      patch?.customization?.prescription || existingCustomization?.prescription || {}
+    );
+  const nextPrescriptionMethod =
+    patch?.prescriptionMethod ||
+    inferLensPrescriptionMethod(
+      patch?.customization?.prescription || existingCustomization?.prescription || {}
+    );
 
   const payload = {};
 
@@ -304,22 +278,31 @@ function buildPatchPayload(orderItem, patch = {}) {
   }
 
   const customization = {
-    selectedColor: nextVariant?.colorName || nextVariant?.colorId || undefined,
+    ...(existingCustomization || {}),
+    ...(patch?.customization || {}),
+    selectedColor:
+      nextVariant?.colorName ||
+      nextVariant?.colorId ||
+      patch?.customization?.selectedColor ||
+      existingCustomization?.selectedColor ||
+      undefined,
     selectedSize:
-      orderItem?.productType === "FRAME" ? nextVariant?.size || undefined : undefined,
+      isFrameLikeProductType(orderItem?.productType)
+        ? nextVariant?.size || patch?.customization?.selectedSize || existingCustomization?.selectedSize || undefined
+        : undefined,
     note:
       patch?.readyNote != null
         ? String(patch.readyNote).trim()
-        : orderItem?.readyNote || undefined,
+        : patch?.customization?.note ?? orderItem?.readyNote ?? existingCustomization?.note ?? undefined,
   };
 
-  if (orderItem?.productType === "LENS") {
-    customization.prescription = buildPrescriptionPayload(
-      orderItem?.orderType || "READY",
-      nextRxOD,
-      nextRxOS,
-      nextRxPhoto
-    );
+  if (requiresLensRxFlowType(orderItem?.productType)) {
+    customization.prescription =
+      patch?.customization?.prescription ||
+      buildLensPrescriptionPayload({
+        method: nextPrescriptionMethod,
+        draft: nextPrescriptionDraft,
+      });
   }
 
   const hasCustomization = Object.values(customization).some(
@@ -371,6 +354,7 @@ function normalizeOrderForList(raw, options = {}) {
     subTotal: raw?.subTotal ?? raw?.subtotal ?? 0,
     shippingFee: raw?.shippingFee ?? 0,
     discountAmount: raw?.discountAmount ?? 0,
+    promotionApplied: raw?.promotionApplied ?? null,
     payNowTotal: raw?.payNowTotal ?? 0,
     payLaterTotal: raw?.payLaterTotal ?? 0,
     paidAmount: raw?.paidAmount ?? 0,
@@ -409,6 +393,7 @@ export async function getOrderByIdApi(orderId, enrichProducts = true) {
 
   const order = {
     ...raw,
+    promotionApplied: raw?.promotionApplied ?? null,
     items: Array.isArray(raw?.items) ? raw.items.map(normalizeOrderItemDetail) : [],
   };
 

@@ -92,6 +92,14 @@ const CATEGORIES = [
   },
   {
     id: "4",
+    name: "Kính áp tròng",
+    icon: "eye-outline",
+    iconSet: "Ionicons",
+    color: "#2563EB",
+    bg: "#DBEAFE",
+  },
+  {
+    id: "5",
     name: "Phụ kiện",
     icon: "sparkles-sharp",
     iconSet: "Ionicons",
@@ -669,6 +677,9 @@ export default function HomeScreen({ navigation }) {
                         break;
                       case "Kính mát":
                         filterType = "sunglasses";
+                        break;
+                      case "Kính áp tròng":
+                        filterType = "contact_lens";
                         break;
                       case "Phụ kiện":
                         filterType = "accessory";

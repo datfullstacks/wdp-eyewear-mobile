@@ -250,9 +250,29 @@ function ProductRow({ item }) {
           {item?.name || "Sản phẩm"}
         </Text>
 
+        {!!item?.displayLabel && (
+          <View style={styles.productTypeBadge}>
+            <Text style={styles.productTypeBadgeText}>{item.displayLabel}</Text>
+          </View>
+        )}
+
         {!!item?.variantText && (
           <Text style={styles.productVariant}>{item.variantText}</Text>
         )}
+
+        {!!item?.prescriptionSummary?.shortLabel && (
+          <Text style={styles.productVariant}>{item.prescriptionSummary.shortLabel}</Text>
+        )}
+
+        {Array.isArray(item?.prescriptionSummary?.lines) && item.prescriptionSummary.lines.length ? (
+          <View style={{ marginTop: 6, gap: 4 }}>
+            {item.prescriptionSummary.lines.map((line) => (
+              <Text key={`${item?.itemId || item?.name}-${line}`} style={styles.productVariant}>
+                {line}
+              </Text>
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.productMetaRow}>
           <Text style={styles.productMeta}>SL: {qty}</Text>
@@ -271,6 +291,37 @@ function ProductRow({ item }) {
       </View>
     </View>
   );
+}
+
+function normalizeOrderStore(store) {
+  if (!store || typeof store !== "object") return null;
+
+  const id = String(store?._id || store?.id || "").trim();
+  if (!id) return null;
+
+  return {
+    id,
+    name: String(store?.name || "").trim(),
+    code: String(store?.code || "").trim(),
+    city: String(store?.city || "").trim(),
+    district: String(store?.district || "").trim(),
+    openingHours: String(store?.openingHours || "").trim(),
+    supportsTryOn: Boolean(store?.supportsTryOn),
+    supportsPickup: store?.supportsPickup !== false,
+  };
+}
+
+function buildOrderSupportSubject(order, item = null) {
+  if (item?.name) {
+    return `Bao hanh ${item.name}`;
+  }
+
+  const orderCode = String(order?.paymentCode || order?._id || order?.id || "").trim();
+  if (orderCode) {
+    return `Ho tro don ${orderCode}`;
+  }
+
+  return "Ho tro don hang";
 }
 
 export default function OrderDetailScreen({ navigation, route }) {
@@ -360,6 +411,13 @@ export default function OrderDetailScreen({ navigation, route }) {
       0
     );
   }, [orderItems]);
+
+  const orderStore = useMemo(() => normalizeOrderStore(order?.storeId), [order]);
+  const canRequestWarranty = statusKey === "delivered";
+  const warrantyItems = useMemo(() => {
+    if (!canRequestWarranty) return [];
+    return orderItems.filter(Boolean);
+  }, [canRequestWarranty, orderItems]);
 
   const handleCancelOrder = useCallback(() => {
     if (!order?._id || isCancelling) return;
@@ -460,6 +518,53 @@ export default function OrderDetailScreen({ navigation, route }) {
       },
     });
   }, [canRequestRefund, canSubmitRefundInfo, navigation, order, orderId]);
+
+  const openSupportCenter = useCallback(() => {
+    navigation.navigate("Support", {
+      prefillCategory: "general",
+      lockCategory: false,
+      orderId: "",
+      orderCode: "",
+      orderItemId: "",
+      orderItemName: "",
+      draftSubject: "",
+    });
+  }, [navigation]);
+
+  const openOrderSupport = useCallback(() => {
+    if (!order) return;
+
+    navigation.navigate("Support", {
+      prefillCategory: "order",
+      lockCategory: false,
+      orderId: order?._id || order?.id || orderId,
+      orderCode: order?.paymentCode || "",
+      orderItemId: "",
+      orderItemName: "",
+      draftSubject: buildOrderSupportSubject(order),
+    });
+  }, [navigation, order, orderId]);
+
+  const openWarrantyRequest = useCallback(
+    (item) => {
+      const itemId = item?.itemId || item?._id || null;
+      if (!itemId) {
+        Alert.alert("Bao hanh", "Khong xac dinh duoc item de tao case bao hanh.");
+        return;
+      }
+
+      navigation.navigate("Support", {
+        prefillCategory: "warranty",
+        lockCategory: true,
+        orderId: order?._id || order?.id || orderId,
+        orderCode: order?.paymentCode || "",
+        orderItemId: itemId,
+        orderItemName: item?.name || "",
+        draftSubject: buildOrderSupportSubject(order, item),
+      });
+    },
+    [navigation, order, orderId]
+  );
 
   const openTrackingUrl = useCallback(async () => {
     const url = order?.shipment?.trackingUrl;
@@ -926,6 +1031,79 @@ export default function OrderDetailScreen({ navigation, route }) {
             </TouchableOpacity>
           </SectionCard>
         )}
+
+        <SectionCard
+          title="Ho tro sau mua"
+          icon="chatbubble-ellipses-outline"
+          right={
+            <TouchableOpacity onPress={openSupportCenter} activeOpacity={0.8}>
+              <Text style={styles.linkText}>Tat ca case</Text>
+            </TouchableOpacity>
+          }
+        >
+          <Text style={styles.refundHelperText}>
+            Theo doi support, refund, va warranty cua don nay tu cung mot noi.
+          </Text>
+
+          {!!orderStore && (
+            <View style={styles.afterSalesStoreBox}>
+              <Text style={styles.afterSalesStoreTitle}>
+                Cua hang xu ly:{" "}
+                {orderStore.name
+                  ? `${orderStore.name}${orderStore.code ? ` (${orderStore.code})` : ""}`
+                  : "--"}
+              </Text>
+              <Text style={styles.afterSalesStoreMeta}>
+                {[orderStore.district, orderStore.city].filter(Boolean).join(", ") || "--"}
+              </Text>
+              {orderStore.openingHours ? (
+                <Text style={styles.afterSalesStoreMeta}>
+                  Gio mo cua: {orderStore.openingHours}
+                </Text>
+              ) : null}
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.secondaryActionBtn}
+            onPress={openOrderSupport}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.secondaryActionText}>Tao ticket cho don hang</Text>
+          </TouchableOpacity>
+
+          {canRequestWarranty ? (
+            <View style={styles.afterSalesList}>
+              {warrantyItems.map((item, index) => (
+                <View
+                  key={String(item?.itemId || item?._id || index)}
+                  style={styles.afterSalesCard}
+                >
+                  <View style={styles.afterSalesHeader}>
+                    <Text style={styles.afterSalesTitle}>{item?.name || "San pham"}</Text>
+                    {!!item?.variantText ? (
+                      <Text style={styles.afterSalesMeta}>{item.variantText}</Text>
+                    ) : null}
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.afterSalesActionBtn}
+                    onPress={() => openWarrantyRequest(item)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.afterSalesActionText}>Yeu cau bao hanh</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.afterSalesNoteBox}>
+              <Text style={styles.afterSalesNoteText}>
+                Warranty se mo khi don da giao thanh cong.
+              </Text>
+            </View>
+          )}
+        </SectionCard>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1213,6 +1391,21 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  productTypeBadge: {
+    alignSelf: "flex-start",
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#F3F4F6",
+  },
+
+  productTypeBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#374151",
+  },
+
   productVariant: {
     marginTop: 4,
     fontSize: 11.5,
@@ -1336,6 +1529,104 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "900",
+  },
+
+  secondaryActionBtn: {
+    marginTop: 12,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  secondaryActionText: {
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  afterSalesStoreBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
+  afterSalesStoreTitle: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  afterSalesStoreMeta: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    lineHeight: 17,
+  },
+
+  afterSalesList: {
+    marginTop: 12,
+    gap: 10,
+  },
+
+  afterSalesCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    padding: 12,
+    gap: 10,
+  },
+
+  afterSalesHeader: {
+    gap: 4,
+  },
+
+  afterSalesTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  afterSalesMeta: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+
+  afterSalesActionBtn: {
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  afterSalesActionText: {
+    color: "#FFFFFF",
+    fontSize: 12.5,
+    fontWeight: "900",
+  },
+
+  afterSalesNoteBox: {
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    padding: 12,
+  },
+
+  afterSalesNoteText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    lineHeight: 17,
   },
 
   refundInfoBox: {
