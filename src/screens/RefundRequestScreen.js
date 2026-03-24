@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { Picker } from "@react-native-picker/picker";
 
 import {
   getOrderByIdApi,
@@ -20,6 +21,13 @@ import {
   updateRefundApi,
 } from "../services/orderService";
 import { uploadFileApi } from "../services/uploadService";
+import {
+  REFUND_BANK_OPTIONS,
+  findRefundBankByCode,
+  findRefundBankByName,
+  normalizeRefundAccountNumber,
+  isRefundAccountNumberFormatValid,
+} from "../data/refundBanks";
 
 const REFUND_REASON_OPTIONS = [
   { code: "wrong_item", label: "Giao sai san pham" },
@@ -229,6 +237,9 @@ function buildInitialFormState(order) {
   const summary = buildOrderSummary(order);
   const currentBreakdown = summary.requestedBreakdown;
   const bankAccount = summary.refundBankAccount || {};
+  const resolvedBank =
+    findRefundBankByCode(bankAccount.bankCode) ||
+    findRefundBankByName(bankAccount.bankName);
 
   return {
     reasonCode: inferReasonCode(summary.refundReason),
@@ -243,8 +254,9 @@ function buildInitialFormState(order) {
       currentBreakdown.itemAmount > 0
         ? Number(currentBreakdown.itemAmount)
         : getDefaultRefundableItemAmount(order),
-    bankName: String(bankAccount.bankName || "").trim(),
-    accountNumber: String(bankAccount.accountNumber || "").trim(),
+    bankCode: resolvedBank?.code || "",
+    bankName: resolvedBank?.name || String(bankAccount.bankName || "").trim(),
+    accountNumber: normalizeRefundAccountNumber(bankAccount.accountNumber || ""),
     accountHolder: String(bankAccount.accountHolder || "").trim(),
     bankNote: String(bankAccount.note || "").trim(),
     evidence:
@@ -306,6 +318,7 @@ export default function RefundRequestScreen({ navigation, route }) {
   const [requiresReturn, setRequiresReturn] = useState(false);
   const [returnShippingFeeText, setReturnShippingFeeText] = useState("");
   const [itemAmountSeed, setItemAmountSeed] = useState(0);
+  const [bankCode, setBankCode] = useState("");
   const [bankName, setBankName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
@@ -426,6 +439,7 @@ export default function RefundRequestScreen({ navigation, route }) {
     setRequiresReturn(nextState.requiresReturn);
     setReturnShippingFeeText(nextState.returnShippingFeeText);
     setItemAmountSeed(nextState.itemAmountSeed);
+    setBankCode(nextState.bankCode);
     setBankName(nextState.bankName);
     setAccountNumber(nextState.accountNumber);
     setAccountHolder(nextState.accountHolder);
@@ -468,11 +482,23 @@ export default function RefundRequestScreen({ navigation, route }) {
       return;
     }
 
-    if (!bankName.trim() || !accountNumber.trim() || !accountHolder.trim()) {
+    if (!bankCode.trim() || !accountNumber.trim() || !accountHolder.trim()) {
       Alert.alert(
         "Refund",
-        "Vui long nhap day du ngan hang, so tai khoan va chu tai khoan.",
+        "Vui long chon ngan hang, nhap so tai khoan va chu tai khoan.",
       );
+      return;
+    }
+
+    const selectedBank = findRefundBankByCode(bankCode);
+    if (!selectedBank) {
+      Alert.alert("Refund", "Ngan hang da chon khong hop le.");
+      return;
+    }
+
+    const normalizedAccountNumber = normalizeRefundAccountNumber(accountNumber);
+    if (!isRefundAccountNumberFormatValid(normalizedAccountNumber)) {
+      Alert.alert("Refund", "So tai khoan phai gom 8 den 19 chu so.");
       return;
     }
 
@@ -494,8 +520,9 @@ export default function RefundRequestScreen({ navigation, route }) {
       evidence,
       requestedBreakdown,
       bankAccount: {
-        bankName: bankName.trim(),
-        accountNumber: accountNumber.trim(),
+        bankCode: selectedBank.code,
+        bankName: selectedBank.name,
+        accountNumber: normalizedAccountNumber,
         accountHolder: accountHolder.trim(),
         note: bankNote.trim(),
       },
@@ -757,18 +784,37 @@ export default function RefundRequestScreen({ navigation, route }) {
 
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Tai khoan nhan tien</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ten ngan hang"
-                  value={bankName}
-                  onChangeText={setBankName}
-                />
+                <Text style={styles.fieldLabel}>Ngan hang</Text>
+                <View style={styles.pickerBox}>
+                  <Picker
+                    selectedValue={bankCode}
+                    onValueChange={(value) => {
+                      const selectedBank = findRefundBankByCode(value);
+                      setBankCode(String(value || ""));
+                      setBankName(selectedBank?.name || "");
+                    }}
+                  >
+                    <Picker.Item label="Chon ngan hang" value="" />
+                    {REFUND_BANK_OPTIONS.map((bank) => (
+                      <Picker.Item
+                        key={bank.code}
+                        label={bank.name}
+                        value={bank.code}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+                <Text style={styles.helperText}>
+                  Chon dung ngan hang nhan refund. He thong se luu theo ma ngan hang da chon.
+                </Text>
                 <TextInput
                   style={styles.input}
                   placeholder="So tai khoan"
                   keyboardType="numeric"
                   value={accountNumber}
-                  onChangeText={setAccountNumber}
+                  onChangeText={(value) =>
+                    setAccountNumber(normalizeRefundAccountNumber(value))
+                  }
                 />
                 <TextInput
                   style={styles.input}
@@ -966,6 +1012,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     backgroundColor: "#FFFFFF",
+  },
+  pickerBox: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
   },
   textarea: {
     height: 96,

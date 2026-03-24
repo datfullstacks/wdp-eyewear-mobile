@@ -123,7 +123,7 @@ function normalizeStatusText(value) {
 
 function getShippingCollectionTimingLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "with_balance") return "Thu cùng đợt thanh toán còn lại";
+  if (normalized === "with_balance") return "Thu khi giao hàng";
   if (normalized === "on_delivery") return "Thu khi giao hàng";
   return "Thu ngay";
 }
