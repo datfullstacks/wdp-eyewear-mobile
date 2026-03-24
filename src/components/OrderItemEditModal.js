@@ -1,14 +1,3 @@
-// components/OrderItemEditModal.js
-/**
- * OrderItemEditModal
- *
- * Rules:
- *  - Editable within 12h of order creation (Mon–Fri only, not Sat/Sun)
- *  - If past 12h OR it's weekend → read-only with a clear message
- *  - Lens: edit CYL/AXIS or swap rx photo + ✅ edit color (NO size)
- *  - Frame: edit size & color
- *  - onSave(patch) is handled by parent screen (API call)
- */
 import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
@@ -22,17 +11,26 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import {
+  buildLensPrescriptionPayload,
+  inferLensPrescriptionMethod,
+  normalizeLensPrescriptionDraft,
+  summarizeLensPrescription,
+  validateLensPrescriptionDraft,
+} from "../services/lensPrescriptionService";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v || 0) + "đ";
-const formatDateTime = (v) => {
+
+const LENS_METHOD_ITEMS = [
+  { key: "manual", label: "Nhập thông số" },
+  { key: "upload", label: "Tải ảnh đơn" },
+];
+
+function formatDateTime(v) {
   if (!v) return "--";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(v);
   return d.toLocaleString("vi-VN", { hour12: false });
-};
-
-function isRxFilled(rxOD, rxOS) {
-  return Boolean(rxOD?.CYL) && Boolean(rxOD?.AXIS) && Boolean(rxOS?.CYL) && Boolean(rxOS?.AXIS);
 }
 
 function computeEditWindow(orderCreatedAt) {
@@ -41,15 +39,15 @@ function computeEditWindow(orderCreatedAt) {
   const created = new Date(orderCreatedAt);
   if (Number.isNaN(created.getTime())) return { canEdit: false, reason: "Ngày tạo đơn không hợp lệ." };
 
-  const deadline = new Date(created.getTime() + 12 * 60 * 60 * 1000); // +12h
+  const deadline = new Date(created.getTime() + 12 * 60 * 60 * 1000);
   const now = new Date();
-  const dayOfWeek = created.getDay(); // 0=Sun, 6=Sat
+  const dayOfWeek = created.getDay();
 
   if (dayOfWeek === 0 || dayOfWeek === 6) {
     return {
       canEdit: false,
       deadline,
-      reason: `Đơn hàng tạo vào ${dayOfWeek === 6 ? "Thứ 7" : "Chủ nhật"} nên không thể chỉnh sửa (ngoài giờ làm việc).`,
+      reason: `Đơn hàng tạo vào ${dayOfWeek === 6 ? "Thứ 7" : "Chủ nhật"} nên không thể chỉnh sửa.`,
     };
   }
 
@@ -74,6 +72,285 @@ function remainingTime(deadline) {
   return `${h}g ${m}p ${s}s`;
 }
 
+function isFrameLikeProductType(productType) {
+  return productType === "FRAME" || productType === "SUNGLASSES";
+}
+
+function buildVariantText(colorName, size) {
+  if (colorName && size) return `Màu: ${colorName}, Size: ${size}`;
+  if (colorName) return `Màu: ${colorName}`;
+  if (size) return `Size: ${size}`;
+  return null;
+}
+
+function MethodSegmented({ value, onChange }) {
+  return (
+    <View style={styles.segmented}>
+      {LENS_METHOD_ITEMS.map((item) => {
+        const active = item.key === value;
+        return (
+          <TouchableOpacity
+            key={item.key}
+            activeOpacity={0.88}
+            onPress={() => onChange(item.key)}
+            style={[styles.segmentItem, active && styles.segmentItemActive]}
+          >
+            <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function RxField({ label, value, onChangeText, error }) {
+  return (
+    <View style={styles.rxCell}>
+      <Text style={styles.rxLabel}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder="0.00"
+        placeholderTextColor="#9CA3AF"
+        keyboardType="numeric"
+        style={[styles.rxInput, error && styles.rxInputError]}
+      />
+      {error ? <Text style={styles.rxErrorText}>{error}</Text> : null}
+    </View>
+  );
+}
+
+function LensEditForm({
+  item,
+  lensMethod,
+  setLensMethod,
+  lensDraft,
+  setLensDraft,
+  pickRxPhoto,
+  colors,
+  colorId,
+  setColorId,
+}) {
+  const validation = useMemo(
+    () =>
+      validateLensPrescriptionDraft({
+        method: lensMethod,
+        draft: lensDraft,
+        product: item?.product,
+      }),
+    [item?.product, lensDraft, lensMethod]
+  );
+  const summary = useMemo(
+    () =>
+      summarizeLensPrescription(
+        buildLensPrescriptionPayload({
+          method: lensMethod,
+          draft: lensDraft,
+        })
+      ),
+    [lensDraft, lensMethod]
+  );
+
+  const updateEye = (eyeKey, field, value) => {
+    setLensDraft((prev) => ({
+      ...prev,
+      [eyeKey]: {
+        ...(prev?.[eyeKey] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  return (
+    <View style={{ gap: 16 }}>
+      {Array.isArray(colors) && colors.length > 0 ? (
+        <View>
+          <Text style={styles.groupLabel}>Màu sắc</Text>
+          <View style={styles.colorRow}>
+            {colors.map((c) => {
+              const active = c.id === colorId;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => setColorId(c.id)}
+                  activeOpacity={0.85}
+                  style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
+                >
+                  <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      <MethodSegmented value={lensMethod === "upload" ? "upload" : "manual"} onChange={setLensMethod} />
+
+      {lensMethod === "upload" ? (
+        <View>
+          <Text style={styles.helperText}>Tải ảnh đơn kính để shop xử lý đơn theo toa của bạn.</Text>
+          <TouchableOpacity style={styles.photoBtn} onPress={pickRxPhoto} activeOpacity={0.88}>
+            <Ionicons
+              name={lensDraft?.attachmentUrls?.length ? "image" : "cloud-upload-outline"}
+              size={18}
+              color="#2563EB"
+            />
+            <Text style={styles.photoBtnText}>
+              {lensDraft?.attachmentUrls?.length ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <Text style={styles.groupLabel}>Mắt phải (OD)</Text>
+          <View style={styles.rxRow}>
+            <RxField
+              label="SPH"
+              value={lensDraft?.rightEye?.sphere}
+              onChangeText={(text) => updateEye("rightEye", "sphere", text)}
+              error={validation.fieldErrors["rightEye.sphere"]}
+            />
+            <RxField
+              label="CYL"
+              value={lensDraft?.rightEye?.cyl}
+              onChangeText={(text) => updateEye("rightEye", "cyl", text)}
+              error={validation.fieldErrors["rightEye.cyl"]}
+            />
+            <RxField
+              label="AXIS"
+              value={lensDraft?.rightEye?.axis}
+              onChangeText={(text) => updateEye("rightEye", "axis", text)}
+              error={validation.fieldErrors["rightEye.axis"]}
+            />
+            <RxField
+              label="ADD"
+              value={lensDraft?.rightEye?.add}
+              onChangeText={(text) => updateEye("rightEye", "add", text)}
+              error={validation.fieldErrors["rightEye.add"]}
+            />
+          </View>
+
+          <Text style={styles.groupLabel}>Mắt trái (OS)</Text>
+          <View style={styles.rxRow}>
+            <RxField
+              label="SPH"
+              value={lensDraft?.leftEye?.sphere}
+              onChangeText={(text) => updateEye("leftEye", "sphere", text)}
+              error={validation.fieldErrors["leftEye.sphere"]}
+            />
+            <RxField
+              label="CYL"
+              value={lensDraft?.leftEye?.cyl}
+              onChangeText={(text) => updateEye("leftEye", "cyl", text)}
+              error={validation.fieldErrors["leftEye.cyl"]}
+            />
+            <RxField
+              label="AXIS"
+              value={lensDraft?.leftEye?.axis}
+              onChangeText={(text) => updateEye("leftEye", "axis", text)}
+              error={validation.fieldErrors["leftEye.axis"]}
+            />
+            <RxField
+              label="ADD"
+              value={lensDraft?.leftEye?.add}
+              onChangeText={(text) => updateEye("leftEye", "add", text)}
+              error={validation.fieldErrors["leftEye.add"]}
+            />
+          </View>
+
+          <View style={styles.rxRow}>
+            <RxField
+              label="PD"
+              value={lensDraft?.pd}
+              onChangeText={(text) =>
+                setLensDraft((prev) => ({
+                  ...prev,
+                  pd: text,
+                }))
+              }
+              error={validation.fieldErrors.pd}
+            />
+          </View>
+        </>
+      )}
+
+      <TextInput
+        value={lensDraft?.note}
+        onChangeText={(text) =>
+          setLensDraft((prev) => ({
+            ...prev,
+            note: text,
+          }))
+        }
+        placeholder="Ghi chú thêm cho đơn kính..."
+        placeholderTextColor="#9CA3AF"
+        style={styles.noteInput}
+        multiline
+      />
+
+      {summary?.lines?.length ? (
+        <View style={styles.summaryBox}>
+          {summary.lines.map((line) => (
+            <Text key={line} style={styles.summaryText}>
+              {line}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function FrameEditForm({ colors, sizes, colorId, setColorId, size, setSize }) {
+  return (
+    <View style={{ gap: 16 }}>
+      {colors.length > 0 ? (
+        <View>
+          <Text style={styles.groupLabel}>Màu sắc</Text>
+          <View style={styles.colorRow}>
+            {colors.map((c) => {
+              const active = c.id === colorId;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => setColorId(c.id)}
+                  activeOpacity={0.85}
+                  style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
+                >
+                  <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {sizes.length > 0 ? (
+        <View>
+          <Text style={styles.groupLabel}>Kích thước</Text>
+          <View style={styles.sizeRow}>
+            {sizes.map((s) => {
+              const active = s === size;
+              return (
+                <TouchableOpacity
+                  key={s}
+                  onPress={() => setSize(s)}
+                  activeOpacity={0.85}
+                  style={[styles.sizePill, active && styles.sizePillActive]}
+                >
+                  <Text style={[styles.sizeText, active && styles.sizeTextActive]}>{s}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function OrderItemEditModal({
   visible,
   orderItem,
@@ -83,14 +360,27 @@ export default function OrderItemEditModal({
   isSaving = false,
 }) {
   const item = orderItem;
-  const productType = item?.productType; // "LENS" | "FRAME"
+  const productType = item?.productType;
+  const requiresLensRxFlow = Boolean(item?.requiresLensRxFlow || productType === "LENS");
+  const iconName =
+    requiresLensRxFlow
+      ? "eye-outline"
+      : isFrameLikeProductType(productType)
+        ? "glasses-outline"
+        : "cube-outline";
 
   const { canEdit, deadline, reason } = useMemo(
     () => computeEditWindow(orderCreatedAt),
     [orderCreatedAt]
   );
-
   const [remaining, setRemaining] = useState(() => remainingTime(deadline));
+  const [lensMethod, setLensMethod] = useState("manual");
+  const [lensDraft, setLensDraft] = useState(() => normalizeLensPrescriptionDraft());
+  const [colorId, setColorId] = useState(null);
+  const [size, setSize] = useState(null);
+
+  const colors = useMemo(() => (item?.productColors || []).filter(Boolean), [item]);
+  const sizes = useMemo(() => (item?.productSizes || []).filter(Boolean), [item]);
 
   useEffect(() => {
     if (!canEdit || !deadline) return;
@@ -98,36 +388,26 @@ export default function OrderItemEditModal({
     return () => clearInterval(timer);
   }, [canEdit, deadline]);
 
-  // options from item
-  const colors = useMemo(() => (item?.productColors || []).filter(Boolean), [item]);
-  const sizes = useMemo(() => (item?.productSizes || []).filter(Boolean), [item]);
-
-  /* ── LENS state ──────────────────────────────── */
-  const [rxOD, setRxOD] = useState({ CYL: "", AXIS: "" });
-  const [rxOS, setRxOS] = useState({ CYL: "", AXIS: "" });
-  const [rxPhoto, setRxPhoto] = useState(null);
-
-  /* ── Variant state (FRAME + LENS color) ──────── */
-  const [colorId, setColorId] = useState(null);
-  const [size, setSize] = useState(null);
-
   useEffect(() => {
     if (!visible || !item) return;
 
-    // ✅ init color for both lens + frame if colors exist
-    setColorId(item.variant?.colorId || colors?.[0]?.id || null);
+    setColorId(item?.variant?.colorId || colors?.[0]?.id || null);
 
-    if (productType === "LENS") {
-      setRxOD(item.rxOD || { CYL: "", AXIS: "" });
-      setRxOS(item.rxOS || { CYL: "", AXIS: "" });
-      setRxPhoto(item.rxPhoto || null);
-
-      // ✅ Lens: no size editing
+    if (requiresLensRxFlow) {
+      setLensMethod(
+        inferLensPrescriptionMethod(item?.customization?.prescription || item?.prescriptionDraft || {})
+      );
+      setLensDraft(
+        normalizeLensPrescriptionDraft(
+          item?.customization?.prescription || item?.prescriptionDraft || {}
+        )
+      );
       setSize(null);
-    } else {
-      setSize(item.variant?.size || sizes?.[0] || null);
+      return;
     }
-  }, [visible, item, productType, colors, sizes]);
+
+    setSize(item?.variant?.size || sizes?.[0] || null);
+  }, [visible, item, colors, sizes, requiresLensRxFlow]);
 
   const pickRxPhoto = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -140,50 +420,61 @@ export default function OrderItemEditModal({
       quality: 0.85,
     });
     if (!res.canceled) {
-      const a = res.assets?.[0];
-      if (a?.uri) setRxPhoto({ uri: a.uri, name: "rx.jpg", type: "image/jpeg" });
+      const asset = res.assets?.[0];
+      if (asset?.uri) {
+        setLensDraft((prev) => ({
+          ...prev,
+          attachmentUrls: [asset.uri],
+        }));
+      }
     }
   }, []);
 
   const handleSave = () => {
-    if (!canEdit) return;
+    if (!canEdit || !item) return;
 
-    const colorObj = colors?.find((c) => c.id === colorId);
-    const colorName = colorObj?.name || "—";
-    let patchToSave = null;
+    const colorObj = colors.find((c) => c.id === colorId);
+    const colorName = colorObj?.name || colorObj?.label || null;
 
-    if (productType === "LENS") {
-      const ot = item?.orderType;
-
-      if (ot === "READY" && !isRxFilled(rxOD, rxOS)) {
-        Alert.alert("Thiếu thông số", "Vui lòng nhập đầy đủ CYL và AXIS cho cả hai mắt.");
+    if (requiresLensRxFlow) {
+      const validation = validateLensPrescriptionDraft({
+        method: lensMethod,
+        draft: lensDraft,
+        product: item?.product,
+      });
+      if (!validation.valid) {
+        Alert.alert("Thiếu thông số", validation.errors[0] || "Vui lòng kiểm tra lại đơn kính.");
         return;
       }
-      if (ot === "CUSTOM" && !rxPhoto?.uri) {
-        Alert.alert("Thiếu ảnh", "Vui lòng tải ảnh đơn kính.");
-        return;
-      }
 
-      // ✅ Save includes color (NO size)
-      const patch = {
-        rxOD,
-        rxOS,
-        rxPhoto,
-      };
-
-      if (colors.length) {
-        patch.variant = { colorId: colorId || null, colorName, size: null };
-        patch.variantText = `Màu: ${colorName}`;
-      }
-      patchToSave = patch;
-    } else {
-      patchToSave = {
-        variant: { colorId, colorName, size },
-        variantText: `Màu: ${colorName}, Size: ${size || "—"}`,
-      };
+      onSave?.({
+        variant: { colorId: colorId || null, colorName, size: null },
+        variantText: buildVariantText(colorName, null),
+        prescriptionMethod: lensMethod,
+        prescriptionDraft: lensDraft,
+        customization: {
+          ...(item?.customization || {}),
+          selectedColor: colorName || colorId || "",
+          selectedSize: "",
+          note: lensDraft?.note || "",
+          prescription: buildLensPrescriptionPayload({
+            method: lensMethod,
+            draft: lensDraft,
+          }),
+        },
+      });
+      return;
     }
 
-    onSave?.(patchToSave);
+    onSave?.({
+      variant: { colorId, colorName, size },
+      variantText: buildVariantText(colorName, size),
+      customization: {
+        ...(item?.customization || {}),
+        selectedColor: colorName || colorId || "",
+        selectedSize: size || "",
+      },
+    });
   };
 
   if (!item) return null;
@@ -199,7 +490,7 @@ export default function OrderItemEditModal({
           <View style={styles.titleRow}>
             <View>
               <Text style={styles.sheetTitle}>Chỉnh sửa sản phẩm</Text>
-              <Text style={styles.sheetSubtitle}>Chính sách đổi trong 12 giờ (T2–T6)</Text>
+              <Text style={styles.sheetSubtitle}>Chính sách đổi trong 12 giờ (T2-T6)</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.8}>
               <Ionicons name="close" size={20} color="#6B7280" />
@@ -226,14 +517,11 @@ export default function OrderItemEditModal({
 
           <View style={styles.productRow}>
             <View style={styles.productIconWrap}>
-              <Ionicons
-                name={productType === "LENS" ? "eye-outline" : "glasses-outline"}
-                size={22}
-                color="#2563EB"
-              />
+              <Ionicons name={iconName} size={22} color="#2563EB" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+              <Text style={styles.productTypeText}>{item.displayLabel || productType || "Sản phẩm"}</Text>
               <Text style={styles.productMeta}>
                 {item.qty} x {formatVND(item.price)} {item.preorder ? "· Đặt trước" : ""}
               </Text>
@@ -246,14 +534,13 @@ export default function OrderItemEditModal({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.formContent}
             >
-              {productType === "LENS" ? (
+              {requiresLensRxFlow ? (
                 <LensEditForm
                   item={item}
-                  rxOD={rxOD}
-                  rxOS={rxOS}
-                  setRxOD={setRxOD}
-                  setRxOS={setRxOS}
-                  rxPhoto={rxPhoto}
+                  lensMethod={lensMethod}
+                  setLensMethod={setLensMethod}
+                  lensDraft={lensDraft}
+                  setLensDraft={setLensDraft}
                   pickRxPhoto={pickRxPhoto}
                   colors={colors}
                   colorId={colorId}
@@ -261,7 +548,6 @@ export default function OrderItemEditModal({
                 />
               ) : (
                 <FrameEditForm
-                  item={item}
                   colors={colors}
                   sizes={sizes}
                   colorId={colorId}
@@ -270,13 +556,6 @@ export default function OrderItemEditModal({
                   setSize={setSize}
                 />
               )}
-
-              <View style={styles.apiNotice}>
-                <Ionicons name="information-circle-outline" size={14} color="#6B7280" />
-                <Text style={styles.apiNoticeText}>
-                  Thay đổi sẽ được cập nhật lên hệ thống khi bạn bấm Lưu thay đổi.
-                </Text>
-              </View>
             </ScrollView>
           ) : (
             <View style={styles.lockedView}>
@@ -292,7 +571,7 @@ export default function OrderItemEditModal({
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.85}>
               <Text style={styles.cancelText}>Đóng</Text>
             </TouchableOpacity>
-            {canEdit && (
+            {canEdit ? (
               <TouchableOpacity
                 style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
                 onPress={handleSave}
@@ -302,7 +581,7 @@ export default function OrderItemEditModal({
                 <Ionicons name="checkmark" size={16} color="#FFFFFF" />
                 <Text style={styles.saveText}>{isSaving ? "Đang lưu..." : "Lưu thay đổi"}</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
         </View>
       </View>
@@ -310,254 +589,194 @@ export default function OrderItemEditModal({
   );
 }
 
-/* ── Lens sub-form ─────────────────────────────────────── */
-function LensEditForm({
-  item,
-  rxOD,
-  rxOS,
-  setRxOD,
-  setRxOS,
-  rxPhoto,
-  pickRxPhoto,
-  colors,
-  colorId,
-  setColorId,
-}) {
-  const ot = item?.orderType;
-  const showRx = ot === "READY" || ot === "PREORDER";
-  const showPhoto = ot === "CUSTOM" || ot === "PREORDER";
-
-  return (
-    <View style={{ gap: 16 }}>
-      <View style={styles.orderTypeTag}>
-        <Text style={styles.orderTypeTagText}>
-          {{ READY: "Nhận thông số", CUSTOM: "Làm theo đơn", PREORDER: "Đặt trước" }[ot] || ot}
-        </Text>
-      </View>
-
-      {/* ✅ Lens: edit color only (no size) */}
-      {Array.isArray(colors) && colors.length > 0 && (
-        <View>
-          <Text style={styles.fieldGroupLabel}>Màu sắc</Text>
-          <View style={styles.colorRow}>
-            {colors.map((c) => {
-              const active = c.id === colorId;
-              return (
-                <TouchableOpacity
-                  key={c.id}
-                  onPress={() => setColorId(c.id)}
-                  activeOpacity={0.85}
-                  style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
-                >
-                  <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
-                  {active && (
-                    <View style={styles.colorCheck}>
-                      <Ionicons name="checkmark" size={9} color="#FFF" />
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {colorId && (
-            <Text style={styles.selectedHint}>
-              Đã chọn: {colors.find((c) => c.id === colorId)?.name || "—"}
-            </Text>
-          )}
-        </View>
-      )}
-
-      {showRx && (
-        <>
-          <View>
-            <Text style={styles.fieldGroupLabel}>Mắt phải (OD)</Text>
-            <View style={styles.rxRow}>
-              <RxField label="CYL" value={rxOD.CYL} onChangeText={(t) => setRxOD((p) => ({ ...p, CYL: t }))} />
-              <RxField label="AXIS" value={rxOD.AXIS} onChangeText={(t) => setRxOD((p) => ({ ...p, AXIS: t }))} />
-            </View>
-          </View>
-          <View>
-            <Text style={styles.fieldGroupLabel}>Mắt trái (OS)</Text>
-            <View style={styles.rxRow}>
-              <RxField label="CYL" value={rxOS.CYL} onChangeText={(t) => setRxOS((p) => ({ ...p, CYL: t }))} />
-              <RxField label="AXIS" value={rxOS.AXIS} onChangeText={(t) => setRxOS((p) => ({ ...p, AXIS: t }))} />
-            </View>
-          </View>
-        </>
-      )}
-
-      {showPhoto && (
-        <View>
-          {ot === "PREORDER" && <Text style={styles.fieldGroupLabel}>Hoặc tải ảnh đơn kính</Text>}
-          <TouchableOpacity style={styles.photoBtn} onPress={pickRxPhoto} activeOpacity={0.85}>
-            <Ionicons name={rxPhoto?.uri ? "image" : "cloud-upload-outline"} size={18} color="#2563EB" />
-            <Text style={styles.photoBtnText}>
-              {rxPhoto?.uri ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}
-            </Text>
-          </TouchableOpacity>
-          {rxPhoto?.uri && (
-            <View style={styles.photoOkRow}>
-              <Ionicons name="checkmark-circle" size={14} color="#15803D" />
-              <Text style={styles.photoOkText}>Đã chọn ảnh mới</Text>
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
-
-/* ── Frame sub-form ────────────────────────────────────── */
-function FrameEditForm({ colors, sizes, colorId, setColorId, size, setSize }) {
-  return (
-    <View style={{ gap: 16 }}>
-      {colors.length > 0 && (
-        <View>
-          <Text style={styles.fieldGroupLabel}>Màu sắc</Text>
-          <View style={styles.colorRow}>
-            {colors.map((c) => {
-              const active = c.id === colorId;
-              return (
-                <TouchableOpacity
-                  key={c.id}
-                  onPress={() => setColorId(c.id)}
-                  activeOpacity={0.85}
-                  style={[styles.colorDotWrap, active && styles.colorDotWrapActive]}
-                >
-                  <View style={[styles.colorDot, { backgroundColor: c.hex }]} />
-                  {active && (
-                    <View style={styles.colorCheck}>
-                      <Ionicons name="checkmark" size={9} color="#FFF" />
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {colorId && (
-            <Text style={styles.selectedHint}>
-              Đã chọn: {colors.find((c) => c.id === colorId)?.name || "—"}
-            </Text>
-          )}
-        </View>
-      )}
-
-      {sizes.length > 0 && (
-        <View>
-          <Text style={styles.fieldGroupLabel}>Kích thước</Text>
-          <View style={styles.sizeRow}>
-            {sizes.map((s) => {
-              const active = s === size;
-              return (
-                <TouchableOpacity
-                  key={s}
-                  onPress={() => setSize(s)}
-                  activeOpacity={0.85}
-                  style={[styles.sizePill, active && styles.sizePillActive]}
-                >
-                  <Text style={[styles.sizeTxt, active && styles.sizeTxtActive]}>{s}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      )}
-
-      {colors.length === 0 && sizes.length === 0 && (
-        <Text style={styles.noOptsText}>
-          Không có tùy chọn màu sắc hoặc kích thước cho sản phẩm này.
-        </Text>
-      )}
-    </View>
-  );
-}
-
-/* ── Atoms ─────────────────────────────────────────────── */
-function RxField({ label, value, onChangeText }) {
-  return (
-    <View style={styles.rxCell}>
-      <Text style={styles.rxLabel}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder="0.00"
-        placeholderTextColor="#9CA3AF"
-        keyboardType="numeric"
-        style={styles.rxInput}
-      />
-    </View>
-  );
-}
-
-/* ── Styles (giữ nguyên style của bạn) ─────────────────── */
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.48)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "90%", paddingBottom: 32 },
+  sheet: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "90%",
+    paddingBottom: 32,
+  },
   handleWrap: { alignItems: "center", paddingTop: 10 },
   handleBar: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#E5E7EB" },
-
-  titleRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
   sheetTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
   sheetSubtitle: { fontSize: 11.5, fontWeight: "700", color: "#6B7280", marginTop: 2 },
-  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginTop: 2 },
-
-  windowBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginHorizontal: 16, marginBottom: 10, padding: 10, borderRadius: 12 },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  windowBanner: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
   windowBannerOk: { backgroundColor: "#ECFDF5" },
   windowBannerNo: { backgroundColor: "#FFF7ED" },
-  windowBannerTextOk: { fontSize: 12.5, fontWeight: "700", color: "#166534" },
-  windowBannerTextNo: { fontSize: 12.5, fontWeight: "700", color: "#92400E", lineHeight: 18 },
-  windowDeadlineText: { fontSize: 11, fontWeight: "700", color: "#6B7280", marginTop: 2 },
-
-  productRow: { flexDirection: "row", alignItems: "center", gap: 10, marginHorizontal: 16, marginBottom: 10, padding: 12, backgroundColor: "#F6F7FB", borderRadius: 14 },
-  productIconWrap: { width: 44, height: 44, borderRadius: 12, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
-  productName: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  productMeta: { fontSize: 11.5, fontWeight: "700", color: "#6B7280", marginTop: 3 },
-
-  formScroll: { maxHeight: 380 },
-  formContent: { paddingHorizontal: 16, paddingBottom: 8, paddingTop: 4, gap: 4 },
-
-  orderTypeTag: { alignSelf: "flex-start", backgroundColor: "#EFF6FF", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  orderTypeTagText: { fontSize: 12, fontWeight: "800", color: "#2563EB" },
-
-  fieldGroupLabel: { fontSize: 13, fontWeight: "900", color: "#111827", marginBottom: 8 },
-
-  rxRow: { flexDirection: "row", gap: 12 },
+  windowBannerTextOk: { fontSize: 12, fontWeight: "700", color: "#15803D" },
+  windowDeadlineText: { marginTop: 3, fontSize: 11.5, fontWeight: "700", color: "#047857" },
+  windowBannerTextNo: { fontSize: 12, fontWeight: "700", color: "#B45309" },
+  productRow: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  productIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  productName: { fontSize: 13.5, fontWeight: "900", color: "#111827" },
+  productTypeText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  productMeta: { marginTop: 6, fontSize: 12, fontWeight: "700", color: "#374151" },
+  formScroll: { maxHeight: 460 },
+  formContent: { paddingHorizontal: 16, paddingBottom: 12, gap: 14 },
+  groupLabel: { fontSize: 12.5, fontWeight: "900", color: "#111827" },
+  helperText: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 14,
+    padding: 4,
+    gap: 6,
+  },
+  segmentItem: { flex: 1, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  segmentItemActive: { backgroundColor: "#FFFFFF" },
+  segmentText: { fontSize: 12, fontWeight: "900", color: "#6B7280" },
+  segmentTextActive: { color: "#111827" },
+  rxRow: { flexDirection: "row", gap: 10, marginTop: 8 },
   rxCell: { flex: 1 },
-  rxLabel: { fontSize: 11, fontWeight: "800", color: "#6B7280", marginBottom: 6 },
-  rxInput: { height: 44, borderRadius: 12, borderWidth: 1.5, borderColor: "#E5E7EB", paddingHorizontal: 12, fontSize: 14, fontWeight: "800", color: "#111827", backgroundColor: "#FAFAFA" },
-
-  photoBtn: { height: 46, borderRadius: 12, borderWidth: 1.5, borderColor: "#2563EB", borderStyle: "dashed", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#F0F6FF" },
-  photoBtnText: { fontSize: 13, fontWeight: "800", color: "#2563EB" },
-  photoOkRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 },
-  photoOkText: { fontSize: 12, fontWeight: "700", color: "#15803D" },
-
-  colorRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
-  colorDotWrap: { width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center", position: "relative" },
-  colorDotWrapActive: { borderColor: "#111827", borderWidth: 2.5 },
-  colorDot: { width: 22, height: 22, borderRadius: 11 },
-  colorCheck: { position: "absolute", bottom: -2, right: -2, width: 15, height: 15, borderRadius: 7.5, backgroundColor: "#111827", alignItems: "center", justifyContent: "center" },
-  selectedHint: { marginTop: 6, fontSize: 11.5, fontWeight: "700", color: "#6B7280" },
-
-  sizeRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
-  sizePill: { minWidth: 46, height: 40, paddingHorizontal: 12, borderRadius: 12, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "transparent" },
-  sizePillActive: { backgroundColor: "#111827", borderColor: "#111827" },
-  sizeTxt: { fontSize: 13, fontWeight: "900", color: "#374151" },
-  sizeTxtActive: { color: "#FFFFFF" },
-
-  noOptsText: { fontSize: 13, fontWeight: "700", color: "#9CA3AF", textAlign: "center", marginVertical: 8 },
-
-  lockedView: { alignItems: "center", paddingVertical: 28, paddingHorizontal: 24 },
-  lockedIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginBottom: 12 },
-  lockedTitle: { fontSize: 15, fontWeight: "900", color: "#374151", marginBottom: 6 },
-  lockedDesc: { fontSize: 13, fontWeight: "700", color: "#6B7280", textAlign: "center", lineHeight: 19 },
-
-  apiNotice: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 10, padding: 10, backgroundColor: "#F9FAFB", borderRadius: 10, borderWidth: 1, borderColor: "#E5E7EB" },
-  apiNoticeText: { flex: 1, fontSize: 11.5, fontWeight: "700", color: "#6B7280", lineHeight: 17 },
-
-  footer: { flexDirection: "row", paddingHorizontal: 16, paddingTop: 12, gap: 12, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
-  cancelBtn: { flex: 1, height: 46, borderRadius: 14, borderWidth: 1.5, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
-  cancelText: { fontSize: 14, fontWeight: "900", color: "#374151" },
-  saveBtn: { flex: 2, height: 46, borderRadius: 14, backgroundColor: "#2563EB", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  saveBtnDisabled: { opacity: 0.7 },
-  saveText: { fontSize: 14, fontWeight: "900", color: "#FFFFFF" },
+  rxLabel: { fontSize: 11.5, fontWeight: "900", color: "#6B7280", marginBottom: 6 },
+  rxInput: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 10,
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#111827",
+    backgroundColor: "#FFFFFF",
+  },
+  rxInputError: { borderColor: "#DC2626" },
+  rxErrorText: { marginTop: 6, fontSize: 11, fontWeight: "700", color: "#DC2626" },
+  noteInput: {
+    minHeight: 76,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#111827",
+    backgroundColor: "#FFFFFF",
+  },
+  photoBtn: {
+    marginTop: 10,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+  },
+  photoBtnText: { color: "#2563EB", fontWeight: "900" },
+  summaryBox: {
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  summaryText: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
+  colorRow: { flexDirection: "row", gap: 10, alignItems: "center", marginTop: 10 },
+  colorDotWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorDotWrapActive: { borderColor: "#111827", borderWidth: 2 },
+  colorDot: { width: 18, height: 18, borderRadius: 9 },
+  sizeRow: { flexDirection: "row", gap: 10, marginTop: 10 },
+  sizePill: {
+    width: 46,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sizePillActive: { backgroundColor: "#111827" },
+  sizeText: { fontWeight: "900", color: "#111827" },
+  sizeTextActive: { color: "#FFFFFF" },
+  lockedView: { paddingHorizontal: 16, paddingVertical: 28, alignItems: "center" },
+  lockedIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lockedTitle: { marginTop: 12, fontSize: 14, fontWeight: "900", color: "#111827" },
+  lockedDesc: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  footer: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12 },
+  cancelBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelText: { fontSize: 13, fontWeight: "900", color: "#374151" },
+  saveBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  saveBtnDisabled: { opacity: 0.6 },
+  saveText: { color: "#FFFFFF", fontWeight: "900" },
 });

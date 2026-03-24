@@ -27,8 +27,8 @@ const STATUS_FILTERS = [
 
 const ORDER_TYPE_FILTERS = [
   { key: "all", label: "Tất cả" },
-  { key: "order", label: "Order" },
-  { key: "preorder", label: "Pre-order" },
+  { key: "order", label: "Đơn thường" },
+  { key: "preorder", label: "Đơn đặt trước" },
 ];
 
 const SORT_OPTIONS = [

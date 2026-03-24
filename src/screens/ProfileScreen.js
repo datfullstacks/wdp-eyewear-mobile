@@ -390,7 +390,7 @@ export default function ProfileScreen({ navigation }) {
               icon="star-outline"
               label="Đánh giá"
               count={stats.orderReview}
-              onPress={() => navigation.navigate("Orders", { initialFilter: "review" })}
+              onPress={() => navigation.navigate("Orders", { initialFilter: "delivered" })}
             />
           </View>
         </Card>
@@ -546,7 +546,17 @@ export default function ProfileScreen({ navigation }) {
             icon="chatbubble-ellipses-outline"
             title="Hỗ trợ"
             subtitle="Nhắn tin với chúng tôi"
-            onPress={() => navigation.navigate("Support")}
+            onPress={() =>
+              navigation.navigate("Support", {
+                prefillCategory: "general",
+                lockCategory: false,
+                orderId: "",
+                orderCode: "",
+                orderItemId: "",
+                orderItemName: "",
+                draftSubject: "",
+              })
+            }
             accent={SETTING_ACCENTS.support}
           />
           <Divider />

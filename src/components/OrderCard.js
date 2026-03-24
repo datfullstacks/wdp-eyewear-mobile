@@ -160,6 +160,12 @@ function OrderItemRow({ orderItem }) {
           {orderItem?.name || "Sản phẩm"}
         </Text>
 
+        <View style={[styles.itemTypeBadge, { backgroundColor: typeMeta.bg }]}>
+          <Text style={[styles.itemTypeBadgeText, { color: typeMeta.color }]}>
+            {typeMeta.label}
+          </Text>
+        </View>
+
         <View style={styles.orderItemMetaRow}>
           <Text style={styles.orderItemQty}>x{orderItem?.qty ?? 1}</Text>
           <Text style={styles.orderItemPrice}>{formatVND(orderItem?.price)}</Text>
@@ -497,6 +503,19 @@ const styles = StyleSheet.create({
     color: "#111827",
     lineHeight: 18,
     marginBottom: 4,
+  },
+
+  itemTypeBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+
+  itemTypeBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
   },
 
   orderItemMetaRow: {

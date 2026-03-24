@@ -1,8 +1,9 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -11,11 +12,33 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   createSupportTicketApi,
   getSupportTicketsApi,
-  replySupportTicketApi,
+  SUPPORT_CATEGORY_META,
 } from "../services/supportService";
+
+const CATEGORY_OPTIONS = [
+  { key: "general", label: "Chung" },
+  { key: "order", label: "Don hang" },
+  { key: "refund", label: "Refund" },
+  { key: "warranty", label: "Bao hanh" },
+];
+
+const FILTER_OPTIONS = [
+  { key: "all", label: "Tat ca" },
+  { key: "general", label: "Chung" },
+  { key: "order", label: "Don hang" },
+  { key: "refund", label: "Refund" },
+  { key: "warranty", label: "Bao hanh" },
+];
+
+const PRIORITY_OPTIONS = [
+  { key: "normal", label: "Binh thuong" },
+  { key: "high", label: "Uu tien cao" },
+  { key: "low", label: "Uu tien thap" },
+];
 
 function formatTime(value) {
   if (!value) return "--";
@@ -24,100 +47,269 @@ function formatTime(value) {
   return d.toLocaleString("vi-VN", { hour12: false });
 }
 
-function TicketCard({ item, onReply }) {
-  const [message, setMessage] = useState("");
-  const latestMessage =
-    Array.isArray(item?.messages) && item.messages.length
-      ? item.messages[item.messages.length - 1]?.message
-      : "";
+function buildDefaultSubject({ category, orderCode, orderItemName }) {
+  if (category === "warranty") {
+    return orderItemName
+      ? `Bao hanh: ${orderItemName}`
+      : orderCode
+        ? `Bao hanh don ${orderCode}`
+        : "Yeu cau bao hanh";
+  }
 
+  if (category === "order" && orderCode) {
+    return `Ho tro don ${orderCode}`;
+  }
+
+  if (category === "refund" && orderCode) {
+    return `Hoi dap refund don ${orderCode}`;
+  }
+
+  return "";
+}
+
+function TicketCard({ item, onPress }) {
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.88} onPress={() => onPress(item)}>
       <View style={styles.cardTop}>
-        <Text style={styles.subject}>{item?.subject || "--"}</Text>
-        <Text style={styles.status}>{item?.status || "open"}</Text>
+        <Text style={styles.subject} numberOfLines={2}>
+          {item?.subject || "--"}
+        </Text>
+        <View style={styles.metaBadges}>
+          <View
+            style={[
+              styles.metaBadge,
+              { backgroundColor: item?.categoryMeta?.bg || "#F3F4F6" },
+            ]}
+          >
+            <Text
+              style={[
+                styles.metaBadgeText,
+                { color: item?.categoryMeta?.fg || "#374151" },
+              ]}
+            >
+              {item?.categoryMeta?.label || item?.category || "Support"}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.metaBadge,
+              { backgroundColor: item?.statusMeta?.bg || "#F3F4F6" },
+            ]}
+          >
+            <Text
+              style={[
+                styles.metaBadgeText,
+                { color: item?.statusMeta?.fg || "#374151" },
+              ]}
+            >
+              {item?.statusMeta?.label || item?.status || "open"}
+            </Text>
+          </View>
+        </View>
       </View>
 
-      {!!latestMessage ? <Text style={styles.message}>{latestMessage}</Text> : null}
-      <Text style={styles.time}>Updated: {formatTime(item?.lastMessageAt || item?.updatedAt)}</Text>
+      {!!item?.latestMessage ? (
+        <Text style={styles.message} numberOfLines={2}>
+          {item.latestMessage}
+        </Text>
+      ) : null}
 
-      <View style={styles.replyRow}>
-        <TextInput
-          style={styles.replyInput}
-          placeholder="Reply..."
-          value={message}
-          onChangeText={setMessage}
-        />
-        <TouchableOpacity
-          style={styles.replyBtn}
-          activeOpacity={0.85}
-          onPress={() => {
-            const trimmed = message.trim();
-            if (!trimmed) return;
-            onReply(item?._id, trimmed);
-            setMessage("");
-          }}
-        >
-          <Text style={styles.replyBtnText}>Send</Text>
-        </TouchableOpacity>
+      {item?.warranty ? (
+        <Text style={styles.secondaryText}>
+          Bao hanh: {item.warranty.itemName || "--"} - {item.warranty.eligibility || "--"}
+        </Text>
+      ) : null}
+
+      {item?.order?.paymentCode ? (
+        <Text style={styles.secondaryText}>Don: {item.order.paymentCode}</Text>
+      ) : null}
+
+      {item?.store?.name ? (
+        <Text style={styles.secondaryText}>
+          Cua hang: {item.store.name}
+          {item.store.code ? ` (${item.store.code})` : ""}
+        </Text>
+      ) : null}
+
+      <View style={styles.cardBottom}>
+        <Text style={styles.time}>Cap nhat: {formatTime(item?.lastMessageAt || item?.updatedAt)}</Text>
+        <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-export default function SupportScreen({ navigation }) {
+export default function SupportScreen({ navigation, route }) {
+  const prefillCategory = String(route?.params?.prefillCategory || "general")
+    .trim()
+    .toLowerCase();
+  const prefillOrderId = String(route?.params?.orderId || "").trim();
+  const prefillOrderCode = String(route?.params?.orderCode || "").trim();
+  const prefillOrderItemId = String(route?.params?.orderItemId || "").trim();
+  const prefillOrderItemName = String(route?.params?.orderItemName || "").trim();
+  const draftSubject = String(route?.params?.draftSubject || "").trim();
+  const lockCategory = Boolean(route?.params?.lockCategory);
+
+  const initialCategory = CATEGORY_OPTIONS.some((item) => item.key === prefillCategory)
+    ? prefillCategory
+    : "general";
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [subject, setSubject] = useState("");
+  const [activeFilter, setActiveFilter] = useState(
+    initialCategory === "warranty" ? "warranty" : "all"
+  );
+  const [category, setCategory] = useState(initialCategory);
+  const [priority, setPriority] = useState("normal");
+  const [subject, setSubject] = useState(
+    draftSubject ||
+      buildDefaultSubject({
+        category: initialCategory,
+        orderCode: prefillOrderCode,
+        orderItemName: prefillOrderItemName,
+      })
+  );
   const [message, setMessage] = useState("");
 
-  const loadData = useCallback(async () => {
-    try {
-      const result = await getSupportTicketsApi({ page: 1, limit: 50 });
-      setItems(Array.isArray(result?.items) ? result.items : []);
-    } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || "Không tải được phiếu hỗ trợ";
-      Alert.alert("Support", msg);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    setCategory(initialCategory);
+    setActiveFilter(initialCategory === "warranty" ? "warranty" : "all");
+    setSubject(
+      draftSubject ||
+        buildDefaultSubject({
+          category: initialCategory,
+          orderCode: prefillOrderCode,
+          orderItemName: prefillOrderItemName,
+        })
+    );
+    setMessage("");
+  }, [
+    draftSubject,
+    initialCategory,
+    prefillOrderCode,
+    prefillOrderItemName,
+    prefillOrderId,
+    prefillOrderItemId,
+  ]);
+
+  const selectedCategoryMeta = SUPPORT_CATEGORY_META[category] || SUPPORT_CATEGORY_META.general;
+  const hasOrderContext = Boolean(prefillOrderId);
+  const isWarrantyDraft = category === "warranty" && hasOrderContext && prefillOrderItemId;
+
+  const loadData = useCallback(
+    async ({ silent = false } = {}) => {
+      try {
+        if (!silent) setLoading(true);
+        const params = { page: 1, limit: 50 };
+        if (activeFilter !== "all") {
+          params.category = activeFilter;
+        }
+        const result = await getSupportTicketsApi(params);
+        setItems(Array.isArray(result?.items) ? result.items : []);
+      } catch (err) {
+        const msg =
+          err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          "Khong tai duoc phieu ho tro";
+        Alert.alert("Support", msg);
+      } finally {
+        if (!silent) setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [activeFilter]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const onCreate = async () => {
     if (submitting) return;
-    if (!subject.trim() || !message.trim()) {
-      Alert.alert("Support", "Subject và message là bắt buộc.");
+
+    const nextSubject = String(subject || "").trim();
+    const nextMessage = String(message || "").trim();
+
+    if (!nextSubject || !nextMessage) {
+      Alert.alert("Support", "Subject va message la bat buoc.");
+      return;
+    }
+
+    if (category === "warranty" && (!prefillOrderId || !prefillOrderItemId)) {
+      Alert.alert(
+        "Bao hanh",
+        "Bao hanh phai duoc tao tu mot mat hang da giao trong chi tiet don."
+      );
       return;
     }
 
     try {
       setSubmitting(true);
-      await createSupportTicketApi({ subject, message });
-      setSubject("");
+      const created = await createSupportTicketApi({
+        subject: nextSubject,
+        message: nextMessage,
+        category,
+        priority,
+        ...(prefillOrderId ? { orderId: prefillOrderId } : {}),
+        ...(category === "warranty" && prefillOrderItemId
+          ? { orderItemId: prefillOrderItemId }
+          : {}),
+      });
+
       setMessage("");
-      await loadData();
+      if (!lockCategory) {
+        setCategory("general");
+        setSubject("");
+      }
+
+      await loadData({ silent: true });
+
+      if (created?.id || created?._id) {
+        navigation.navigate("SupportTicketDetail", {
+          ticketId: created.id || created._id,
+          ticket: created,
+        });
+      }
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || "Không tải được phiếu hỗ trợ";
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Khong tao duoc phieu ho tro";
       Alert.alert("Support", msg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const onReply = async (ticketId, text) => {
-    try {
-      await replySupportTicketApi(ticketId, { message: text });
-      await loadData();
-    } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || "Không gửi reply được";
-      Alert.alert("Support", msg);
+  const filteredItems = useMemo(() => {
+    if (activeFilter === "all") return items;
+    return items.filter((item) => item?.category === activeFilter);
+  }, [activeFilter, items]);
+
+  const emptyComponent = useMemo(() => {
+    if (loading) {
+      return (
+        <View style={styles.emptyWrap}>
+          <ActivityIndicator size="small" color="#2563EB" />
+          <Text style={styles.emptyText}>Dang tai ticket...</Text>
+        </View>
+      );
     }
-  };
+
+    return (
+      <View style={styles.emptyWrap}>
+        <Ionicons name="chatbubble-ellipses-outline" size={42} color="#9CA3AF" />
+        <Text style={styles.emptyTitle}>Chua co case ho tro</Text>
+        <Text style={styles.emptyText}>Case moi se hien o day sau khi gui yeu cau.</Text>
+      </View>
+    );
+  }, [loading]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -130,53 +322,186 @@ export default function SupportScreen({ navigation }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Hỗ trợ</Text>
+          <Text style={styles.headerTitle}>Ho tro & bao hanh</Text>
         </View>
       </View>
 
-      <View style={styles.formCard}>
-        <Text style={styles.formTitle}>Tạo phiếu hỗ trợ</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Subject"
-          value={subject}
-          onChangeText={setSubject}
-        />
-        <TextInput
-          style={[styles.input, styles.inputMulti]}
-          placeholder="Message"
-          multiline
-          textAlignVertical="top"
-          value={message}
-          onChangeText={setMessage}
-        />
-        <TouchableOpacity
-          activeOpacity={0.9}
-          style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
-          onPress={onCreate}
-          disabled={submitting}
-        >
-          <Text style={styles.submitText}>{submitting ? "Sending..." : "Create ticket"}</Text>
-        </TouchableOpacity>
-      </View>
+      <FlatList
+        data={filteredItems}
+        keyExtractor={(item) => String(item?.id || item?._id)}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <>
+            <View style={styles.formCard}>
+              <View style={styles.formHeading}>
+                <View>
+                  <Text style={styles.formTitle}>Tao case moi</Text>
+                  <Text style={styles.formSubTitle}>
+                    Gui ticket don hang, refund, hoac bao hanh cho staff.
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.metaBadge,
+                    { backgroundColor: selectedCategoryMeta.bg || "#F3F4F6" },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.metaBadgeText,
+                      { color: selectedCategoryMeta.fg || "#374151" },
+                    ]}
+                  >
+                    {selectedCategoryMeta.label || category}
+                  </Text>
+                </View>
+              </View>
 
-      {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="small" color="#2563EB" />
-        </View>
-      ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => String(item?._id)}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => <TicketCard item={item} onReply={onReply} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>Không có phiếu hỗ trợ</Text>
+              {hasOrderContext ? (
+                <View style={styles.contextCard}>
+                  <Text style={styles.contextTitle}>Lien ket don hang</Text>
+                  <Text style={styles.contextText}>Ma don: {prefillOrderCode || prefillOrderId}</Text>
+                  {prefillOrderItemName ? (
+                    <Text style={styles.contextText}>Mat hang: {prefillOrderItemName}</Text>
+                  ) : null}
+                  <Text style={styles.contextHint}>
+                    {isWarrantyDraft
+                      ? "Case nay se duoc tao duoi category Bao hanh va gan voi item da chon."
+                      : "Case nay se duoc gan voi don hang hien tai."}
+                  </Text>
+                </View>
+              ) : null}
+
+              {!lockCategory ? (
+                <View style={styles.optionGroup}>
+                  <Text style={styles.optionLabel}>Loai case</Text>
+                  <View style={styles.optionRow}>
+                    {CATEGORY_OPTIONS.map((option) => {
+                      const active = category === option.key;
+                      return (
+                        <TouchableOpacity
+                          key={option.key}
+                          style={[styles.optionChip, active && styles.optionChipActive]}
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            setCategory(option.key);
+                            if (!subject.trim()) {
+                              setSubject(
+                                buildDefaultSubject({
+                                  category: option.key,
+                                  orderCode: prefillOrderCode,
+                                  orderItemName: prefillOrderItemName,
+                                })
+                              );
+                            }
+                          }}
+                        >
+                          <Text
+                            style={[styles.optionChipText, active && styles.optionChipTextActive]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.optionGroup}>
+                <Text style={styles.optionLabel}>Muc uu tien</Text>
+                <View style={styles.optionRow}>
+                  {PRIORITY_OPTIONS.map((option) => {
+                    const active = priority === option.key;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[styles.optionChip, active && styles.optionChipActive]}
+                        activeOpacity={0.85}
+                        onPress={() => setPriority(option.key)}
+                      >
+                        <Text
+                          style={[styles.optionChipText, active && styles.optionChipTextActive]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Subject"
+                value={subject}
+                onChangeText={setSubject}
+              />
+              <TextInput
+                style={[styles.input, styles.inputMulti]}
+                placeholder={
+                  isWarrantyDraft
+                    ? "Mo ta loi, tinh trang san pham, va nhu cau bao hanh..."
+                    : "Mo ta van de can staff ho tro..."
+                }
+                multiline
+                textAlignVertical="top"
+                value={message}
+                onChangeText={setMessage}
+              />
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
+                onPress={onCreate}
+                disabled={submitting}
+              >
+                <Text style={styles.submitText}>
+                  {submitting ? "Dang gui..." : "Tao case"}
+                </Text>
+              </TouchableOpacity>
             </View>
-          }
-        />
-      )}
+
+            <View style={styles.filterWrap}>
+              {FILTER_OPTIONS.map((option) => {
+                const active = activeFilter === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                    activeOpacity={0.85}
+                    onPress={() => setActiveFilter(option.key)}
+                  >
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        }
+        renderItem={({ item }) => (
+          <TicketCard
+            item={item}
+            onPress={(selected) =>
+              navigation.navigate("SupportTicketDetail", {
+                ticketId: selected?.id || selected?._id,
+                ticket: selected,
+              })
+            }
+          />
+        )}
+        ListEmptyComponent={emptyComponent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              loadData({ silent: true });
+            }}
+          />
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -192,74 +517,213 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
   headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    flexGrow: 1,
+  },
   formCard: {
-    marginHorizontal: 16,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+    marginBottom: 14,
+  },
+  formHeading: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 12,
+  },
+  formTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
+  formSubTitle: {
+    marginTop: 4,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  contextCard: {
     marginBottom: 12,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  formTitle: { fontSize: 13, fontWeight: "900", color: "#111827", marginBottom: 10 },
+  contextTitle: { fontSize: 12.5, fontWeight: "900", color: "#111827" },
+  contextText: {
+    marginTop: 6,
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  contextHint: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    lineHeight: 17,
+  },
+  optionGroup: { marginBottom: 10 },
+  optionLabel: {
+    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  optionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  optionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#F3F4F6",
+  },
+  optionChipActive: {
+    backgroundColor: "#EFF6FF",
+  },
+  optionChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  optionChipTextActive: {
+    color: "#2563EB",
+  },
   input: {
-    height: 42,
+    height: 44,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    borderRadius: 10,
-    paddingHorizontal: 10,
+    borderRadius: 12,
+    paddingHorizontal: 12,
     fontSize: 13,
     fontWeight: "700",
     color: "#111827",
     backgroundColor: "#FFFFFF",
     marginBottom: 8,
   },
-  inputMulti: { height: 88, paddingTop: 10, paddingBottom: 10 },
+  inputMulti: {
+    height: 108,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
   submitBtn: {
     marginTop: 4,
-    height: 42,
-    borderRadius: 10,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: "#2563EB",
     alignItems: "center",
     justifyContent: "center",
   },
-  submitText: { color: "#FFFFFF", fontWeight: "900" },
-
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  listContent: { paddingHorizontal: 16, paddingBottom: 16 },
+  submitText: { color: "#FFFFFF", fontWeight: "900", fontSize: 13 },
+  filterWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#F3F4F6",
+  },
+  filterChipActive: {
+    backgroundColor: "#111827",
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  filterChipTextActive: {
+    color: "#FFFFFF",
+  },
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 18,
+    padding: 14,
     marginBottom: 10,
-  },
-  cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  subject: { fontSize: 13.5, fontWeight: "900", color: "#111827", flex: 1 },
-  status: { fontSize: 11.5, fontWeight: "900", color: "#2563EB" },
-  message: { marginTop: 6, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
-  time: { marginTop: 8, fontSize: 11.5, fontWeight: "700", color: "#9CA3AF" },
-  replyRow: { marginTop: 10, flexDirection: "row", gap: 8, alignItems: "center" },
-  replyInput: {
-    flex: 1,
-    height: 38,
-    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: "#EEF2F7",
+  },
+  cardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  subject: {
+    flex: 1,
+    fontSize: 13.5,
+    fontWeight: "900",
+    color: "#111827",
+    lineHeight: 19,
+  },
+  metaBadges: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  metaBadge: {
     paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  metaBadgeText: {
+    fontSize: 11.5,
+    fontWeight: "900",
+  },
+  message: {
+    marginTop: 8,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    color: "#4B5563",
+    lineHeight: 18,
   },
-  replyBtn: {
-    height: 38,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: "#111827",
+  secondaryText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  cardBottom: {
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 10,
   },
-  replyBtnText: { color: "#FFFFFF", fontWeight: "900", fontSize: 12.5 },
-  empty: { paddingTop: 20, alignItems: "center" },
-  emptyText: { color: "#6B7280", fontWeight: "700" },
+  time: {
+    flex: 1,
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#9CA3AF",
+  },
+  emptyWrap: {
+    paddingTop: 44,
+    alignItems: "center",
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  emptyText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#6B7280",
+    textAlign: "center",
+  },
 });

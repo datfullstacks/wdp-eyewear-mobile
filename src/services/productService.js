@@ -48,6 +48,37 @@ const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
 const MODEL_FILE_PATTERN = /\.(glb|gltf|usdz)(\?|#|$)/i;
 
+export const PRODUCT_CATALOG_TYPES = Object.freeze({
+  FRAME: "FRAME",
+  LENS: "LENS",
+  SUNGLASSES: "SUNGLASSES",
+  CONTACT_LENS: "CONTACT_LENS",
+  ACCESSORY: "ACCESSORY",
+  SERVICE: "SERVICE",
+  BUNDLE: "BUNDLE",
+  GIFT_CARD: "GIFT_CARD",
+  OTHER: "OTHER",
+});
+
+export const PRODUCT_FAMILIES = Object.freeze({
+  FRAME_FAMILY: "FRAME_FAMILY",
+  LENS_FAMILY: "LENS_FAMILY",
+  CONTACT_FAMILY: "CONTACT_FAMILY",
+  NON_EYEWEAR: "NON_EYEWEAR",
+});
+
+const DISPLAY_LABEL_BY_CATALOG_TYPE = {
+  [PRODUCT_CATALOG_TYPES.FRAME]: "Gọng kính",
+  [PRODUCT_CATALOG_TYPES.LENS]: "Tròng kính",
+  [PRODUCT_CATALOG_TYPES.SUNGLASSES]: "Kính mát",
+  [PRODUCT_CATALOG_TYPES.CONTACT_LENS]: "Kính áp tròng",
+  [PRODUCT_CATALOG_TYPES.ACCESSORY]: "Phụ kiện",
+  [PRODUCT_CATALOG_TYPES.SERVICE]: "Dịch vụ",
+  [PRODUCT_CATALOG_TYPES.BUNDLE]: "Combo",
+  [PRODUCT_CATALOG_TYPES.GIFT_CARD]: "Thẻ quà tặng",
+  [PRODUCT_CATALOG_TYPES.OTHER]: "Sản phẩm",
+};
+
 function toText(value) {
   return String(value ?? "").trim();
 }
@@ -68,6 +99,150 @@ function isModelFileUrl(value) {
 
 function isWebTryOnUrl(value) {
   return canUseAbsoluteHttpUrl(value) && !isModelFileUrl(value);
+}
+
+function getFamilyForCatalogType(catalogType) {
+  switch (catalogType) {
+    case PRODUCT_CATALOG_TYPES.FRAME:
+    case PRODUCT_CATALOG_TYPES.SUNGLASSES:
+      return PRODUCT_FAMILIES.FRAME_FAMILY;
+    case PRODUCT_CATALOG_TYPES.LENS:
+      return PRODUCT_FAMILIES.LENS_FAMILY;
+    case PRODUCT_CATALOG_TYPES.CONTACT_LENS:
+      return PRODUCT_FAMILIES.CONTACT_FAMILY;
+    default:
+      return PRODUCT_FAMILIES.NON_EYEWEAR;
+  }
+}
+
+function hasAnyLinkedProducts(product) {
+  const p = product || {};
+  const specs = p.specs || {};
+  const candidates = [
+    p.compatibleLensIds,
+    p.compatibleFrameIds,
+    p.compatibleWithIds,
+    p?.compatibility?.productIds,
+    p?.compatibility?.lensIds,
+    p?.compatibility?.frameIds,
+    specs?.compatibility?.productIds,
+    specs?.compatibility?.lensIds,
+    specs?.compatibility?.frameIds,
+    specs?.common?.compatibleLensIds,
+    specs?.common?.compatibleFrameIds,
+    specs?.common?.compatibleWithIds,
+  ];
+
+  return candidates.some((entry) => Array.isArray(entry) && entry.some(Boolean));
+}
+
+function computeSupportsTryOn(catalogType) {
+  return (
+    catalogType === PRODUCT_CATALOG_TYPES.FRAME ||
+    catalogType === PRODUCT_CATALOG_TYPES.SUNGLASSES
+  );
+}
+
+function computeSupportsLensPairing(product, catalogType) {
+  if (catalogType === PRODUCT_CATALOG_TYPES.FRAME) {
+    return true;
+  }
+
+  if (catalogType !== PRODUCT_CATALOG_TYPES.SUNGLASSES) {
+    return false;
+  }
+
+  return (
+    product?.specs?.frame?.rxReady === true ||
+    Boolean(product?.presetCombo?.lensProductId) ||
+    hasAnyLinkedProducts(product)
+  );
+}
+
+export function normalizeCatalogType(apiType) {
+  const t = String(apiType || "").trim().toLowerCase();
+
+  switch (t) {
+    case "frame":
+      return PRODUCT_CATALOG_TYPES.FRAME;
+    case "lens":
+      return PRODUCT_CATALOG_TYPES.LENS;
+    case "sunglasses":
+      return PRODUCT_CATALOG_TYPES.SUNGLASSES;
+    case "contact_lens":
+      return PRODUCT_CATALOG_TYPES.CONTACT_LENS;
+    case "accessory":
+      return PRODUCT_CATALOG_TYPES.ACCESSORY;
+    case "service":
+      return PRODUCT_CATALOG_TYPES.SERVICE;
+    case "bundle":
+      return PRODUCT_CATALOG_TYPES.BUNDLE;
+    case "gift_card":
+      return PRODUCT_CATALOG_TYPES.GIFT_CARD;
+    default:
+      return PRODUCT_CATALOG_TYPES.OTHER;
+  }
+}
+
+export function getCatalogDisplayLabel(catalogType) {
+  return DISPLAY_LABEL_BY_CATALOG_TYPE[normalizeCatalogType(catalogType)] || "Sản phẩm";
+}
+
+export function getProductCatalogType(product) {
+  return normalizeCatalogType(product?.catalogType || product?.apiType || product?.type);
+}
+
+export function getProductDisplayLabel(product) {
+  return product?.displayLabel || getCatalogDisplayLabel(getProductCatalogType(product));
+}
+
+export function normalizeType(apiType) {
+  const catalogType = normalizeCatalogType(apiType);
+
+  switch (catalogType) {
+    case PRODUCT_CATALOG_TYPES.FRAME:
+    case PRODUCT_CATALOG_TYPES.SUNGLASSES:
+      return "FRAME";
+    case PRODUCT_CATALOG_TYPES.LENS:
+    case PRODUCT_CATALOG_TYPES.CONTACT_LENS:
+      return "LENS";
+    case PRODUCT_CATALOG_TYPES.ACCESSORY:
+      return "ACCESSORY";
+    default:
+      return "OTHER";
+  }
+}
+
+export function getProductFamily(product) {
+  return product?.family || getFamilyForCatalogType(getProductCatalogType(product));
+}
+
+export function isFrameLikeProduct(product) {
+  return getProductFamily(product) === PRODUCT_FAMILIES.FRAME_FAMILY;
+}
+
+export function productRequiresLensRxFlow(product) {
+  if (typeof product?.requiresLensRxFlow === "boolean") {
+    return product.requiresLensRxFlow;
+  }
+
+  return getProductCatalogType(product) === PRODUCT_CATALOG_TYPES.LENS;
+}
+
+export function productSupportsTryOn(product) {
+  if (typeof product?.supportsTryOn === "boolean") {
+    return product.supportsTryOn;
+  }
+
+  return computeSupportsTryOn(getProductCatalogType(product));
+}
+
+export function productSupportsLensPairing(product) {
+  if (typeof product?.supportsLensPairing === "boolean") {
+    return product.supportsLensPairing;
+  }
+
+  return computeSupportsLensPairing(product, getProductCatalogType(product));
 }
 
 function toCsvList(value) {
@@ -232,13 +407,6 @@ function computeStockStatus(product, totalStock) {
   return "IN_STOCK";
 }
 
-function normalizeType(apiType) {
-  const t = String(apiType || "").toLowerCase();
-  if (t === "lens" || t === "contact_lens") return "LENS";
-  if (t === "frame" || t === "sunglasses") return "FRAME";
-  return "OTHER";
-}
-
 function buildSpecsList(product) {
   const out = [];
   const add = (label, value) => {
@@ -251,9 +419,13 @@ function buildSpecsList(product) {
   const frame = specs.frame || {};
   const dimensions = specs.dimensions || {};
   const lens = specs.lens || {};
+  const contactLens = specs.contactLens || {};
   const accessory = specs.accessory || {};
 
-  add("Chất liệu", frame.material || lens.material || accessory.material);
+  add(
+    "Chất liệu",
+    frame.material || lens.material || contactLens.material || accessory.material
+  );
   add("Hình dáng", common.shape);
   if (dimensions.frameWidthMm) add("Độ rộng", `${dimensions.frameWidthMm}mm`);
   if (dimensions.templeLengthMm) add("Chiều dài càng", `${dimensions.templeLengthMm}mm`);
@@ -267,6 +439,13 @@ function buildSpecsList(product) {
     add("Chống ánh xanh", lens.blueLightFilter ? "Có" : "Không");
   if (lens.index) add("Chỉ số chiết suất", lens.index);
   if (lens.lensType) add("Loại tròng", lens.lensType);
+  if (contactLens.replacementCycle) add("Chu kỳ thay", contactLens.replacementCycle);
+  if (contactLens.waterContentPercent) {
+    add("Độ ngậm nước", `${contactLens.waterContentPercent}%`);
+  }
+  if (contactLens.baseCurveMm) add("Độ cong", `${contactLens.baseCurveMm}mm`);
+  if (contactLens.diameterMm) add("Đường kính", `${contactLens.diameterMm}mm`);
+  if (contactLens.packSize) add("Quy cách", `${contactLens.packSize} chiếc/hộp`);
 
   return out.slice(0, 6);
 }
@@ -529,26 +708,35 @@ export function mapApiProductSummaryToUi(product) {
     .reduce((sum, v) => sum + v, 0);
 
   const stockStatus = computeStockStatus(product, variants.length ? totalStock : null);
-  const uiType = normalizeType(product?.type);
+  const catalogType = normalizeCatalogType(product?.type);
+  const uiType = normalizeType(catalogType);
+  const family = getFamilyForCatalogType(catalogType);
+  const displayLabel = getCatalogDisplayLabel(catalogType);
+  const supportsTryOn = computeSupportsTryOn(catalogType);
+  const supportsLensPairing = computeSupportsLensPairing(product, catalogType);
+  const requiresLensRxFlow = catalogType === PRODUCT_CATALOG_TYPES.LENS;
   const preorderEnabled = product?.preOrder?.enabled === true;
   const allowCod = preorderEnabled
     ? Boolean(product?.preOrder?.allowCod ?? true)
     : true;
 
   const orderTypes =
-    uiType === "LENS"
+    requiresLensRxFlow
       ? ["READY", "CUSTOM"]
+      : catalogType === PRODUCT_CATALOG_TYPES.CONTACT_LENS
+        ? ["READY"]
       : preorderEnabled
         ? ["READY", "PREORDER", "CUSTOM"]
         : ["READY", "CUSTOM"];
 
-  const defaultOrderType = stockStatus === "PREORDER" ? "PREORDER" : "READY";
+  const defaultOrderType =
+    stockStatus === "PREORDER" ? "PREORDER" : orderTypes[0] || "READY";
   const { colors, sizes, colorDots } = buildVariantsMeta(variants, assets, variantAssetsById);
   const apiId = product?._id || product?.id || null;
   const has3D = assets.some((a) => a?.assetType === "3d" || a?.role === "viewer" || a?.role === "try_on");
   const tryOnStatus = String(mediaTryOn?.status || "").trim().toLowerCase();
   const canTryOn =
-    uiType === "FRAME" &&
+    supportsTryOn &&
     (Boolean(mediaTryOn?.enabled) || tryOnStatus === "published" || has3D);
   const storeScope = buildStoreScope(product?.storeScope || {});
 
@@ -556,7 +744,14 @@ export function mapApiProductSummaryToUi(product) {
     id: String(apiId || product?.slug || ""),
     apiId: apiId ? String(apiId) : null,
     type: uiType,
+    legacyType: uiType,
     apiType: product?.type || null,
+    catalogType,
+    displayLabel,
+    family,
+    supportsTryOn,
+    supportsLensPairing,
+    requiresLensRxFlow,
     name: product?.name || "",
     slug: product?.slug || "",
     brand: product?.brand || "",
@@ -672,10 +867,12 @@ export async function fetchProducts(params = {}) {
 
 export function getRelatedProducts(products, product, limit = 8) {
   if (!product) return [];
+  const catalogType = getProductCatalogType(product);
   const related = products.filter((p) => {
     if (!p || p.id === product.id) return false;
-    if (product.brand && p.brand === product.brand) return true;
-    return p.type === product.type;
+    const sameCatalogType = getProductCatalogType(p) === catalogType;
+    if (product.brand && p.brand === product.brand && sameCatalogType) return true;
+    return sameCatalogType;
   });
   return related.slice(0, limit);
 }

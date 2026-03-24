@@ -17,13 +17,27 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AntDesign, Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 
-import { addMyFavoriteApi, getMyFavoriteIdsApi, removeMyFavoriteApi } from "../services/userService";
+import {
+  addMyFavoriteApi,
+  getMyFavoriteIdsApi,
+  getMyPrescriptionsApi,
+  removeMyFavoriteApi,
+} from "../services/userService";
 import { useProducts } from "../hooks/useProducts";
 import { useStores } from "../hooks/useStores";
-import { getRelatedProducts, fetchProductById } from "../services/productService";
+import {
+  fetchProductById,
+  getProductCatalogType,
+  getRelatedProducts,
+  isFrameLikeProduct,
+  productRequiresLensRxFlow,
+  productSupportsLensPairing,
+  productSupportsTryOn,
+} from "../services/productService";
 import { CART_TYPES } from "../store/cartStore";
 import {
   API_CART_TYPES,
@@ -37,6 +51,17 @@ import { useAuthStore } from "../store/authStore";
 import { useStoreNetworkStore } from "../store/storeNetworkStore";
 import ProductModelViewer from "../components/ProductModelViewer";
 import { startNativeTryOnSession } from "../services/nativeTryOnService";
+import {
+  LENS_PRESCRIPTION_METHODS,
+  applySavedPrescriptionToDraft,
+  buildLensPrescriptionPayload,
+  createEmptyLensDraft,
+  getLensPrescriptionRange,
+  normalizeLensPrescriptionDraft,
+  normalizeSavedPrescription,
+  summarizeLensPrescription,
+  validateLensPrescriptionDraft,
+} from "../services/lensPrescriptionService";
 
 /* -------------------- helpers -------------------- */
 
@@ -262,27 +287,24 @@ function getSelectedVariant(product, { colorId, size }) {
   );
 }
 
-function isRxFilled(rxOD, rxOS) {
-  const okOD = Boolean(rxOD?.CYL) && Boolean(rxOD?.AXIS);
-  const okOS = Boolean(rxOS?.CYL) && Boolean(rxOS?.AXIS);
-  return okOD && okOS;
-}
-
-function normType(t) {
-  return String(t ?? "").trim().toUpperCase();
-}
-
 function getOppositeTypeList(products, product, limit = 10) {
   if (!product) return [];
-  const t = normType(product.type);
+  const catalogType = getProductCatalogType(product);
 
-  if (t !== "FRAME" && t !== "LENS") return [];
+  let matcher = null;
+  if (catalogType === "LENS") {
+    matcher = (item) => getProductCatalogType(item) === "FRAME";
+  } else if (catalogType === "FRAME") {
+    matcher = (item) => getProductCatalogType(item) === "LENS";
+  } else if (catalogType === "SUNGLASSES" && productSupportsLensPairing(product)) {
+    matcher = (item) => getProductCatalogType(item) === "LENS";
+  }
 
-  const targetType = t === "FRAME" ? "LENS" : "FRAME";
+  if (!matcher) return [];
   const curId = String(product.apiId || product._id || product.id || "");
 
   return (products || [])
-    .filter((p) => normType(p.type) === targetType)
+    .filter((p) => matcher(p))
     .filter((p) => String(p.apiId || p._id || p.id || "") !== curId)
     .slice(0, limit);
 }
@@ -313,23 +335,30 @@ function getCompatibilityIds(product) {
     [];
 
   const withIds = pickIds(p.compatibleWithIds) || pickIds(specs?.common?.compatibleWithIds) || [];
+  const productIds = pickIds(p.compatibility?.productIds) || [];
 
   return {
     lensIds: lensIds.length ? lensIds : [],
     frameIds: frameIds.length ? frameIds : [],
-    withIds: withIds.length ? withIds : [],
+    withIds: withIds.length ? withIds : productIds,
   };
 }
 
 function getCompatibleProducts(products, product) {
   if (!product) return [];
-  const type = normType(product.type);
+  const catalogType = getProductCatalogType(product);
 
-  if (type !== "FRAME" && type !== "LENS") return [];
+  if (catalogType !== "FRAME" && catalogType !== "LENS" && catalogType !== "SUNGLASSES") {
+    return [];
+  }
+
+  if (catalogType === "SUNGLASSES" && !productSupportsLensPairing(product)) {
+    return [];
+  }
 
   const { lensIds, frameIds, withIds } = getCompatibilityIds(product);
-  const targetType = type === "FRAME" ? "LENS" : "FRAME";
-  const targetIds = type === "FRAME" ? lensIds : frameIds;
+  const targetType = catalogType === "LENS" ? "FRAME" : "LENS";
+  const targetIds = catalogType === "LENS" ? frameIds : lensIds;
   const idsToUse = targetIds.length ? targetIds : withIds;
 
   if (!idsToUse.length) return [];
@@ -337,7 +366,7 @@ function getCompatibleProducts(products, product) {
   const idSet = new Set(idsToUse.map(String));
 
   return (products || [])
-    .filter((p) => normType(p.type) === targetType)
+    .filter((p) => getProductCatalogType(p) === targetType)
     .filter((p) => {
       const pid = String(p.apiId || p._id || p.id || "");
       return idSet.has(pid);
@@ -346,13 +375,11 @@ function getCompatibleProducts(products, product) {
 
 function buildCartCustomization({
   product,
-  orderType,
   colorId,
   size,
   readyNote,
-  rxOD,
-  rxOS,
-  rxPhoto,
+  lensMethod,
+  lensDraft,
 }) {
   const colorObj = product?.colors?.find((x) => x.id === colorId);
 
@@ -362,52 +389,11 @@ function buildCartCustomization({
     note: readyNote || undefined,
   };
 
-  if (product?.type === "LENS") {
-    if (orderType === "READY" && isRxFilled(rxOD, rxOS)) {
-      customization.prescription = {
-        mode: "manual",
-        isMyopic: true,
-        rightEye: {
-          cyl: rxOD?.CYL || "",
-          axis: rxOD?.AXIS || "",
-        },
-        leftEye: {
-          cyl: rxOS?.CYL || "",
-          axis: rxOS?.AXIS || "",
-        },
-      };
-    }
-
-    if (orderType === "CUSTOM" && rxPhoto?.uri) {
-      customization.prescription = {
-        mode: "upload",
-        isMyopic: true,
-        attachmentUrls: [rxPhoto.uri],
-      };
-    }
-
-    if (orderType === "PREORDER") {
-      if (isRxFilled(rxOD, rxOS)) {
-        customization.prescription = {
-          mode: "manual",
-          isMyopic: true,
-          rightEye: {
-            cyl: rxOD?.CYL || "",
-            axis: rxOD?.AXIS || "",
-          },
-          leftEye: {
-            cyl: rxOS?.CYL || "",
-            axis: rxOS?.AXIS || "",
-          },
-        };
-      } else if (rxPhoto?.uri) {
-        customization.prescription = {
-          mode: "upload",
-          isMyopic: true,
-          attachmentUrls: [rxPhoto.uri],
-        };
-      }
-    }
+  if (productRequiresLensRxFlow(product)) {
+    customization.prescription = buildLensPrescriptionPayload({
+      method: lensMethod,
+      draft: lensDraft,
+    });
   }
 
   return customization;
@@ -419,10 +405,8 @@ function buildCartItemPayload({
   colorId,
   size,
   readyNote,
-  orderType,
-  rxOD,
-  rxOS,
-  rxPhoto,
+  lensMethod,
+  lensDraft,
   selectedVariant,
 }) {
   return {
@@ -431,13 +415,11 @@ function buildCartItemPayload({
     quantity: qty || 1,
     customization: buildCartCustomization({
       product,
-      orderType,
       colorId,
       size,
       readyNote,
-      rxOD,
-      rxOS,
-      rxPhoto,
+      lensMethod,
+      lensDraft,
     }),
   };
 }
@@ -569,6 +551,11 @@ export default function ProductDetailScreen({ navigation, route }) {
   const [detailLoadError, setDetailLoadError] = useState("");
   const [isLaunchingTryOn, setIsLaunchingTryOn] = useState(false);
   const [fav, setFav] = useState(false);
+  const catalogType = getProductCatalogType(product);
+  const isFrameLike = isFrameLikeProduct(product);
+  const isLensRxProduct = productRequiresLensRxFlow(product);
+  const supportsTryOn = productSupportsTryOn(product);
+  const supportsLensPairing = productSupportsLensPairing(product);
 
   const handleSelectStore = useCallback(
     async (store) => {
@@ -643,18 +630,28 @@ export default function ProductDetailScreen({ navigation, route }) {
   }, [product]);
 
   const headerTitle =
-    product?.type === "LENS"
+    catalogType === "LENS"
       ? "Chi tiết tròng kính"
-      : product?.type === "FRAME"
+      : catalogType === "FRAME"
         ? "Chi tiết gọng kính"
-        : "Chi tiết sản phẩm";
+        : catalogType === "SUNGLASSES"
+          ? "Chi tiết kính mát"
+          : catalogType === "CONTACT_LENS"
+            ? "Chi tiết kính áp tròng"
+            : "Chi tiết sản phẩm";
 
   const [orderType, setOrderType] = useState("READY");
   const [colorId, setColorId] = useState(product?.colors?.[0]?.id ?? null);
-  const [size, setSize] = useState(product?.type === "FRAME" ? product?.sizes?.[0] ?? "M" : "STD");
+  const [size, setSize] = useState(isFrameLike ? product?.sizes?.[0] ?? "M" : "STD");
   const [qty, setQty] = useState(1);
   const [readyNote, setReadyNote] = useState("");
   const [mediaMode, setMediaMode] = useState("2d");
+  const [lensMethod, setLensMethod] = useState(LENS_PRESCRIPTION_METHODS.MANUAL);
+  const [lensDraft, setLensDraft] = useState(createEmptyLensDraft());
+  const [savedPrescriptions, setSavedPrescriptions] = useState([]);
+  const [savedPrescriptionsLoading, setSavedPrescriptionsLoading] = useState(false);
+  const [savedPrescriptionPickerOpen, setSavedPrescriptionPickerOpen] = useState(false);
+  const [selectedSavedPrescriptionId, setSelectedSavedPrescriptionId] = useState("");
 
   useEffect(() => {
     if (!product) return;
@@ -664,16 +661,16 @@ export default function ProductDetailScreen({ navigation, route }) {
     setColorId(product.colors?.[0]?.id ?? null);
     setMediaMode("2d");
 
-    if (product.type === "FRAME") {
+    if (isFrameLikeProduct(product)) {
       setSize(product.sizes?.[0] || "M");
     } else {
       setSize("STD");
     }
-  }, [product]);
 
-  const [rxOD, setRxOD] = useState({ CYL: "", AXIS: "" });
-  const [rxOS, setRxOS] = useState({ CYL: "", AXIS: "" });
-  const [rxPhoto, setRxPhoto] = useState(null);
+    setLensMethod(LENS_PRESCRIPTION_METHODS.MANUAL);
+    setLensDraft(createEmptyLensDraft());
+    setSelectedSavedPrescriptionId("");
+  }, [product]);
 
   const [open, setOpen] = useState({
     desc: false,
@@ -684,9 +681,9 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const selectedVariant = useMemo(() => {
     if (!product) return null;
-    if (product.type === "FRAME") return getSelectedVariant(product, { colorId, size });
+    if (isFrameLike) return getSelectedVariant(product, { colorId, size });
     return getSelectedVariant(product, { colorId, size: null });
-  }, [product, colorId, size]);
+  }, [product, colorId, isFrameLike, size]);
 
   const variantAssets = useMemo(
     () => getVariantAssets(product, selectedVariant),
@@ -695,10 +692,10 @@ export default function ProductDetailScreen({ navigation, route }) {
   const tryOnModels = useMemo(() => buildTryOnModels(product), [product]);
 
   const fallbackColorImage = useMemo(() => {
-    if (!product || product.type !== "FRAME") return null;
+    if (!product || !isFrameLike) return null;
     const c = product.colors?.find((x) => x.id === colorId);
     return c?.imageOverride || null;
-  }, [product, colorId]);
+  }, [product, colorId, isFrameLike]);
 
   const image2DAsset = useMemo(() => {
     return pick2DAsset(variantAssets) || pick2DAsset(product?.media?.assets || []);
@@ -726,21 +723,22 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const has3DAsset = Boolean(image3DAsset);
   const canOpenTryOn = useMemo(() => {
+    if (!supportsTryOn) return false;
     return (
       tryOnModels.some((model) => model?.ready) ||
       Boolean(product?.tryOn?.ready) ||
       Boolean(product?.canTryOn) ||
       has3DAsset
     );
-  }, [has3DAsset, product?.canTryOn, product?.tryOn?.ready, tryOnModels]);
+  }, [has3DAsset, product?.canTryOn, product?.tryOn?.ready, supportsTryOn, tryOnModels]);
   const canShowTryOnCard = useMemo(() => {
-    return normType(product?.type) === "FRAME" && (
+    return supportsTryOn && (
       tryOnModels.length > 0 ||
       Boolean(product?.canTryOn) ||
       Boolean(product?.tryOn?.enabled) ||
       has3DAsset
     );
-  }, [has3DAsset, product?.canTryOn, product?.tryOn?.enabled, product?.type, tryOnModels.length]);
+  }, [has3DAsset, product?.canTryOn, product?.tryOn?.enabled, supportsTryOn, tryOnModels.length]);
 
   useEffect(() => {
     if (!has3DAsset && mediaMode !== "2d") {
@@ -769,7 +767,8 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const compatibleItems = useMemo(() => {
     if (!product) return [];
-    return getOppositeTypeList(products, product, 10);
+    const explicitMatches = getCompatibleProducts(products, product);
+    return explicitMatches.length ? explicitMatches : getOppositeTypeList(products, product, 10);
   }, [products, product]);
 
   const minQty = product?.qtyLimits?.min ?? 1;
@@ -787,11 +786,17 @@ export default function ProductDetailScreen({ navigation, route }) {
   const showPreorder = isPreorderMode;
 
   const orderTypeItems = useMemo(
-    () => [
-      { key: "READY", label: ORDER_TYPES.READY },
-      { key: "CUSTOM", label: ORDER_TYPES.CUSTOM },
-    ],
-    []
+    () =>
+      (Array.isArray(product?.orderTypes) ? product.orderTypes : ["READY", "CUSTOM"])
+        .filter((key) => key !== "PREORDER")
+        .map((key) => ({
+          key,
+          label:
+            key === "READY" && catalogType === "CONTACT_LENS"
+              ? (isPreorderMode ? "Đặt trước" : "Mua ngay")
+              : ORDER_TYPES[key] || key,
+        })),
+    [catalogType, isPreorderMode, product?.orderTypes]
   );
 
   const canBuy = useMemo(() => {
@@ -800,12 +805,106 @@ export default function ProductDetailScreen({ navigation, route }) {
     return true;
   }, [product, isVariantOut, preorderEnabled]);
 
+  const lensRange = useMemo(() => getLensPrescriptionRange(product), [product]);
+  const selectedSavedPrescription = useMemo(
+    () =>
+      savedPrescriptions.find(
+        (item) => String(item?._id || "") === String(selectedSavedPrescriptionId || "")
+      ) || null,
+    [savedPrescriptions, selectedSavedPrescriptionId]
+  );
+  const lensValidation = useMemo(
+    () =>
+      validateLensPrescriptionDraft({
+        method: lensMethod,
+        draft: lensDraft,
+        product,
+      }),
+    [lensDraft, lensMethod, product]
+  );
+  const lensPrescriptionSummary = useMemo(
+    () =>
+      summarizeLensPrescription(
+        buildLensPrescriptionPayload({
+          method: lensMethod,
+          draft: lensDraft,
+        })
+      ),
+    [lensDraft, lensMethod]
+  );
+
   useEffect(() => {
     if (!product) return;
-    if (!orderType || (orderType !== "READY" && orderType !== "CUSTOM")) {
-      setOrderType("READY");
+    const allowedKeys = orderTypeItems.map((item) => item.key);
+    if (!allowedKeys.includes(orderType)) {
+      setOrderType(allowedKeys[0] || "READY");
     }
-  }, [product?.id]);
+  }, [orderType, orderTypeItems, product?.id]);
+
+  const loadSavedPrescriptions = useCallback(async () => {
+    if (!token || !isLensRxProduct) {
+      setSavedPrescriptions([]);
+      return [];
+    }
+
+    try {
+      setSavedPrescriptionsLoading(true);
+      const data = await getMyPrescriptionsApi();
+      const normalized = (Array.isArray(data) ? data : [])
+        .map((item) => normalizeSavedPrescription(item))
+        .sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+      setSavedPrescriptions(normalized);
+      return normalized;
+    } catch (err) {
+      console.warn("[ProductDetail] getMyPrescriptionsApi failed", err?.message || err);
+      setSavedPrescriptions([]);
+      return [];
+    } finally {
+      setSavedPrescriptionsLoading(false);
+    }
+  }, [isLensRxProduct, token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (token && isLensRxProduct) {
+        void loadSavedPrescriptions();
+      }
+
+      return undefined;
+    }, [isLensRxProduct, loadSavedPrescriptions, token])
+  );
+
+  const openSavedPrescriptionPicker = useCallback(async () => {
+    if (!token) {
+      requireLogin();
+      return;
+    }
+
+    setSavedPrescriptionPickerOpen(true);
+    await loadSavedPrescriptions();
+  }, [loadSavedPrescriptions, token]);
+
+  const handleChangeLensMethod = useCallback(
+    async (nextMethod) => {
+      if (nextMethod === LENS_PRESCRIPTION_METHODS.SAVED) {
+        if (!token) {
+          requireLogin();
+          return;
+        }
+
+        setLensMethod(LENS_PRESCRIPTION_METHODS.SAVED);
+        await openSavedPrescriptionPicker();
+        return;
+      }
+
+      if (nextMethod === LENS_PRESCRIPTION_METHODS.UPLOAD) {
+        setSelectedSavedPrescriptionId("");
+      }
+
+      setLensMethod(nextMethod);
+    },
+    [openSavedPrescriptionPicker, token]
+  );
 
   const pickRxPhoto = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -819,9 +918,32 @@ export default function ProductDetailScreen({ navigation, route }) {
     });
     if (!res.canceled) {
       const a = res.assets?.[0];
-      if (a?.uri) setRxPhoto({ uri: a.uri, name: "rx.jpg", type: "image/jpeg" });
+      if (a?.uri) {
+        setLensDraft((prev) => ({
+          ...prev,
+          attachmentUrls: [a.uri],
+        }));
+      }
     }
   }, []);
+
+  const handleSelectSavedPrescription = useCallback((item) => {
+    const normalized = normalizeSavedPrescription(item);
+    setSelectedSavedPrescriptionId(normalized._id);
+    setLensDraft((prev) => applySavedPrescriptionToDraft(normalized, prev));
+    setLensMethod(LENS_PRESCRIPTION_METHODS.SAVED);
+    setSavedPrescriptionPickerOpen(false);
+  }, []);
+
+  const handleManagePrescriptions = useCallback(() => {
+    setSavedPrescriptionPickerOpen(false);
+    navigation.navigate("Tabs", {
+      screen: "ProfileTab",
+      params: {
+        screen: "Prescription",
+      },
+    });
+  }, [navigation]);
 
   const hasFrameInCart = async () => {
     try {
@@ -844,17 +966,9 @@ export default function ProductDetailScreen({ navigation, route }) {
   const doAddToCart = useCallback(async () => {
     if (!product) return false;
 
-    if (product.type === "LENS") {
-      const hasRx = isRxFilled(rxOD, rxOS);
-      const hasPhoto = Boolean(rxPhoto?.uri);
-
-      if (orderType === "READY" && !hasRx) {
-        Alert.alert("Thiếu thông số", "Vui lòng nhập đầy đủ thông số (OD/OS).");
-        return false;
-      }
-
-      if (orderType === "CUSTOM" && !hasPhoto) {
-        Alert.alert("Thiếu ảnh đơn kính", "Vui lòng tải ảnh đơn kính để tiếp tục.");
+    if (isLensRxProduct) {
+      if (!lensValidation.valid) {
+        Alert.alert("Thiếu thông tin tròng kính", lensValidation.errors[0] || "Vui lòng kiểm tra lại đơn kính.");
         return false;
       }
     }
@@ -869,10 +983,8 @@ export default function ProductDetailScreen({ navigation, route }) {
         colorId,
         size,
         readyNote,
-        orderType: isPreorderMode ? "PREORDER" : orderType,
-        rxOD,
-        rxOS,
-        rxPhoto,
+        lensMethod,
+        lensDraft,
         selectedVariant,
       });
 
@@ -953,7 +1065,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
       Toast.show({
         type: "success",
-        text1: isPreorderMode ? "Đã đặt trước" : "Đã thêm vào giỏ",
+        text1: "Đã thêm vào giỏ hàng",
         text2: product.name,
       });
 
@@ -978,18 +1090,20 @@ export default function ProductDetailScreen({ navigation, route }) {
     size,
     readyNote,
     orderType,
-    rxOD,
-    rxOS,
-    rxPhoto,
+    lensDraft,
+    lensMethod,
     selectedVariant,
+    isLensRxProduct,
     isPreorderMode,
+    lensValidation.errors,
+    lensValidation.valid,
   ]);
 
   const onAddToCart = useCallback(async () => {
     if (!token) return requireLogin();
     if (!product || !canBuy) return;
 
-    if (product.type === "LENS" && !(await hasFrameInCart())) {
+    if (isLensRxProduct && !(await hasFrameInCart())) {
       Alert.alert(
         "Bạn đang mua tròng riêng",
         "Nếu bạn chưa có gọng phù hợp, bạn có thể thêm gọng để shop hỗ trợ lắp và căn chỉnh tốt hơn.",
@@ -1011,7 +1125,7 @@ export default function ProductDetailScreen({ navigation, route }) {
     }
 
     await doAddToCart();
-  }, [token, product, canBuy, doAddToCart, navigation, isPreorderMode]);
+  }, [token, product, canBuy, doAddToCart, navigation, isLensRxProduct, isPreorderMode]);
 
   const onBuyNow = async () => {
     if (!token) return requireLogin();
@@ -1082,7 +1196,7 @@ export default function ProductDetailScreen({ navigation, route }) {
       }
 
       const sourceSelectedVariant =
-        sourceProduct?.type === "FRAME"
+        isFrameLikeProduct(sourceProduct)
           ? getSelectedVariant(sourceProduct, { colorId, size })
           : getSelectedVariant(sourceProduct, { colorId, size: null });
 
@@ -1224,30 +1338,38 @@ export default function ProductDetailScreen({ navigation, route }) {
           />
         ) : null}
 
-        <Card>
-          <Text style={styles.sectionTitle}>Loại đơn hàng</Text>
+        {!isLensRxProduct ? (
+          <Card>
+            <Text style={styles.sectionTitle}>Loại đơn hàng</Text>
 
-          <Segmented items={orderTypeItems} value={orderType} onChange={setOrderType} />
+            <Segmented items={orderTypeItems} value={orderType} onChange={setOrderType} />
 
-          <Text style={styles.mutedText}>
-            {showPreorder
-              ? "Sản phẩm bạn chọn hiện hết hàng — bạn có thể đặt trước."
-              : product.shipping?.etaLabel || "Giao nhanh 1–3 ngày"}
-          </Text>
-        </Card>
+            <Text style={styles.mutedText}>
+              {showPreorder
+                ? "Sản phẩm bạn chọn hiện hết hàng — bạn có thể đặt trước."
+                : product.shipping?.etaLabel || "Giao nhanh 1–3 ngày"}
+            </Text>
+          </Card>
+        ) : null}
 
-        {product.type === "LENS" ? (
+        {isLensRxProduct ? (
           <LensOptions
             product={product}
             colorId={colorId}
             setColorId={setColorId}
-            orderType={orderType}
-            rxOD={rxOD}
-            rxOS={rxOS}
-            setRxOD={setRxOD}
-            setRxOS={setRxOS}
-            rxPhoto={rxPhoto}
+            lensMethod={lensMethod}
+            onChangeLensMethod={handleChangeLensMethod}
+            lensDraft={lensDraft}
+            setLensDraft={setLensDraft}
             pickRxPhoto={pickRxPhoto}
+            lensValidation={lensValidation}
+            lensRange={lensRange}
+            lensSummary={lensPrescriptionSummary}
+            selectedSavedPrescription={selectedSavedPrescription}
+            savedPrescriptionsLoading={savedPrescriptionsLoading}
+            onOpenSavedPrescriptionPicker={openSavedPrescriptionPicker}
+            onManagePrescriptions={handleManagePrescriptions}
+            supportsLensPairing={supportsLensPairing}
             canBuy={canBuy}
             onAdd={onAddToCart}
             onBuyNow={onBuyNow}
@@ -1289,11 +1411,11 @@ export default function ProductDetailScreen({ navigation, route }) {
           />
         ))}
 
-        {(normType(product.type) === "FRAME" || normType(product.type) === "LENS") ? (
+        {(isLensRxProduct || supportsLensPairing) ? (
           <CompatibleList
             navigation={navigation}
             items={compatibleItems}
-            title={normType(product.type) === "FRAME" ? "Tròng kính gợi ý" : "Gọng kính gợi ý"}
+            title={isLensRxProduct ? "Gọng kính gợi ý" : "Tròng kính gợi ý"}
           />
         ) : null}
 
@@ -1304,6 +1426,16 @@ export default function ProductDetailScreen({ navigation, route }) {
           mediaMode={mediaMode}
           image={mainImage}
           model3DUrl={model3DUrl}
+        />
+        <SavedPrescriptionPickerModal
+          visible={savedPrescriptionPickerOpen}
+          items={savedPrescriptions}
+          selectedId={selectedSavedPrescriptionId}
+          loading={savedPrescriptionsLoading}
+          onClose={() => setSavedPrescriptionPickerOpen(false)}
+          onRefresh={loadSavedPrescriptions}
+          onSelect={handleSelectSavedPrescription}
+          onManage={handleManagePrescriptions}
         />
         <View style={{ height: 18 }} />
       </ScrollView>
@@ -1429,7 +1561,7 @@ function Hero({
           </TouchableOpacity>
         ) : null}
 
-        {product.type === "FRAME" && has3D && !isOutOfStock ? (
+        {isFrameLikeProduct(product) && has3D && !isOutOfStock ? (
           <View style={styles.modeSwitchWrap}>
             <TouchableOpacity
               activeOpacity={0.9}
@@ -1595,13 +1727,19 @@ function LensOptions({
   product,
   colorId,
   setColorId,
-  orderType,
-  rxOD,
-  rxOS,
-  setRxOD,
-  setRxOS,
-  rxPhoto,
+  lensMethod,
+  onChangeLensMethod,
+  lensDraft,
+  setLensDraft,
   pickRxPhoto,
+  lensValidation,
+  lensRange,
+  lensSummary,
+  selectedSavedPrescription,
+  savedPrescriptionsLoading,
+  onOpenSavedPrescriptionPicker,
+  onManagePrescriptions,
+  supportsLensPairing,
   canBuy,
   onAdd,
   onBuyNow,
@@ -1611,8 +1749,37 @@ function LensOptions({
   decQty,
 }) {
   const hasColors = Array.isArray(product?.colors) && product.colors.length > 0;
+  const lensMethodItems = [
+    { key: LENS_PRESCRIPTION_METHODS.SAVED, label: "Đơn đã lưu" },
+    { key: LENS_PRESCRIPTION_METHODS.MANUAL, label: "Nhập thủ công" },
+    { key: LENS_PRESCRIPTION_METHODS.UPLOAD, label: "Tải ảnh đơn" },
+  ];
+  const showManual = lensMethod !== LENS_PRESCRIPTION_METHODS.UPLOAD;
+  const showUpload = lensMethod === LENS_PRESCRIPTION_METHODS.UPLOAD;
+  const warnings = Array.isArray(lensValidation?.warnings) ? lensValidation.warnings : [];
+  const fieldErrors = lensValidation?.fieldErrors || {};
+
+  const updateEye = (eyeKey, field, value) => {
+    setLensDraft((prev) => ({
+      ...prev,
+      [eyeKey]: {
+        ...(prev?.[eyeKey] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
   return (
     <Card>
+      {isPreorderMode ? (
+        <View style={styles.outOfStockInfoBox}>
+          <Ionicons name="alert-circle" size={16} color="#EF4444" />
+          <Text style={styles.outOfStockInfoText}>
+            Sản phẩm này đang hết hàng. Bạn vẫn có thể đặt trước và cung cấp đơn kính theo phương thức bên dưới.
+          </Text>
+        </View>
+      ) : null}
+
       {hasColors ? (
         <>
           <Text style={styles.sectionTitle}>Màu sắc</Text>
@@ -1634,50 +1801,184 @@ function LensOptions({
         </>
       ) : null}
 
-      <Text style={[styles.sectionTitle, { marginTop: hasColors ? 14 : 0 }]}>Thông số</Text>
+      <Text style={[styles.sectionTitle, { marginTop: hasColors ? 14 : 0 }]}>
+        Phương thức cung cấp đơn
+      </Text>
+      <Segmented items={lensMethodItems} value={lensMethod} onChange={onChangeLensMethod} />
+      <Text style={styles.mutedText}>
+        {showUpload
+          ? "Tải ảnh đơn kính nếu bạn đã có toa từ bác sĩ hoặc cửa hàng."
+          : "Điền thông số quang học để shop xử lý đơn tròng chính xác hơn."}
+      </Text>
 
-      {orderType === "READY" ? (
+      <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Thông số đơn kính</Text>
+
+      {lensMethod === LENS_PRESCRIPTION_METHODS.SAVED ? (
+        <View style={styles.savedRxCard}>
+          <View style={styles.savedRxHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.savedRxTitle}>
+                {selectedSavedPrescription?.name || "Chưa chọn đơn đã lưu"}
+              </Text>
+              <Text style={styles.savedRxMeta}>
+                {selectedSavedPrescription?.isDefault ? "Đơn mặc định" : "Chọn một đơn đã lưu để áp dụng cho sản phẩm này"}
+              </Text>
+            </View>
+            {savedPrescriptionsLoading ? (
+              <ActivityIndicator size="small" color="#2563EB" />
+            ) : (
+              <Ionicons name="document-text-outline" size={18} color="#2563EB" />
+            )}
+          </View>
+
+          {lensSummary?.lines?.length ? (
+            <View style={styles.savedRxLines}>
+              {lensSummary.lines.map((line) => (
+                <Text key={line} style={styles.savedRxLine}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.mutedText}>
+              Chọn đơn đã lưu để tự động điền SPH/CYL/AXIS/ADD/PD vào draft hiện tại.
+            </Text>
+          )}
+
+          <View style={styles.savedRxActions}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={styles.secondaryActionBtn}
+              onPress={onOpenSavedPrescriptionPicker}
+            >
+              <Text style={styles.secondaryActionText}>
+                {selectedSavedPrescription ? "Đổi đơn đã lưu" : "Chọn đơn đã lưu"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.88} onPress={onManagePrescriptions}>
+              <Text style={styles.linkInlineText}>Quản lý đơn kính</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
+      {showManual ? (
         <>
           <Text style={styles.eyeLabel}>Mắt phải (OD)</Text>
           <View style={styles.rxRow}>
             <RxInput
+              label="SPH"
+              placeholder="0.00"
+              value={lensDraft?.rightEye?.sphere}
+              onChangeText={(t) => updateEye("rightEye", "sphere", t)}
+              error={fieldErrors["rightEye.sphere"]}
+            />
+            <RxInput
               label="CYL"
               placeholder="0.00"
-              value={rxOD.CYL}
-              onChangeText={(t) => setRxOD((p) => ({ ...p, CYL: t }))}
+              value={lensDraft?.rightEye?.cyl}
+              onChangeText={(t) => updateEye("rightEye", "cyl", t)}
+              error={fieldErrors["rightEye.cyl"]}
             />
             <RxInput
               label="AXIS"
               placeholder="0"
-              value={rxOD.AXIS}
-              onChangeText={(t) => setRxOD((p) => ({ ...p, AXIS: t }))}
+              value={lensDraft?.rightEye?.axis}
+              onChangeText={(t) => updateEye("rightEye", "axis", t)}
+              error={fieldErrors["rightEye.axis"]}
+            />
+            <RxInput
+              label="ADD"
+              placeholder="0.00"
+              value={lensDraft?.rightEye?.add}
+              onChangeText={(t) => updateEye("rightEye", "add", t)}
+              error={fieldErrors["rightEye.add"]}
             />
           </View>
 
           <Text style={[styles.eyeLabel, { marginTop: 10 }]}>Mắt trái (OS)</Text>
           <View style={styles.rxRow}>
             <RxInput
+              label="SPH"
+              placeholder="0.00"
+              value={lensDraft?.leftEye?.sphere}
+              onChangeText={(t) => updateEye("leftEye", "sphere", t)}
+              error={fieldErrors["leftEye.sphere"]}
+            />
+            <RxInput
               label="CYL"
               placeholder="0.00"
-              value={rxOS.CYL}
-              onChangeText={(t) => setRxOS((p) => ({ ...p, CYL: t }))}
+              value={lensDraft?.leftEye?.cyl}
+              onChangeText={(t) => updateEye("leftEye", "cyl", t)}
+              error={fieldErrors["leftEye.cyl"]}
             />
             <RxInput
               label="AXIS"
               placeholder="0"
-              value={rxOS.AXIS}
-              onChangeText={(t) => setRxOS((p) => ({ ...p, AXIS: t }))}
+              value={lensDraft?.leftEye?.axis}
+              onChangeText={(t) => updateEye("leftEye", "axis", t)}
+              error={fieldErrors["leftEye.axis"]}
+            />
+            <RxInput
+              label="ADD"
+              placeholder="0.00"
+              value={lensDraft?.leftEye?.add}
+              onChangeText={(t) => updateEye("leftEye", "add", t)}
+              error={fieldErrors["leftEye.add"]}
             />
           </View>
+
+          <View style={[styles.rxRow, { marginTop: 12 }]}>
+            <RxInput
+              label="PD"
+              placeholder="0"
+              value={lensDraft?.pd}
+              onChangeText={(t) =>
+                setLensDraft((prev) => ({
+                  ...prev,
+                  pd: t,
+                }))
+              }
+              error={fieldErrors.pd}
+            />
+          </View>
+
+          <TextInput
+            value={lensDraft?.note}
+            onChangeText={(text) =>
+              setLensDraft((prev) => ({
+                ...prev,
+                note: text,
+              }))
+            }
+            placeholder="Ghi chú thêm cho đơn kính hoặc nhu cầu của bạn..."
+            placeholderTextColor="#9AA4B2"
+            style={[styles.noteInput, { marginTop: 12 }]}
+            multiline
+          />
+
+          <View style={styles.rxHintBox}>
+            <Text style={styles.rxHintText}>
+              Khoảng hỗ trợ tham khảo: SPH {lensRange?.sphMin ?? "--"} đến {lensRange?.sphMax ?? "--"} • CYL {lensRange?.cylMin ?? "--"} đến {lensRange?.cylMax ?? "--"} • AXIS {lensRange?.axisMin ?? "--"} đến {lensRange?.axisMax ?? "--"} • ADD {lensRange?.addMin ?? "--"} đến {lensRange?.addMax ?? "--"}
+            </Text>
+          </View>
+
+          {warnings.length ? (
+            <View style={styles.rxWarningBox}>
+              {warnings.map((warning) => (
+                <Text key={warning} style={styles.rxWarningText}>
+                  {warning}
+                </Text>
+              ))}
+            </View>
+          ) : null}
         </>
-      ) : (
+      ) : null}
+
+      {showUpload ? (
         <View style={{ marginTop: 12 }}>
           <Text style={styles.mutedText}>
-            {isPreorderMode
-              ? "Sản phẩm hết hàng. Bạn đang đặt trước — Vui lòng cung cấp thông tin theo lựa chọn dưới đây."
-              : orderType === "CUSTOM"
-                ? "Làm theo đơn: Vui lòng tải ảnh đơn kính do bác sĩ cung cấp."
-                : ""}
+            Tải ảnh đơn kính rõ nét để shop nhập thông số theo toa của bạn. Bạn vẫn có thể thêm ghi chú bên dưới.
           </Text>
 
           <TouchableOpacity
@@ -1685,12 +1986,39 @@ function LensOptions({
             style={[styles.outlineBtn, { width: "100%", marginTop: 10 }]}
             onPress={pickRxPhoto}
           >
-            <Text style={styles.outlineBtnText}>{rxPhoto?.uri ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}</Text>
+            <Text style={styles.outlineBtnText}>
+              {lensDraft?.attachmentUrls?.length ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}
+            </Text>
           </TouchableOpacity>
 
-          {rxPhoto?.uri ? <Text style={styles.mutedText}>Đã chọn ảnh</Text> : null}
+          {lensDraft?.attachmentUrls?.length ? (
+            <Text style={styles.mutedText}>Đã chọn ảnh đơn kính.</Text>
+          ) : null}
+
+          <TextInput
+            value={lensDraft?.note}
+            onChangeText={(text) =>
+              setLensDraft((prev) => ({
+                ...prev,
+                note: text,
+              }))
+            }
+            placeholder="Ghi chú thêm cho đơn kính..."
+            placeholderTextColor="#9AA4B2"
+            style={[styles.noteInput, { marginTop: 12 }]}
+            multiline
+          />
         </View>
-      )}
+      ) : null}
+
+      {supportsLensPairing ? (
+        <>
+          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Kết hợp với gọng</Text>
+          <Text style={styles.mutedText}>
+            Bạn có thể thêm gọng tương thích vào giỏ và dùng tính năng kết hợp 1-1 ở màn giỏ hàng để shop lắp và căn chỉnh tốt hơn.
+          </Text>
+        </>
+      ) : null}
 
       <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Số lượng</Text>
       <View style={styles.qtyRow}>
@@ -1705,6 +2033,106 @@ function LensOptions({
 
       <CTAButtons canBuy={canBuy} onAdd={onAdd} onBuyNow={onBuyNow} isPreorder={isPreorderMode} />
     </Card>
+  );
+}
+
+function SavedPrescriptionPickerModal({
+  visible,
+  items = [],
+  selectedId,
+  loading = false,
+  onClose,
+  onRefresh,
+  onSelect,
+  onManage,
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.sheetOverlay}>
+        <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+        <View style={styles.pickerSheet}>
+          <View style={styles.pickerSheetHeader}>
+            <View>
+              <Text style={styles.sheetTitleText}>Chọn đơn đã lưu</Text>
+              <Text style={styles.sheetSubtitleText}>
+                Dữ liệu sẽ được copy vào đơn hàng hiện tại.
+              </Text>
+            </View>
+            <TouchableOpacity activeOpacity={0.85} onPress={onClose} style={styles.sheetCloseBtn}>
+              <Ionicons name="close" size={20} color="#111827" />
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <View style={styles.savedPickerEmpty}>
+              <ActivityIndicator size="small" color="#2563EB" />
+              <Text style={styles.savedPickerEmptyText}>Đang tải đơn kính đã lưu...</Text>
+            </View>
+          ) : items.length === 0 ? (
+            <View style={styles.savedPickerEmpty}>
+              <Ionicons name="document-text-outline" size={22} color="#9CA3AF" />
+              <Text style={styles.savedPickerEmptyTitle}>Chưa có đơn đã lưu</Text>
+              <Text style={styles.savedPickerEmptyText}>
+                Bạn có thể thêm prescription ở hồ sơ rồi quay lại đây để áp dụng nhanh.
+              </Text>
+            </View>
+          ) : (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: 360 }}
+              contentContainerStyle={{ gap: 10 }}
+            >
+              {items.map((item) => {
+                const summary = summarizeLensPrescription({
+                  mode: "manual",
+                  rightEye: item?.rightEye,
+                  leftEye: item?.leftEye,
+                  pd: item?.pd,
+                  note: item?.note,
+                });
+                const active = String(item?._id || "") === String(selectedId || "");
+
+                return (
+                  <TouchableOpacity
+                    key={item?._id || item?.name}
+                    activeOpacity={0.9}
+                    onPress={() => onSelect?.(item)}
+                    style={[styles.savedPickerCard, active && styles.savedPickerCardActive]}
+                  >
+                    <View style={styles.savedPickerCardHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.savedPickerCardTitle}>{item?.name || "Prescription"}</Text>
+                        <Text style={styles.savedPickerCardMeta}>
+                          {item?.isDefault ? "Đơn mặc định" : "Đơn đã lưu"}
+                        </Text>
+                      </View>
+                      {active ? (
+                        <Ionicons name="checkmark-circle" size={20} color="#2563EB" />
+                      ) : null}
+                    </View>
+                    {summary.lines.map((line) => (
+                      <Text key={`${item?._id}-${line}`} style={styles.savedPickerLine}>
+                        {line}
+                      </Text>
+                    ))}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          <View style={styles.savedPickerActions}>
+            <TouchableOpacity activeOpacity={0.88} style={styles.outlineBtn} onPress={() => onRefresh?.()}>
+              <Text style={styles.outlineBtnText}>Làm mới</Text>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.88} style={styles.primaryBtn} onPress={onManage}>
+              <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.primaryBtnText}>Quản lý đơn kính</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2128,7 +2556,7 @@ function Accordion({ title, open, onToggle, content }) {
   );
 }
 
-function RxInput({ label, placeholder, value, onChangeText }) {
+function RxInput({ label, placeholder, value, onChangeText, error }) {
   return (
     <View style={styles.rxCell}>
       <Text style={styles.rxLabel}>{label}</Text>
@@ -2138,8 +2566,9 @@ function RxInput({ label, placeholder, value, onChangeText }) {
         placeholder={placeholder}
         placeholderTextColor="#9AA4B2"
         keyboardType="numeric"
-        style={styles.rxInput}
+        style={[styles.rxInput, error && styles.rxInputError]}
       />
+      {error ? <Text style={styles.rxInputErrorText}>{error}</Text> : null}
     </View>
   );
 }
@@ -2361,6 +2790,51 @@ const styles = StyleSheet.create({
     color: "#111827",
     backgroundColor: "#FFFFFF",
   },
+  rxInputError: { borderColor: "#DC2626" },
+  rxInputErrorText: { marginTop: 6, fontSize: 11.5, fontWeight: "700", color: "#DC2626" },
+  rxHintBox: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+  },
+  rxHintText: { fontSize: 11.5, fontWeight: "700", color: "#64748B", lineHeight: 16 },
+  rxWarningBox: {
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#FFF7ED",
+    gap: 6,
+  },
+  rxWarningText: { fontSize: 11.5, fontWeight: "700", color: "#B45309" },
+  savedRxCard: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+    backgroundColor: "#F8FBFF",
+    padding: 12,
+  },
+  savedRxHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  savedRxTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  savedRxMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "700", color: "#2563EB" },
+  savedRxLines: { marginTop: 10, gap: 6 },
+  savedRxLine: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
+  savedRxActions: { marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12 },
+  secondaryActionBtn: {
+    height: 40,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryActionText: { fontSize: 12, fontWeight: "900", color: "#2563EB" },
+  linkInlineText: { fontSize: 12, fontWeight: "900", color: "#2563EB" },
 
   colorRow: { marginTop: 10, flexDirection: "row", gap: 10, alignItems: "center" },
   colorDotWrap: {
@@ -2421,6 +2895,74 @@ const styles = StyleSheet.create({
     color: "#111827",
     backgroundColor: "#FFFFFF",
   },
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(17,24,39,0.45)",
+    justifyContent: "flex-end",
+  },
+  sheetBackdrop: { flex: 1 },
+  pickerSheet: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+    gap: 14,
+  },
+  pickerSheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  sheetTitleText: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  sheetSubtitleText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  sheetCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  savedPickerEmpty: {
+    minHeight: 120,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  savedPickerEmptyTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  savedPickerEmptyText: {
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+    lineHeight: 18,
+  },
+  savedPickerCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+    gap: 6,
+  },
+  savedPickerCardActive: {
+    borderColor: "#2563EB",
+    backgroundColor: "#EFF6FF",
+  },
+  savedPickerCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  savedPickerCardTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  savedPickerCardMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "700", color: "#2563EB" },
+  savedPickerLine: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
+  savedPickerActions: { flexDirection: "row", gap: 12 },
 
   specRow: { flexDirection: "row", paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#EEF2F7" },
   specLabel: { width: 130, fontSize: 12, fontWeight: "800", color: "#6B7280" },

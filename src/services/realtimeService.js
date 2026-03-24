@@ -1,9 +1,4 @@
-function normalizeBaseUrl(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\/$/, "")
-    .replace(/\/api$/, "");
-}
+import { getApiBaseUrl, normalizeBaseUrl } from "./runtimeConfig";
 
 export function buildRealtimeUrl(token) {
   const normalizedToken = String(token || "").trim();
@@ -12,7 +7,7 @@ export function buildRealtimeUrl(token) {
   }
 
   const configuredBaseUrl = normalizeBaseUrl(
-    process.env.EXPO_PUBLIC_API_URL || "",
+    getApiBaseUrl({ required: false })
   );
   if (!configuredBaseUrl) {
     return null;

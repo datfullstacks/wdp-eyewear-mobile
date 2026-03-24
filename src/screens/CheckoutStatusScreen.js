@@ -580,39 +580,6 @@ const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
   };
 };
 
-const DEMO_ORDER = {
-  orderId: "OD123456",
-  createdAt: new Date().toISOString(),
-  status: "CONFIRMED",
-  breakdown: {
-    subtotal: 2450000,
-    shippingFee: 25000,
-    discountAmount: 50000,
-    total: 2450000,
-    payNow: 735000,
-    payLater: 1715000,
-  },
-  shippingAddress: {
-    fullName: "Nguyễn Văn A",
-    phone: "0912 345 678",
-    line1: "123 Đường Lê Lợi",
-    ward: "Phường Bến Nghé",
-    district: "Quận 1",
-    province: "TP. Hồ Chí Minh",
-    country: "VN",
-  },
-  payment: {
-    method: "VNPAY",
-    status: "PENDING_QR",
-    amount: 735000,
-    paymentCode: "VNPAY-2025-123456",
-    content: "VNPAY-2025-123456",
-    bankAccountId: "BANK-001",
-    createdAt: new Date().toISOString(),
-    paidAt: null,
-  },
-};
-
 const normalizeOrder = (raw) => {
   const breakdown = raw?.breakdown || {};
   const subtotal = breakdown.subtotal ?? raw?.subtotal ?? raw?.total ?? 0;
@@ -849,10 +816,11 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const rawOrder = useMemo(() => {
     if (initialOrder && serverOrder)
       return mergeOrderSnapshot(initialOrder, serverOrder);
-    return serverOrder || initialOrder || DEMO_ORDER;
+    return serverOrder || initialOrder || null;
   }, [initialOrder, serverOrder]);
 
-  const order = useMemo(() => normalizeOrder(rawOrder), [rawOrder]);
+  const order = useMemo(() => normalizeOrder(rawOrder || {}), [rawOrder]);
+  const hasOrderContext = Boolean(rawOrder);
 
   const pollOrderId = useMemo(() => {
     const id = rawOrder?._id || rawOrder?.id || rawOrder?.orderId;
@@ -978,8 +946,22 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   }, [paymentStatus, clearCart, cartType]);
 
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
-  const handleViewOrderDetail = () => navigateToTab("ProfileTab", "Orders");
+
   const handleBackToHome = () => navigateToTab("HomeTab", "Home");
+  const handleViewOrderDetail = () => {
+    if (pollOrderId && pollOrderId !== "OD--" && !/^OD\d+$/i.test(pollOrderId)) {
+      navigation.navigate("Tabs", {
+        screen: "ProfileTab",
+        params: {
+          screen: "OrderDetail",
+          params: { orderId: pollOrderId },
+        },
+      });
+      return;
+    }
+
+    navigateToTab("ProfileTab", "Orders");
+  };
   const handleRequestRefund = () => {
     if (!canOpenRefundForm) return;
 
@@ -1057,6 +1039,58 @@ export default function CheckoutStatusScreen({ navigation, route }) {
       ]
     );
   };
+
+  if (!hasOrderContext) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              onPress={() =>
+                navigation?.canGoBack?.() ? navigation.goBack() : null
+              }
+              activeOpacity={0.85}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="chevron-back" size={22} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Trạng thái thanh toán</Text>
+          </View>
+        </View>
+
+        <View style={styles.content}>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Khong tim thay don hang</Text>
+            <Text style={styles.mutedText}>
+              Man hinh nay can duoc mo tu checkout hoac tu mot don hang hop le.
+            </Text>
+
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnGhost]}
+                activeOpacity={0.85}
+                onPress={handleContinueShopping}
+              >
+                <Text style={[styles.actionText, styles.actionTextGhost]}>
+                  Mua tiep
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnPrimary]}
+                activeOpacity={0.85}
+                onPress={handleViewOrderDetail}
+              >
+                <Text style={[styles.actionText, styles.actionTextPrimary]}>
+                  Xem don hang
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
