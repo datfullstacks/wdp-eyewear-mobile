@@ -29,6 +29,7 @@ const STAT_ACCENTS = {
 
 const SETTING_ACCENTS = {
   payments: { bg: "#FFFBEB", fg: "#D97706" },
+  refund: { bg: "#FEE2E2", fg: "#DC2626" },
   support: { bg: "#F3E8FF", fg: "#7C3AED" },
   noti: { bg: "#ECFEFF", fg: "#0891B2" },
 };

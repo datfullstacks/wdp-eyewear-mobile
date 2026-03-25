@@ -27,16 +27,16 @@ function formatTime(value) {
 
 function getPriorityLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "high") return "Uu tien cao";
-  if (normalized === "low") return "Uu tien thap";
-  return "Binh thuong";
+  if (normalized === "high") return "Ưu tiên cao";
+  if (normalized === "low") return "Ưu tiên thấp";
+  return "Bình thường";
 }
 
 function getEligibilityLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "eligible") return "Con bao hanh";
-  if (normalized === "expired") return "Het han";
-  if (normalized === "not_covered") return "Khong duoc bao hanh";
+  if (normalized === "eligible") return "Còn bảo hành";
+  if (normalized === "expired") return "Hết hạn";
+  if (normalized === "not_covered") return "Không được bảo hành";
   return "--";
 }
 
@@ -83,7 +83,7 @@ function MessageBubble({ item }) {
         ]}
       >
         <Text style={[styles.messageSender, isStaff && styles.messageSenderStaff]}>
-          {isStaff ? "Staff" : "Ban"}
+          {isStaff ? "Staff" : "Bạn"}
         </Text>
         <Text style={[styles.messageText, isStaff && styles.messageTextStaff]}>
           {item?.message || "--"}
@@ -110,7 +110,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
   const loadTicket = useCallback(
     async ({ silent = false } = {}) => {
       if (!ticketId) {
-        setError("Thieu ticketId.");
+        setError("Thiếu ticketId.");
         setLoading(false);
         setRefreshing(false);
         return;
@@ -127,7 +127,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
           err?.response?.data?.message ||
           err?.response?.data?.error ||
           err?.message ||
-          "Khong tai duoc chi tiet ticket";
+          "Không tải được chi tiết ticket";
         setError(message);
       } finally {
         if (!silent) setLoading(false);
@@ -158,7 +158,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
-        "Khong gui duoc phan hoi";
+        "Không gửi được phản hồi";
       Alert.alert("Support", messageText);
     } finally {
       setSubmitting(false);
@@ -177,13 +177,13 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
             >
               <Ionicons name="chevron-back" size={22} color="#111827" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Chi tiet ho tro</Text>
+            <Text style={styles.headerTitle}>Chi tiết hỗ trợ</Text>
           </View>
         </View>
 
         <View style={styles.centerWrap}>
           <ActivityIndicator size="small" color="#2563EB" />
-          <Text style={styles.mutedText}>Dang tai ticket...</Text>
+          <Text style={styles.mutedText}>Đang tải ticket...</Text>
         </View>
       </SafeAreaView>
     );
@@ -201,15 +201,15 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
             >
               <Ionicons name="chevron-back" size={22} color="#111827" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Chi tiet ho tro</Text>
+            <Text style={styles.headerTitle}>Chi tiết hỗ trợ</Text>
           </View>
         </View>
 
         <View style={styles.centerWrap}>
           <Ionicons name="alert-circle-outline" size={40} color="#9CA3AF" />
-          <Text style={styles.errorText}>{error || "Khong tim thay ticket"}</Text>
+          <Text style={styles.errorText}>{error || "Không tìm thấy ticket"}</Text>
           <TouchableOpacity style={styles.retryBtn} onPress={() => loadTicket()}>
-            <Text style={styles.retryText}>Thu lai</Text>
+            <Text style={styles.retryText}>Thử lại</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -227,7 +227,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Chi tiet ho tro</Text>
+          <Text style={styles.headerTitle}>Chi tiết hỗ trợ</Text>
         </View>
       </View>
 
@@ -258,18 +258,18 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
             />
             <MetaBadge label={getPriorityLabel(ticket.priority)} fg="#4338CA" bg="#EEF2FF" />
           </View>
-          <InfoRow label="Cap nhat" value={formatTime(ticket.lastMessageAt || ticket.updatedAt)} />
-          <InfoRow label="Tao luc" value={formatTime(ticket.createdAt)} />
+          <InfoRow label="Cập nhật" value={formatTime(ticket.lastMessageAt || ticket.updatedAt)} />
+          <InfoRow label="Tạo lúc" value={formatTime(ticket.createdAt)} />
           <InfoRow label="Email" value={ticket.email || "--"} />
         </SectionCard>
 
         {(ticket.order || ticket.store) && (
-          <SectionCard title="Lien ket don hang" icon="receipt-outline">
-            <InfoRow label="Ma don" value={ticket.order?.paymentCode || ticket.order?.id || "--"} />
-            <InfoRow label="Trang thai don" value={ticket.order?.status || "--"} />
-            <InfoRow label="Loai don" value={ticket.order?.orderType || "--"} />
+          <SectionCard title="Liên kết đơn hàng" icon="receipt-outline">
+            <InfoRow label="Mã đơn" value={ticket.order?.paymentCode || ticket.order?.id || "--"} />
+            <InfoRow label="Trạng thái đơn" value={ticket.order?.status || "--"} />
+            <InfoRow label="Loại đơn" value={ticket.order?.orderType || "--"} />
             <InfoRow
-              label="Cua hang xu ly"
+              label="Cửa hàng xử lý"
               value={
                 ticket.store?.name
                   ? `${ticket.store.name}${ticket.store.code ? ` (${ticket.store.code})` : ""}`
@@ -277,32 +277,32 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
               }
             />
             <InfoRow
-              label="Khu vuc"
+              label="Khu vực"
               value={[ticket.store?.district, ticket.store?.city].filter(Boolean).join(", ")}
             />
           </SectionCard>
         )}
 
         {warrantyEnabled && (
-          <SectionCard title="Thong tin bao hanh" icon="shield-checkmark-outline">
-            <InfoRow label="Mat hang" value={warranty?.itemName || "--"} />
-            <InfoRow label="Tinh trang" value={getEligibilityLabel(warranty?.eligibility)} />
+          <SectionCard title="Thông tin bảo hành" icon="shield-checkmark-outline">
+            <InfoRow label="Mặt hàng" value={warranty?.itemName || "--"} />
+            <InfoRow label="Tình trạng" value={getEligibilityLabel(warranty?.eligibility)} />
             <InfoRow
-              label="Thoi han"
+              label="Thời hạn"
               value={
                 warranty?.warrantyMonths
-                  ? `${warranty.warrantyMonths} thang`
-                  : "Khong co"
+                  ? `${warranty.warrantyMonths} tháng`
+                  : "Không có"
               }
             />
-            <InfoRow label="Het han" value={formatTime(warranty?.expiresAt)} />
-            <InfoRow label="Ghi chu duyet" value={warranty?.decisionNote || "--"} />
-            <InfoRow label="Ghi chu bao hanh" value={warranty?.serviceNote || "--"} />
+            <InfoRow label="Hết hạn" value={formatTime(warranty?.expiresAt)} />
+            <InfoRow label="Ghi chú duyệt" value={warranty?.decisionNote || "--"} />
+            <InfoRow label="Ghi chú bảo hành" value={warranty?.serviceNote || "--"} />
           </SectionCard>
         )}
 
         <SectionCard
-          title="Tin nhan"
+          title="Tin nhắn"
           icon="mail-open-outline"
           right={<Text style={styles.subtleMeta}>{ticket.messages?.length || 0} tin</Text>}
         >
@@ -314,17 +314,17 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
               />
             ))
           ) : (
-            <Text style={styles.mutedText}>Chua co noi dung hoi dap.</Text>
+            <Text style={styles.mutedText}>Chưa có nội dung hỏi đáp.</Text>
           )}
         </SectionCard>
 
-        <SectionCard title="Phan hoi" icon="create-outline">
+        <SectionCard title="Phản hồi" icon="create-outline">
           <Text style={styles.mutedText}>
-            Gui them thong tin de staff tiep tuc xu ly case nay.
+            Gửi thêm thông tin để staff tiếp tục xử lý case này.
           </Text>
           <TextInput
             style={styles.replyInput}
-            placeholder="Nhap noi dung phan hoi..."
+            placeholder="Nhập nội dung phản hồi..."
             multiline
             textAlignVertical="top"
             value={reply}
@@ -337,7 +337,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
             disabled={!String(reply || "").trim() || submitting}
           >
             <Text style={styles.submitText}>
-              {submitting ? "Dang gui..." : "Gui phan hoi"}
+              {submitting ? "Đang gửi..." : "Gửi phản hồi"}
             </Text>
           </TouchableOpacity>
         </SectionCard>

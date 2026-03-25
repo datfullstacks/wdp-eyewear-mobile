@@ -1,4 +1,4 @@
-// screens/OrderDetailScreen.js
+﻿// screens/OrderDetailScreen.js
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -138,27 +138,27 @@ function getRefundOwnerLabel(value) {
   if (normalized === "sales") return "Sale/Staff";
   if (normalized === "manager") return "Manager";
   if (normalized === "operations") return "Operations";
-  if (normalized === "customer") return "Ban";
-  return "Da dong case";
+  if (normalized === "customer") return "Bạn";
+  return "Đã đóng case";
 }
 
 function getRefundNextStepLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "customer_submit_info") return "Ban bo sung thong tin";
-  if (normalized === "manager_approve") return "Manager quyet dinh";
-  if (normalized === "confirm_return_received") return "Operations nhan / QC hang";
-  if (normalized === "start_processing") return "Operations bat dau payout";
-  if (normalized === "complete") return "Operations xac nhan da chuyen tien";
-  if (normalized === "start_review") return "Staff review ho so";
+  if (normalized === "customer_submit_info") return "Bạn bổ sung thông tin";
+  if (normalized === "manager_approve") return "Manager quyết định";
+  if (normalized === "confirm_return_received") return "Operations nhận / QC hàng";
+  if (normalized === "start_processing") return "Operations bắt đầu payout";
+  if (normalized === "complete") return "Operations xác nhận đã chuyển tiền";
+  if (normalized === "start_review") return "Staff review hồ sơ";
   return "--";
 }
 
 function getRefundInspectionLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "pending") return "Dang doi soat";
-  if (normalized === "passed") return "Da dat";
-  if (normalized === "failed") return "Khong dat";
-  return "Khong yeu cau";
+  if (normalized === "pending") return "Đang đối soát";
+  if (normalized === "passed") return "Đã đạt";
+  if (normalized === "failed") return "Không đạt";
+  return "Không yêu cầu";
 }
 
 function getRefundHistoryEntries(refund) {
@@ -331,10 +331,10 @@ function buildOrderSupportSubject(order, item = null) {
 
   const orderCode = String(order?.paymentCode || order?._id || order?.id || "").trim();
   if (orderCode) {
-    return `Ho tro don ${orderCode}`;
+    return `Hỗ trợ đơn ${orderCode}`;
   }
 
-  return "Ho tro don hang";
+  return "Hỗ trợ đơn hàng";
 }
 
 export default function OrderDetailScreen({ navigation, route }) {
@@ -436,32 +436,32 @@ export default function OrderDetailScreen({ navigation, route }) {
     if (!order?._id || isCancelling) return;
     const cancelConfirmMessage =
       paidAmount > 0
-        ? "Ban chac chan muon huy don nay? He thong se tao luong hoan tien cho khoan da thanh toan."
-        : "Ban chac chan muon huy don nay? Thao tac khong the hoan tac.";
+        ? "Bạn chắc chắn muốn hủy đơn này? Hệ thống sẽ tạo luồng hoàn tiền cho khoản đã thanh toán."
+        : "Bạn chắc chắn muốn hủy đơn này? Thao tác không thể hoàn tác.";
     const cancelSuccessMessage =
       paidAmount > 0
-        ? "Da huy don hang. Yeu cau hoan tien da duoc khoi tao cho khoan da thanh toan."
-        : "Da huy don hang.";
+        ? "Đã hủy đơn hàng. Yêu cầu hoàn tiền đã được khởi tạo cho khoản đã thanh toán."
+        : "Đã hủy đơn hàng.";
 
     if (paidAmount > 0) {
-      Alert.alert("Huy don hang?", cancelConfirmMessage, [
-        { text: "Khong", style: "cancel" },
+      Alert.alert("Hủy đơn hàng?", cancelConfirmMessage, [
+        { text: "Không", style: "cancel" },
         {
-          text: "Huy don",
+          text: "Hủy đơn",
           style: "destructive",
           onPress: async () => {
             try {
               setIsCancelling(true);
               await cancelOrderApi(order._id);
               await loadOrder({ silent: true });
-              Alert.alert("Thanh cong", cancelSuccessMessage);
+              Alert.alert("Thành công", cancelSuccessMessage);
             } catch (err) {
               const message =
                 err?.response?.data?.message ||
                 err?.response?.data?.error ||
                 err?.message ||
-                "Khong the huy don hang";
-              Alert.alert("Huy that bai", message);
+                "Không thể hủy đơn hàng";
+              Alert.alert("Hủy thất bại", message);
             } finally {
               setIsCancelling(false);
             }
@@ -472,26 +472,26 @@ export default function OrderDetailScreen({ navigation, route }) {
     }
 
     Alert.alert(
-      "Huỷ đơn hàng?",
-      "Bạn chắc chắn muốn huỷ đơn này? Thao tác không thể hoàn tác.",
+      "Hủy đơn hàng?",
+      "Bạn chắc chắn muốn hủy đơn này? Thao tác không thể hoàn tác.",
       [
         { text: "Không", style: "cancel" },
         {
-          text: "Huỷ đơn",
+          text: "Hủy đơn",
           style: "destructive",
           onPress: async () => {
             try {
               setIsCancelling(true);
               await cancelOrderApi(order._id);
               await loadOrder({ silent: true });
-              Alert.alert("Thành công", "Đã huỷ đơn hàng.");
+              Alert.alert("Thành công", "Đã hủy đơn hàng.");
             } catch (err) {
               const message =
                 err?.response?.data?.message ||
                 err?.response?.data?.error ||
                 err?.message ||
-                "Không thể huỷ đơn hàng";
-              Alert.alert("Huỷ thất bại", message);
+                "Không thể hủy đơn hàng";
+              Alert.alert("Hủy thất bại", message);
             } finally {
               setIsCancelling(false);
             }
@@ -562,7 +562,7 @@ export default function OrderDetailScreen({ navigation, route }) {
     (item) => {
       const itemId = item?.itemId || item?._id || null;
       if (!itemId) {
-        Alert.alert("Bao hanh", "Khong xac dinh duoc item de tao case bao hanh.");
+        Alert.alert("Bảo hành", "Không xác định được sản phẩm để tạo case bảo hành.");
         return;
       }
 
@@ -733,7 +733,7 @@ export default function OrderDetailScreen({ navigation, route }) {
                     size={16}
                     color="#991B1B"
                   />
-                  <Text style={styles.cancelOrderBtnText}>Huỷ đơn hàng</Text>
+                  <Text style={styles.cancelOrderBtnText}>Hủy đơn hàng</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -1023,11 +1023,11 @@ export default function OrderDetailScreen({ navigation, route }) {
           </SectionCard>
         )}
         {(canSubmitRefundInfo || canRequestRefund) && (
-          <SectionCard title="Yeu cau hoan tien" icon="return-down-back-outline">
+          <SectionCard title="Yêu cầu hoàn tiền" icon="return-down-back-outline">
             <Text style={styles.refundHelperText}>
               {canSubmitRefundInfo
-                ? "Refund nay dang cho ban bo sung thong tin de staff tiep tuc review."
-                : "Neu don hang co van de, ban co the gui yeu cau refund de staff tiep nhan va xu ly."}
+                ? "Refund này đang chờ bạn bổ sung thông tin để staff tiếp tục review."
+                : "Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để staff tiếp nhận và xử lý."}
             </Text>
             <TouchableOpacity
               style={styles.refundActionBtn}
@@ -1036,32 +1036,32 @@ export default function OrderDetailScreen({ navigation, route }) {
             >
               <Text style={styles.refundActionText}>
                 {canSubmitRefundInfo
-                  ? "Bo sung thong tin hoan tien"
+                  ? "Bổ sung thông tin hoàn tiền"
                   : order?.refund
-                    ? "Tao yeu cau hoan tien moi"
-                    : "Tao yeu cau hoan tien"}
+                    ? "Tạo yêu cầu hoàn tiền mới"
+                    : "Tạo yêu cầu hoàn tiền"}
               </Text>
             </TouchableOpacity>
           </SectionCard>
         )}
 
         <SectionCard
-          title="Ho tro sau mua"
+          title="Hỗ trợ sau mua"
           icon="chatbubble-ellipses-outline"
           right={
             <TouchableOpacity onPress={openSupportCenter} activeOpacity={0.8}>
-              <Text style={styles.linkText}>Tat ca case</Text>
+              <Text style={styles.linkText}>Tất cả case</Text>
             </TouchableOpacity>
           }
         >
           <Text style={styles.refundHelperText}>
-            Theo doi support, refund, va warranty cua don nay tu cung mot noi.
+            Theo dõi support, refund, và warranty của đơn này từ cùng một nơi.
           </Text>
 
           {!!orderStore && (
             <View style={styles.afterSalesStoreBox}>
               <Text style={styles.afterSalesStoreTitle}>
-                Cua hang xu ly:{" "}
+                Cửa hàng xử lý:{" "}
                 {orderStore.name
                   ? `${orderStore.name}${orderStore.code ? ` (${orderStore.code})` : ""}`
                   : "--"}
@@ -1071,7 +1071,7 @@ export default function OrderDetailScreen({ navigation, route }) {
               </Text>
               {orderStore.openingHours ? (
                 <Text style={styles.afterSalesStoreMeta}>
-                  Gio mo cua: {orderStore.openingHours}
+                  Giờ mở cửa: {orderStore.openingHours}
                 </Text>
               ) : null}
             </View>
@@ -1082,7 +1082,7 @@ export default function OrderDetailScreen({ navigation, route }) {
             onPress={openOrderSupport}
             activeOpacity={0.85}
           >
-            <Text style={styles.secondaryActionText}>Tao ticket cho don hang</Text>
+            <Text style={styles.secondaryActionText}>Tạo ticket cho đơn hàng</Text>
           </TouchableOpacity>
 
           {canRequestWarranty ? (
@@ -1093,7 +1093,7 @@ export default function OrderDetailScreen({ navigation, route }) {
                   style={styles.afterSalesCard}
                 >
                   <View style={styles.afterSalesHeader}>
-                    <Text style={styles.afterSalesTitle}>{item?.name || "San pham"}</Text>
+                    <Text style={styles.afterSalesTitle}>{item?.name || "Sản phẩm"}</Text>
                     {!!item?.variantText ? (
                       <Text style={styles.afterSalesMeta}>{item.variantText}</Text>
                     ) : null}
@@ -1104,7 +1104,7 @@ export default function OrderDetailScreen({ navigation, route }) {
                     onPress={() => openWarrantyRequest(item)}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.afterSalesActionText}>Yeu cau bao hanh</Text>
+                    <Text style={styles.afterSalesActionText}>Yêu cầu bảo hành</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -1112,7 +1112,7 @@ export default function OrderDetailScreen({ navigation, route }) {
           ) : (
             <View style={styles.afterSalesNoteBox}>
               <Text style={styles.afterSalesNoteText}>
-                Warranty se mo khi don da giao thanh cong.
+                Bảo hành sẽ mở khi đơn đã giao thành công.
               </Text>
             </View>
           )}
