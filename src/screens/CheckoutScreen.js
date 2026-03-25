@@ -12,6 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { CART_TYPES } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
 import { useStoreNetworkStore } from "../store/storeNetworkStore";
+import { useSystemConfigStore } from "../store/systemConfigStore";
 import {
   buildCheckoutPayload,
   buildCheckoutItems,
@@ -220,6 +221,13 @@ export default function CheckoutScreen({ navigation, route }) {
   const cartItems = initialCartItems;
   const token = useAuthStore((s) => s.token);
   const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
+  const preorderRuntimeEnabled = useSystemConfigStore(
+    (s) => s.config?.featureFlags?.preorderEnabled !== false,
+  );
+  const codRuntimeEnabled = useSystemConfigStore(
+    (s) => s.config?.payments?.codEnabled !== false,
+  );
+  const refreshSystemConfig = useSystemConfigStore((s) => s.refresh);
 
   const [address, setAddress] = useState(null);
   const [savedAddresses, setSavedAddresses] = useState([]);
@@ -272,11 +280,12 @@ export default function CheckoutScreen({ navigation, route }) {
   
 
   const paymentMethods = useMemo(() => {
-    if (hasPreorder) {
-      return PAYMENT_METHODS.filter((method) => method.id === "sepay");
-    }
-    return PAYMENT_METHODS;
-  }, [hasPreorder]);
+    return PAYMENT_METHODS.filter((method) => {
+      if (method.id === "cod" && !codRuntimeEnabled) return false;
+      if (hasPreorder && method.id === "cod") return false;
+      return true;
+    });
+  }, [codRuntimeEnabled, hasPreorder]);
   const cartDiscountAmount = initialQuoteMeta.discountAmount;
 
   const checkoutItems = useMemo(() => {
@@ -373,6 +382,25 @@ export default function CheckoutScreen({ navigation, route }) {
       active = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    void refreshSystemConfig().catch(() => {});
+  }, [refreshSystemConfig]);
+
+  useEffect(() => {
+    if (cartType === CART_TYPES.PREORDER && !preorderRuntimeEnabled) {
+      Alert.alert("Đặt trước đang tắt", "Admin đang tắt pre-order trong system config.", [
+        {
+          text: "Quay lại giỏ hàng",
+          onPress: () => {
+            if (navigation?.canGoBack?.()) {
+              navigation.goBack();
+            }
+          },
+        },
+      ]);
+    }
+  }, [cartType, navigation, preorderRuntimeEnabled]);
 
   useEffect(() => {
     if (!paymentMethods.find((m) => m.id === paymentId)) {
@@ -718,6 +746,12 @@ export default function CheckoutScreen({ navigation, route }) {
       return undefined;
     }
 
+    if (cartType === CART_TYPES.PREORDER && !preorderRuntimeEnabled) {
+      setQuote(null);
+      setQuoteError(new Error("Pre-order is currently disabled."));
+      return undefined;
+    }
+
     if (skipInitialQuote) {
       setSkipInitialQuote(false);
       return undefined;
@@ -782,6 +816,7 @@ export default function CheckoutScreen({ navigation, route }) {
     appliedVoucherCode,
     paymentId,
     cartType,
+    preorderRuntimeEnabled,
     selectedStoreId,
   ]);
 
@@ -849,6 +884,10 @@ export default function CheckoutScreen({ navigation, route }) {
 
   const checkoutOrder = async () => {
     if (isSubmitting || !checkoutItems.length) return;
+    if (cartType === CART_TYPES.PREORDER && !preorderRuntimeEnabled) {
+      Alert.alert("Đặt trước đang tắt", "Admin đang tắt pre-order trong system config.");
+      return;
+    }
 
     if (!addressComplete) {
       Alert.alert("Thiếu địa chỉ", "Vui lòng nhập đầy đủ thông tin giao hàng.");

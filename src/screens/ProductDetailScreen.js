@@ -49,6 +49,7 @@ import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
 import { useAuthStore } from "../store/authStore";
 import { useStoreNetworkStore } from "../store/storeNetworkStore";
+import { useSystemConfigStore } from "../store/systemConfigStore";
 import ProductModelViewer from "../components/ProductModelViewer";
 import { startNativeTryOnSession } from "../services/nativeTryOnService";
 import {
@@ -428,6 +429,16 @@ function buildCartItemPayload({
 
 export default function ProductDetailScreen({ navigation, route }) {
   const token = useAuthStore((s) => s.token);
+  const runtimePreorderEnabled = useSystemConfigStore(
+    (s) => s.config?.featureFlags?.preorderEnabled !== false,
+  );
+  const runtimeSplitPaymentEnabled = useSystemConfigStore(
+    (s) => s.config?.featureFlags?.splitPaymentEnabled !== false,
+  );
+  const runtimeCodEnabled = useSystemConfigStore(
+    (s) => s.config?.payments?.codEnabled !== false,
+  );
+  const refreshSystemConfig = useSystemConfigStore((s) => s.refresh);
   const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
   const setSelectedStoreId = useStoreNetworkStore((s) => s.setSelectedStoreId);
   const passedItem = route?.params?.item;
@@ -685,9 +696,14 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const variantStock = selectedVariant?.stock ?? product?.totalStock ?? 0;
   const isVariantOut = variantStock <= 0;
-  const preorderEnabled = product?.preOrder?.enabled === true;
+  const preorderEnabled =
+    product?.preOrder?.enabled === true && runtimePreorderEnabled;
   const isPreorderMode = isVariantOut && preorderEnabled;
   const showPreorder = isPreorderMode;
+  const effectiveAllowCod =
+    product?.allowCod !== false &&
+    runtimeSplitPaymentEnabled &&
+    runtimeCodEnabled;
 
   const orderTypeItems = useMemo(
     () =>
@@ -770,12 +786,13 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
+      void refreshSystemConfig().catch(() => {});
       if (token && isLensRxProduct) {
         void loadSavedPrescriptions();
       }
 
       return undefined;
-    }, [isLensRxProduct, loadSavedPrescriptions, token])
+    }, [isLensRxProduct, loadSavedPrescriptions, refreshSystemConfig, token])
   );
 
   const openSavedPrescriptionPicker = useCallback(async () => {
@@ -869,6 +886,10 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const doAddToCart = useCallback(async () => {
     if (!product) return false;
+    if (isVariantOut && product?.preOrder?.enabled === true && !runtimePreorderEnabled) {
+      Alert.alert("Đặt trước đang tắt", "Admin đang tắt pre-order trong system config.");
+      return false;
+    }
 
     if (isLensRxProduct) {
       if (!lensValidation.valid) {
@@ -927,8 +948,10 @@ export default function ProductDetailScreen({ navigation, route }) {
     selectedVariant,
     isLensRxProduct,
     isPreorderMode,
+    isVariantOut,
     lensValidation.errors,
     lensValidation.valid,
+    runtimePreorderEnabled,
   ]);
 
   const onAddToCart = useCallback(async () => {
@@ -1151,6 +1174,9 @@ export default function ProductDetailScreen({ navigation, route }) {
           isVariantOut={isVariantOut}
           variantStock={variantStock}
           isPreorderMode={isPreorderMode}
+          allowCod={effectiveAllowCod}
+          codEnabled={runtimeCodEnabled}
+          splitPaymentEnabled={runtimeSplitPaymentEnabled}
         />
 
         <StoreAvailabilityCard
@@ -1503,6 +1529,9 @@ function InfoCard({
   discountPct,
   isVariantOut,
   variantStock,
+  allowCod = true,
+  codEnabled = true,
+  splitPaymentEnabled = true,
   isPreorderMode = false,
 }) {
   const isOutOfStock = isVariantOut;
@@ -1516,10 +1545,14 @@ function InfoCard({
 
   const ratingCount = product.ratingCount ?? product.ratingsQuantity ?? 0;
   const paymentInfo = isPreorderMode
-    ? product?.allowCod === false
+    ? splitPaymentEnabled === false
+      ? "Thanh toán: SePay toàn bộ đơn"
+      : allowCod === false
       ? "Thanh toán: SePay đặt cọc"
       : "Thanh toán: SePay đặt cọc, COD phần còn lại"
-    : "Thanh toán: SePay hoặc COD";
+    : codEnabled
+      ? "Thanh toán: SePay hoặc COD"
+      : "Thanh toán: SePay";
 
   return (
     <Card>

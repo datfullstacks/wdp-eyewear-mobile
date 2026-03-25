@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReadableArray
@@ -21,6 +22,7 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
   companion object {
     private const val REQUEST_CODE_TRYON = 48112
+    private const val TAG = "WdpTryOn"
   }
 
   private var pendingPromise: Promise? = null
@@ -146,16 +148,27 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
     val sdkKey = readString(payload, "sdkKey")
     val productName = readString(payload, "productName")
     val effectPath = readString(payload, "effectPath")
+    val scene = readString(payload, "scene")
+    val prefabJson = readJsonObjectString(payload, "prefab")
     val fallbackUrl = resolveLaunchUrl(payload)
     val resourcePaths = readStringArray(payload, "resourcePaths")
     val selectedModelId = readString(payload, "selectedModelId")
     val modelsJson = readModelsJson(payload)
+
+    Log.d(
+      TAG,
+      "openNativeTryOn productId=$productId effectPath=$effectPath scene=$scene " +
+        "resourcePaths=${resourcePaths.size} selectedModelId=$selectedModelId " +
+        "hasPrefab=${prefabJson.isNotEmpty()} modelsJsonLength=${modelsJson.length}"
+    )
 
     val intent = Intent(reactContext, WdpTryOnActivity::class.java).apply {
       putExtra(WdpTryOnActivity.EXTRA_PRODUCT_ID, productId)
       putExtra(WdpTryOnActivity.EXTRA_PRODUCT_NAME, productName)
       putExtra(WdpTryOnActivity.EXTRA_SDK_KEY, sdkKey)
       putExtra(WdpTryOnActivity.EXTRA_EFFECT_PATH, effectPath)
+      putExtra(WdpTryOnActivity.EXTRA_SCENE, scene)
+      putExtra(WdpTryOnActivity.EXTRA_PREFAB_JSON, prefabJson)
       putExtra(WdpTryOnActivity.EXTRA_FALLBACK_URL, fallbackUrl)
       putExtra(WdpTryOnActivity.EXTRA_SELECTED_MODEL_ID, selectedModelId)
       putExtra(WdpTryOnActivity.EXTRA_MODELS_JSON, modelsJson)
@@ -212,8 +225,10 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
       putString(node, "arUrl", readString(model, "arUrl"))
       putString(node, "launchUrl", readString(model, "launchUrl"))
       putString(node, "effectPath", readString(model, "effectPath"))
+      putString(node, "scene", readString(model, "scene"))
       putString(node, "fallbackUrl", readString(model, "fallbackUrl"))
       node.put("ready", readBoolean(model, "ready", false))
+      readJsonObject(model, "prefab")?.let { node.put("prefab", it) }
 
       val resourcePaths = readStringArray(model, "resourcePaths")
       if (resourcePaths.isNotEmpty()) {
@@ -299,6 +314,64 @@ class WdpTryOnModule(private val reactContext: ReactApplicationContext) :
       if (value.isNotEmpty()) out.add(value)
     }
     return out
+  }
+
+  private fun readJsonObjectString(payload: ReadableMap?, key: String): String {
+    return readJsonObject(payload, key)?.toString().orEmpty()
+  }
+
+  private fun readJsonObject(payload: ReadableMap?, key: String): JSONObject? {
+    if (payload == null || !payload.hasKey(key) || payload.isNull(key)) return null
+    if (payload.getType(key) != ReadableType.Map) return null
+    return readableMapToJson(payload.getMap(key))
+  }
+
+  private fun readableMapToJson(map: ReadableMap?): JSONObject {
+    val output = JSONObject()
+    if (map == null) return output
+
+    val iterator = map.keySetIterator()
+    while (iterator.hasNextKey()) {
+      val nextKey = iterator.nextKey()
+      if (map.isNull(nextKey)) {
+        output.put(nextKey, JSONObject.NULL)
+        continue
+      }
+
+      when (map.getType(nextKey)) {
+        ReadableType.Null -> output.put(nextKey, JSONObject.NULL)
+        ReadableType.Boolean -> output.put(nextKey, map.getBoolean(nextKey))
+        ReadableType.Number -> output.put(nextKey, map.getDouble(nextKey))
+        ReadableType.String -> output.put(nextKey, map.getString(nextKey))
+        ReadableType.Map -> output.put(nextKey, readableMapToJson(map.getMap(nextKey)))
+        ReadableType.Array -> output.put(nextKey, readableArrayToJson(map.getArray(nextKey)))
+      }
+    }
+
+    return output
+  }
+
+  private fun readableArrayToJson(array: ReadableArray?): JSONArray {
+    val output = JSONArray()
+    if (array == null) return output
+
+    for (index in 0 until array.size()) {
+      if (array.isNull(index)) {
+        output.put(JSONObject.NULL)
+        continue
+      }
+
+      when (array.getType(index)) {
+        ReadableType.Null -> output.put(JSONObject.NULL)
+        ReadableType.Boolean -> output.put(array.getBoolean(index))
+        ReadableType.Number -> output.put(array.getDouble(index))
+        ReadableType.String -> output.put(array.getString(index))
+        ReadableType.Map -> output.put(readableMapToJson(array.getMap(index)))
+        ReadableType.Array -> output.put(readableArrayToJson(array.getArray(index)))
+      }
+    }
+
+    return output
   }
 
   private fun isHttpUrl(value: String): Boolean {
