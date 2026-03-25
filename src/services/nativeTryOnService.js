@@ -229,6 +229,10 @@ async function prepareTryOnModelForNative({
     effectPath: resolvedEffectPath,
     resourcePaths,
     fallbackUrl: preparedFallbackUrl,
+    prefab:
+      runtimeEffect?.resolvedPrefab && typeof runtimeEffect.resolvedPrefab === "object"
+        ? runtimeEffect.resolvedPrefab
+        : originalModel.prefab,
     ready: Boolean(originalModel.ready || resolvedEffectPath || preparedFallbackUrl),
     cacheMeta: cachedTryOn?.cacheMeta || null,
     runtimeEffectMeta: runtimeEffect?.runtimeEffectMeta || null,
