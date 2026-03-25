@@ -2,12 +2,15 @@ import * as Crypto from "expo-crypto";
 import * as FileSystem from "expo-file-system/legacy";
 
 const EFFECTS_ROOT_URI = `${FileSystem.cacheDirectory || ""}banuba-runtime-effects/`;
-const DEFAULT_ROTATION = "270 0 0";
-const DEFAULT_SCALE = "0.019 0.019 0.01";
+const DEFAULT_ROTATION = "-90 0 0";
+const DEFAULT_SCALE = "1 1 1";
+const LEGACY_SAFE_SCALE = "0.1 0.1 0.1";
 const DEFAULT_TRANSLATION = "0 0 0";
 const DEFAULT_GRAVITY = "0 0 0";
 const DEFAULT_CUT = "head";
 const DEFAULT_SCENE = "effect wdp_runtime_tryon";
+const LEGACY_ROTATION = "270 0 0";
+const LEGACY_SCALE = "0.019 0.019 0.01";
 const pendingRuntimeEffects = new Map();
 
 const toText = (value) => String(value ?? "").trim();
@@ -35,22 +38,75 @@ const normalizeVectorString = (value, fallbackValue) => {
   return parts.join(" ");
 };
 
+const normalizeRuntimePrefabConfig = (prefabConfig) => {
+  const normalizedRotation = normalizeVectorString(prefabConfig.rotation, DEFAULT_ROTATION);
+  const normalizedScale = normalizeVectorString(prefabConfig.scale, DEFAULT_SCALE);
+  const normalizedUsePhysics = Boolean(prefabConfig.usePhysics);
+  const normalizedColliders = Array.isArray(prefabConfig.colliders) ? prefabConfig.colliders : [];
+  const shouldDisablePhysicsWithoutColliders = normalizedUsePhysics && !normalizedColliders.length;
+  const rotationWasLegacy = normalizedRotation === LEGACY_ROTATION;
+  const scaleWasLegacy = normalizedScale === LEGACY_SCALE;
+  const shouldDisableLegacyPhysics =
+    (rotationWasLegacy || scaleWasLegacy) && normalizedUsePhysics && !normalizedColliders.length;
+  const resolvedUsePhysics =
+    shouldDisablePhysicsWithoutColliders || shouldDisableLegacyPhysics ? false : normalizedUsePhysics;
+  const resolvedRotation = rotationWasLegacy ? DEFAULT_ROTATION : normalizedRotation;
+  const resolvedScale = scaleWasLegacy ? LEGACY_SAFE_SCALE : normalizedScale;
+
+  if (!rotationWasLegacy && !scaleWasLegacy && !shouldDisableLegacyPhysics && !shouldDisablePhysicsWithoutColliders) {
+    return {
+      ...prefabConfig,
+      rotation: resolvedRotation,
+      scale: resolvedScale,
+      usePhysics: resolvedUsePhysics,
+      colliders: normalizedColliders,
+      normalizedFromLegacy: false,
+    };
+  }
+
+  console.log(
+    "[TryOn Native] Adjusting runtime prefab config for Banuba-safe GLTF defaults",
+    JSON.stringify({
+      originalRotation: prefabConfig.rotation,
+      originalScale: prefabConfig.scale,
+      originalUsePhysics: prefabConfig.usePhysics,
+      resolvedRotation,
+      resolvedScale,
+      resolvedUsePhysics,
+      disabledPhysicsWithoutColliders: shouldDisablePhysicsWithoutColliders,
+    })
+  );
+
+  return {
+    ...prefabConfig,
+    rotation: resolvedRotation,
+    scale: resolvedScale,
+    usePhysics: resolvedUsePhysics,
+    colliders: normalizedColliders,
+    normalizedFromLegacy: rotationWasLegacy || scaleWasLegacy,
+  };
+};
+
+const toNormalizedPrefabPayload = (prefabConfig = {}) => ({
+  rotation: prefabConfig.rotation,
+  scale: prefabConfig.scale,
+  translation: prefabConfig.translation,
+  gravity: prefabConfig.gravity,
+  cut: prefabConfig.cut,
+  usePhysics: Boolean(prefabConfig.usePhysics),
+  colliders: Array.isArray(prefabConfig.colliders) ? prefabConfig.colliders : [],
+});
+
 const readPrefabConfig = (tryOn = {}) => {
   const prefab = tryOn?.prefab && typeof tryOn.prefab === "object" ? tryOn.prefab : {};
   const colliders = Array.isArray(prefab.colliders ?? tryOn.colliders)
     ? prefab.colliders ?? tryOn.colliders
     : [];
 
-  return {
+  return normalizeRuntimePrefabConfig({
     scene: toText(tryOn.scene) || DEFAULT_SCENE,
-    rotation: normalizeVectorString(
-      prefab.rotation ?? tryOn.rotation ?? tryOn.modelRotation ?? tryOn.banubaRotation,
-      DEFAULT_ROTATION
-    ),
-    scale: normalizeVectorString(
-      prefab.scale ?? tryOn.scale ?? tryOn.modelScale ?? tryOn.banubaScale,
-      DEFAULT_SCALE
-    ),
+    rotation: prefab.rotation ?? tryOn.rotation ?? tryOn.modelRotation ?? tryOn.banubaRotation,
+    scale: prefab.scale ?? tryOn.scale ?? tryOn.modelScale ?? tryOn.banubaScale,
     translation: normalizeVectorString(
       prefab.translation ?? tryOn.translation ?? tryOn.modelTranslation ?? tryOn.banubaTranslation,
       DEFAULT_TRANSLATION
@@ -59,7 +115,7 @@ const readPrefabConfig = (tryOn = {}) => {
     cut: toText(prefab.cut ?? tryOn.cut) || DEFAULT_CUT,
     usePhysics: Boolean(prefab.usePhysics ?? tryOn.usePhysics),
     colliders,
-  };
+  });
 };
 
 async function ensureDirectory(uri) {
@@ -228,12 +284,14 @@ export async function prepareBanubaRuntimeEffect({
     return {
       effectPath: effectFolderName,
       resourcePaths: Array.from(new Set([EFFECTS_ROOT_URI, ...resourcePaths])),
+      resolvedPrefab: toNormalizedPrefabPayload(prefabConfig),
       runtimeEffectMeta: {
         generated: true,
         effectFolderName,
         effectFolderUri,
         effectModelUri,
         prefabConfig,
+        normalizedFromLegacy: Boolean(prefabConfig.normalizedFromLegacy),
       },
     };
   })();
