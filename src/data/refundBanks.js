@@ -1,12 +1,12 @@
 const BANK_LOGOS_BY_CODE = {
-  VCB: require("../assets/banks/vietcombank(1).jpg"),
-  BIDV: require("../assets/banks/Bidv.png"),
-  CTG: require("../assets/banks/viettinbank.jpg"),
-  TCB: require("../assets/banks/techcombank.jpg"),
-  MBB: require("../assets/banks/MB-Bank.jpg"),
-  ACB: require("../assets/banks/acb.jpg"),
-  VPB: require("../assets/banks/vpbank.jpg"),
-  TPB: require("../assets/banks/tpbank.jpg"),
+  VCB: require("../assets/banks/vietcombank.png"),
+  BIDV: require("../assets/banks/bidv.png"),
+  CTG: require("../assets/banks/viettinbank.png"),
+  TCB: require("../assets/banks/techcombank.png"),
+  MBB: require("../assets/banks/MB-Bank.png"),
+  ACB: require("../assets/banks/acb.png"),
+  VPB: require("../assets/banks/vpbank.png"),
+  TPB: require("../assets/banks/tpbank.png"),
 };
 
 export const REFUND_BANK_OPTIONS = [

@@ -159,6 +159,10 @@ function pick2DAsset(assets = []) {
   );
 }
 
+function pick2DAssets(assets = []) {
+  return assets.filter((asset) => asset?.assetType === "2d");
+}
+
 function pick3DAsset(assets = []) {
   return (
     assets.find((a) => a?.assetType === "3d" && a?.role === "viewer") ||
@@ -174,6 +178,23 @@ function getVariantAssets(product, variant) {
   const byVariant = product?.media?.byVariant;
   const assets = byVariant?.[variantId];
   return Array.isArray(assets) ? assets : [];
+}
+
+function buildImageGallery(variantAssets = [], productAssets = []) {
+  const seen = new Set();
+  const items = [];
+
+  const pushAsset = (asset) => {
+    const imageUrl = toText(asset?.url || asset?.posterUrl);
+    if (!imageUrl || seen.has(imageUrl)) return;
+    seen.add(imageUrl);
+    items.push(asset);
+  };
+
+  pick2DAssets(variantAssets).forEach(pushAsset);
+  pick2DAssets(productAssets).forEach(pushAsset);
+
+  return items;
 }
 
 function buildTryOnPayload(baseTryOn = {}, asset = null) {
@@ -544,6 +565,7 @@ export default function ProductDetailScreen({ navigation, route }) {
   const { stores } = useStores();
   const [specsOpen, setSpecsOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState("");
 
   const requireLogin = () => {
     Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để sử dụng tính năng này.", [
@@ -723,6 +745,20 @@ export default function ProductDetailScreen({ navigation, route }) {
   const image2DAsset = useMemo(() => {
     return pick2DAsset(variantAssets) || pick2DAsset(product?.media?.assets || []);
   }, [variantAssets, product?.media?.assets]);
+  const imageGallery = useMemo(() => {
+    return buildImageGallery(variantAssets, product?.media?.assets || []);
+  }, [product?.media?.assets, variantAssets]);
+  const activeImageAsset = useMemo(() => {
+    if (!selectedImageUrl) return imageGallery[0] || image2DAsset || null;
+    return (
+      imageGallery.find(
+        (asset) => toText(asset?.url || asset?.posterUrl) === selectedImageUrl,
+      ) ||
+      imageGallery[0] ||
+      image2DAsset ||
+      null
+    );
+  }, [image2DAsset, imageGallery, selectedImageUrl]);
 
   const image3DAsset = useMemo(() => {
     if (selectedVariantId && hasVariantSpecificTryOnModels) {
@@ -789,6 +825,24 @@ export default function ProductDetailScreen({ navigation, route }) {
     }
   }, [has3DAsset, mediaMode]);
 
+  useEffect(() => {
+    const firstImageUrl = toText(
+      imageGallery[0]?.url || imageGallery[0]?.posterUrl || image2DAsset?.url,
+    );
+    if (!firstImageUrl) {
+      setSelectedImageUrl("");
+      return;
+    }
+
+    setSelectedImageUrl((prev) => {
+      if (!prev) return firstImageUrl;
+      const exists = imageGallery.some(
+        (asset) => toText(asset?.url || asset?.posterUrl) === prev,
+      );
+      return exists ? prev : firstImageUrl;
+    });
+  }, [image2DAsset?.url, imageGallery, selectedVariantId]);
+
   const mainImage = useMemo(() => {
     if (!product) return null;
     if (mediaMode === "3d" && has3DAsset) {
@@ -800,8 +854,14 @@ export default function ProductDetailScreen({ navigation, route }) {
         product.image
       );
     }
-    return image2DAsset?.url || fallbackColorImage || product.image;
-  }, [product, mediaMode, has3DAsset, image3DAsset, image2DAsset, fallbackColorImage]);
+    return (
+      activeImageAsset?.url ||
+      activeImageAsset?.posterUrl ||
+      image2DAsset?.url ||
+      fallbackColorImage ||
+      product.image
+    );
+  }, [product, mediaMode, has3DAsset, image3DAsset, activeImageAsset, image2DAsset, fallbackColorImage]);
 
   const related = useMemo(() => {
     if (!product) return [];
@@ -1370,6 +1430,12 @@ export default function ProductDetailScreen({ navigation, route }) {
         <Hero
           product={product}
           image={mainImage}
+          gallery={imageGallery}
+          selectedImageUrl={selectedImageUrl}
+          onSelectImage={(imageUrl) => {
+            setSelectedImageUrl(imageUrl);
+            setMediaMode("2d");
+          }}
           discountPct={discountPct}
           fav={fav}
           onToggleFav={onToggleFav}
@@ -1554,6 +1620,9 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
 function Hero({
   product,
   image,
+  gallery = [],
+  selectedImageUrl = "",
+  onSelectImage,
   discountPct,
   fav,
   onToggleFav,
@@ -1672,6 +1741,36 @@ function Hero({
           </View>
         ) : null}
       </View>
+
+      {gallery.length > 1 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.heroThumbList}
+        >
+          {gallery.map((asset, index) => {
+            const thumbUrl = toText(asset?.url || asset?.posterUrl);
+            if (!thumbUrl) return null;
+
+            const isActive = thumbUrl === selectedImageUrl || (!selectedImageUrl && index === 0);
+
+            return (
+              <TouchableOpacity
+                key={`${thumbUrl}-${index}`}
+                activeOpacity={0.9}
+                onPress={() => onSelectImage?.(thumbUrl)}
+                style={[styles.heroThumbItem, isActive && styles.heroThumbItemActive]}
+              >
+                <Image
+                  source={{ uri: thumbUrl }}
+                  style={styles.heroThumbImage}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : null}
     </Card>
   );
 }
@@ -2691,6 +2790,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   heroImage: { width: "100%", height: "100%" },
+  heroThumbList: {
+    gap: 10,
+    paddingTop: 12,
+    paddingHorizontal: 2,
+  },
+  heroThumbItem: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+  },
+  heroThumbItemActive: {
+    borderColor: "#111827",
+  },
+  heroThumbImage: {
+    width: "100%",
+    height: "100%",
+  },
 
   discountBadge: {
     position: "absolute",
