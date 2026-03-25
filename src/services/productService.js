@@ -333,7 +333,7 @@ function normalizeAsset(asset = {}) {
 function normalizeAssets(assets = []) {
   return assets
     .map((asset) => normalizeAsset(asset))
-    .sort((a, b) => (a.order || 9999) - (b.order || 9999));
+    .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
 }
 
 function pick2DAsset(assets = []) {
@@ -468,11 +468,15 @@ function buildSpecsList(product) {
 }
 
 function buildVariantAssetMap(variants = [], assets = []) {
-  const assetById = new Map(
-    assets
-      .map((asset) => [toIdString(asset?.id || asset?._id), asset])
-      .filter((entry) => Boolean(entry[0] && entry[1]))
-  );
+  const assetQueues = new Map();
+  assets.forEach((asset) => {
+    const assetId = toIdString(asset?.id || asset?._id);
+    if (!assetId) return;
+
+    const queue = assetQueues.get(assetId) || [];
+    queue.push(asset);
+    assetQueues.set(assetId, queue);
+  });
 
   const byVariant = {};
   variants.forEach((variant) => {
@@ -480,7 +484,12 @@ function buildVariantAssetMap(variants = [], assets = []) {
     if (!variantId) return;
     const ids = Array.isArray(variant?.assetIds) ? variant.assetIds : [];
     const matchedAssets = ids
-      .map((assetId) => assetById.get(toIdString(assetId)))
+      .map((assetId) => {
+        const queue = assetQueues.get(toIdString(assetId));
+        if (!Array.isArray(queue) || queue.length === 0) return null;
+        if (queue.length === 1) return queue[0] || null;
+        return queue.shift() || null;
+      })
       .filter(Boolean);
     byVariant[variantId] = matchedAssets;
   });
