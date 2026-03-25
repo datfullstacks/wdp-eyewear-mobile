@@ -14,6 +14,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/apiClient";
 import { cancelOrderApi } from "../services/orderService";
+import {
+  API_CART_TYPES,
+  clearCartApi,
+  refreshCartBadgeQty,
+} from "../services/cartService";
 
 const PAYMENT_STATUS_META = {
   PENDING_QR: {
@@ -56,62 +61,62 @@ const PAYMENT_STATUS_META = {
 
 const REFUND_STATUS_META = {
   requested: {
-    label: "Da gui yeu cau",
-    desc: "Yeu cau refund da duoc ghi nhan va dang cho staff tiep nhan.",
+    label: "Đã gửi yêu cầu",
+    desc: "Yêu cầu hoàn tiền đã được ghi nhận và đang chờ staff tiếp nhận.",
     color: "#B45309",
     bg: "#FFF7ED",
   },
   reviewing: {
-    label: "Dang review",
-    desc: "Staff dang kiem tra thong tin refund cua ban.",
+    label: "Đang review",
+    desc: "Staff đang kiểm tra thông tin hoàn tiền của bạn.",
     color: "#1D4ED8",
     bg: "#EFF6FF",
   },
   waiting_customer_info: {
-    label: "Can bo sung",
-    desc: "Vui long bo sung them thong tin/chung tu cho yeu cau refund.",
+    label: "Cần bổ sung",
+    desc: "Vui lòng bổ sung thêm thông tin/chứng từ cho yêu cầu hoàn tiền.",
     color: "#B45309",
     bg: "#FFF7ED",
   },
   escalated_to_manager: {
-    label: "Cho manager",
-    desc: "Case dang duoc chuyen manager de phe duyet them.",
+    label: "Chờ manager",
+    desc: "Case đang được chuyển manager để phê duyệt thêm.",
     color: "#991B1B",
     bg: "#FEE2E2",
   },
   approved: {
-    label: "Da duyet",
-    desc: "Yeu cau refund da duoc duyet, he thong dang chuyen sang buoc xu ly.",
+    label: "Đã duyệt",
+    desc: "Yêu cầu hoàn tiền đã được duyệt, hệ thống đang chuyển sang bước xử lý.",
     color: "#15803D",
     bg: "#ECFDF5",
   },
   return_pending: {
-    label: "Cho tra hang",
-    desc: "Case can doi soat hang hoan truoc khi payout.",
+    label: "Chờ trả hàng",
+    desc: "Case cần đối soát hàng hoàn trước khi payout.",
     color: "#B45309",
     bg: "#FFF7ED",
   },
   return_received: {
-    label: "Da nhan hang hoan",
-    desc: "Operations da xac nhan hang hoan va se tiep tuc payout.",
+    label: "Đã nhận hàng hoàn",
+    desc: "Operations đã xác nhận hàng hoàn và sẽ tiếp tục payout.",
     color: "#1D4ED8",
     bg: "#EFF6FF",
   },
   processing: {
-    label: "Dang hoan tien",
-    desc: "He thong dang xu ly giao dich refund.",
+    label: "Đang hoàn tiền",
+    desc: "Hệ thống đang xử lý giao dịch hoàn tiền.",
     color: "#1D4ED8",
     bg: "#EFF6FF",
   },
   completed: {
-    label: "Hoan tat",
-    desc: "Refund da hoan tat.",
+    label: "Hoàn tất",
+    desc: "Refund đã hoàn tất.",
     color: "#15803D",
     bg: "#ECFDF5",
   },
   rejected: {
-    label: "Tu choi",
-    desc: "Yeu cau refund da bi tu choi. Xem ghi chu de biet them chi tiet.",
+    label: "Từ chối",
+    desc: "Yêu cầu hoàn tiền đã bị từ chối. Xem ghi chú để biết thêm chi tiết.",
     color: "#991B1B",
     bg: "#FEE2E2",
   },
@@ -128,6 +133,11 @@ const ORDER_STEPS = [
   { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
   { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
 ];
+
+const UI_TO_API_CART_TYPE = {
+  [CART_TYPES.ORDER]: API_CART_TYPES.READY_STOCK,
+  [CART_TYPES.PREORDER]: API_CART_TYPES.PRE_ORDER,
+};
 
 const formatVND = (value) =>
   new Intl.NumberFormat("vi-VN").format(value || 0) + "đ";
@@ -432,29 +442,29 @@ const getRefundOwnerLabel = (value) => {
   if (normalized === "sales") return "Sale/Staff";
   if (normalized === "manager") return "Manager";
   if (normalized === "operations") return "Operations";
-  if (normalized === "customer") return "Ban";
-  return "Da dong case";
+  if (normalized === "customer") return "Bạn";
+  return "Đã đóng case";
 };
 
 const getRefundNextStepLabel = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "customer_submit_info") return "Ban bo sung thong tin";
-  if (normalized === "manager_approve") return "Manager quyet dinh";
+  if (normalized === "customer_submit_info") return "Bạn bổ sung thông tin";
+  if (normalized === "manager_approve") return "Manager quyết định";
   if (normalized === "confirm_return_received") {
-    return "Operations nhan va doi soat hang hoan";
+    return "Operations nhận và đối soát hàng hoàn";
   }
-  if (normalized === "start_processing") return "Operations bat dau payout";
-  if (normalized === "complete") return "Operations xac nhan da chuyen tien";
-  if (normalized === "start_review") return "Staff review ho so";
+  if (normalized === "start_processing") return "Operations bắt đầu payout";
+  if (normalized === "complete") return "Operations xác nhận đã chuyển tiền";
+  if (normalized === "start_review") return "Staff review hồ sơ";
   return "--";
 };
 
 const getRefundInspectionLabel = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "pending") return "Dang doi soat";
-  if (normalized === "passed") return "Da dat";
-  if (normalized === "failed") return "Khong dat";
-  return "Khong yeu cau";
+  if (normalized === "pending") return "Đang đối soát";
+  if (normalized === "passed") return "Đã đạt";
+  if (normalized === "failed") return "Không đạt";
+  return "Không yêu cầu";
 };
 
 const getShippingMethodLabel = (value) => {
@@ -941,7 +951,24 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   useEffect(() => {
     if (paymentStatus === "PAID" && !clearedRef.current) {
       clearedRef.current = true;
-      clearCart(cartType);
+      const apiCartType =
+        UI_TO_API_CART_TYPE[cartType] || API_CART_TYPES.READY_STOCK;
+
+      (async () => {
+        try {
+          await clearCartApi(apiCartType);
+        } catch (error) {
+          if (typeof __DEV__ !== "undefined" && __DEV__) {
+            console.log(
+              "clear cart after paid failed",
+              error?.response?.data || error?.message || error,
+            );
+          }
+        } finally {
+          clearCart(cartType);
+          await refreshCartBadgeQty().catch(() => {});
+        }
+      })();
     }
   }, [paymentStatus, clearCart, cartType]);
 
@@ -1060,7 +1087,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
         <View style={styles.content}>
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Khong tim thay don hang</Text>
+            <Text style={styles.sectionTitle}>Không tìm thấy đơn hàng</Text>
             <Text style={styles.mutedText}>
               Man hinh nay can duoc mo tu checkout hoac tu mot don hang hop le.
             </Text>
@@ -1072,7 +1099,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 onPress={handleContinueShopping}
               >
                 <Text style={[styles.actionText, styles.actionTextGhost]}>
-                  Mua tiep
+                  Mua tiếp
                 </Text>
               </TouchableOpacity>
 
@@ -1378,7 +1405,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
         {order.refund ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Trang thai hoan tien</Text>
+            <Text style={styles.sectionTitle}>Trạng thái hoàn tiền</Text>
             <View
               style={[
                 styles.statusPill,
@@ -1391,15 +1418,15 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                   { color: refundMeta?.color || "#1D4ED8" },
                 ]}
               >
-                {refundMeta?.label || "Dang xu ly"}
+                {refundMeta?.label || "Đang xử lý"}
               </Text>
             </View>
             <Text style={styles.mutedText}>
-              {refundMeta?.desc || "Yeu cau refund dang duoc xu ly."}
+              {refundMeta?.desc || "Yêu cầu hoàn tiền đang được xử lý."}
             </Text>
 
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Tien de nghi hoan</Text>
+              <Text style={styles.metaLabel}>Tiền đề nghị hoàn</Text>
               <Text style={styles.metaValue}>
                 {formatVND(
                   order.refund.requestedBreakdown.total || order.refund.amount,
@@ -1409,7 +1436,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.approvedBreakdown.total > 0 ? (
               <View style={styles.rowBetween}>
-                <Text style={styles.metaLabel}>Tien da duyet</Text>
+                <Text style={styles.metaLabel}>Tiền đã duyệt</Text>
                 <Text style={styles.metaValue}>
                   {formatVND(order.refund.approvedBreakdown.total)}
                 </Text>
@@ -1417,31 +1444,31 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             ) : null}
 
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Ngay yeu cau</Text>
+              <Text style={styles.metaLabel}>Ngày yêu cầu</Text>
               <Text style={styles.metaValue}>
                 {formatDateTime(order.refund.requestedAt)}
               </Text>
             </View>
 
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Da thanh toan</Text>
+              <Text style={styles.metaLabel}>Đã thanh toán</Text>
               <Text style={styles.metaValue}>{formatVND(order.paidAmount)}</Text>
             </View>
 
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Chua thu</Text>
+              <Text style={styles.metaLabel}>Chưa thu</Text>
               <Text style={styles.metaValue}>{formatVND(order.unpaidAmount)}</Text>
             </View>
 
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Owner hien tai</Text>
+              <Text style={styles.metaLabel}>Owner hiện tại</Text>
               <Text style={styles.metaValue}>
                 {getRefundOwnerLabel(order.refund.currentOwnerRole)}
               </Text>
             </View>
 
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Buoc tiep theo</Text>
+              <Text style={styles.metaLabel}>Bước tiếp theo</Text>
               <Text style={styles.metaValue}>
                 {getRefundNextStepLabel(order.refund.nextActionCode)}
               </Text>
@@ -1449,7 +1476,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.processedAt ? (
               <View style={styles.rowBetween}>
-                <Text style={styles.metaLabel}>Ngay xu ly</Text>
+                <Text style={styles.metaLabel}>Ngày xử lý</Text>
                 <Text style={styles.metaValue}>
                   {formatDateTime(order.refund.processedAt)}
                 </Text>
@@ -1457,24 +1484,24 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             ) : null}
 
             {order.refund.reason ? (
-              <Text style={styles.refundNote}>Ly do: {order.refund.reason}</Text>
+              <Text style={styles.refundNote}>Lý do: {order.refund.reason}</Text>
             ) : null}
 
             {order.refund.rejectReason ? (
               <Text style={styles.refundNote}>
-                Ly do tu choi: {order.refund.rejectReason}
+                Lý do từ chối: {order.refund.rejectReason}
               </Text>
             ) : null}
 
             {order.refund.decisionNote ? (
               <Text style={styles.refundNote}>
-                Ghi chu: {order.refund.decisionNote}
+                Ghi chú: {order.refund.decisionNote}
               </Text>
             ) : null}
 
             {order.refund.contactNote ? (
               <Text style={styles.refundNote}>
-                Staff yeu cau: {order.refund.contactNote}
+                Staff yêu cầu: {order.refund.contactNote}
               </Text>
             ) : null}
 
@@ -1482,33 +1509,33 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             order.refund.returnShipmentCode ||
             order.refund.inspectionStatus !== "not_required" ? (
               <View style={styles.refundSubCard}>
-                <Text style={styles.refundSubTitle}>Thong tin return / QC</Text>
+                <Text style={styles.refundSubTitle}>Thông tin return / QC</Text>
                 <Text style={styles.refundSubText}>
                   QC: {getRefundInspectionLabel(order.refund.inspectionStatus)}
                 </Text>
                 {order.refund.inspectionNote ? (
                   <Text style={styles.refundSubText}>
-                    Ghi chu QC: {order.refund.inspectionNote}
+                    Ghi chú QC: {order.refund.inspectionNote}
                   </Text>
                 ) : null}
                 {order.refund.inspectionAt ? (
                   <Text style={styles.refundSubText}>
-                    Kiem tra luc: {formatDateTime(order.refund.inspectionAt)}
+                    Kiểm tra lúc: {formatDateTime(order.refund.inspectionAt)}
                   </Text>
                 ) : null}
                 {order.refund.returnCarrier ? (
                   <Text style={styles.refundSubText}>
-                    Don vi hoan: {String(order.refund.returnCarrier).toUpperCase()}
+                    Đơn vị hoàn: {String(order.refund.returnCarrier).toUpperCase()}
                   </Text>
                 ) : null}
                 {order.refund.returnShipmentCode ? (
                   <Text style={styles.refundSubText}>
-                    Ma van don tra: {order.refund.returnShipmentCode}
+                    Mã vận đơn trả: {order.refund.returnShipmentCode}
                   </Text>
                 ) : null}
                 {order.refund.returnReceivedAt ? (
                   <Text style={styles.refundSubText}>
-                    Da nhan hang hoan: {formatDateTime(order.refund.returnReceivedAt)}
+                    Đã nhận hàng hoàn: {formatDateTime(order.refund.returnReceivedAt)}
                   </Text>
                 ) : null}
               </View>
@@ -1516,7 +1543,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.bankAccount?.accountNumber ? (
               <Text style={styles.refundNote}>
-                Tai khoan nhan tien: {order.refund.bankAccount.bankName || "--"} -{" "}
+                Tài khoản nhận tiền: {order.refund.bankAccount.bankName || "--"} -{" "}
                 {order.refund.bankAccount.accountNumber}
               </Text>
             ) : null}
@@ -1529,7 +1556,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.transactionRef ? (
               <Text style={styles.refundNote}>
-                Ma giao dich refund: {order.refund.transactionRef}
+                Mã giao dịch refund: {order.refund.transactionRef}
               </Text>
             ) : null}
 
@@ -1555,7 +1582,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.history?.length ? (
               <View style={styles.refundTimeline}>
-                <Text style={styles.refundSubTitle}>Tien trinh refund</Text>
+                <Text style={styles.refundSubTitle}>Tiến trình refund</Text>
                 {order.refund.history
                   .slice()
                   .reverse()
@@ -1599,7 +1626,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 onPress={handleRequestRefund}
               >
                 <Text style={[styles.actionText, styles.actionTextPrimary]}>
-                  Bo sung thong tin hoan tien
+                  Bổ sung thông tin hoàn tiền
                 </Text>
               </TouchableOpacity>
             ) : canRequestRefund ? (
@@ -1613,14 +1640,14 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 onPress={handleRequestRefund}
               >
                 <Text style={[styles.actionText, styles.actionTextPrimary]}>
-                  Tao yeu cau hoan tien moi
+                  Tạo yêu cầu hoàn tiền mới
                 </Text>
               </TouchableOpacity>
             ) : null}
           </View>
         ) : canRequestRefund ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Yeu cau hoan tien</Text>
+            <Text style={styles.sectionTitle}>Yêu cầu hoàn tiền</Text>
             <Text style={styles.mutedText}>
               Neu don hang co van de, ban co the gui yeu cau refund de staff tiep
               nhan va xu ly.
@@ -1636,7 +1663,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               onPress={handleRequestRefund}
             >
               <Text style={[styles.actionText, styles.actionTextPrimary]}>
-                Tao yeu cau hoan tien
+                Tạo yêu cầu hoàn tiền
               </Text>
             </TouchableOpacity>
           </View>
@@ -1646,7 +1673,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
 
           <View style={styles.rowBetween}>
-            <Text style={styles.metaLabel}>Phuong thuc giao hang</Text>
+            <Text style={styles.metaLabel}>Phương thức giao hàng</Text>
             <Text style={styles.metaValue}>{shippingMethodLabel}</Text>
           </View>
 

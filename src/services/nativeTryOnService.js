@@ -41,6 +41,44 @@ const canUseExternalFallbackUrl = (value) =>
   Platform.OS === "ios" ? canUseAbsoluteHttpUrl(value) : isWebFallbackUrl(value);
 const toStringArray = (value) =>
   Array.isArray(value) ? value.map((it) => toText(it)).filter(Boolean) : [];
+const shouldLogTryOnDebug = () =>
+  (typeof __DEV__ !== "undefined" && __DEV__) ||
+  toBoolean(process.env.EXPO_PUBLIC_TRYON_DEBUG, false);
+
+function logTryOnDebug(label, value) {
+  if (!shouldLogTryOnDebug()) return;
+  try {
+    console.log(label, JSON.stringify(value, null, 2));
+  } catch {
+    console.log(label, value);
+  }
+}
+
+function normalizePrefab(prefab = {}) {
+  if (!prefab || typeof prefab !== "object" || Array.isArray(prefab)) return undefined;
+
+  const normalized = {
+    rotation: toText(prefab.rotation),
+    scale: toText(prefab.scale),
+    translation: toText(prefab.translation),
+    gravity: toText(prefab.gravity),
+    cut: toText(prefab.cut),
+  };
+
+  if (typeof prefab.usePhysics === "boolean") {
+    normalized.usePhysics = prefab.usePhysics;
+  }
+
+  if (Array.isArray(prefab.colliders)) {
+    normalized.colliders = prefab.colliders;
+  }
+
+  Object.keys(normalized).forEach((key) => {
+    if (normalized[key] === "") delete normalized[key];
+  });
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
 
 const pickExternalFallbackUrl = (tryOn = {}) =>
   Platform.OS === "ios"
@@ -191,6 +229,10 @@ async function prepareTryOnModelForNative({
     effectPath: resolvedEffectPath,
     resourcePaths,
     fallbackUrl: preparedFallbackUrl,
+    prefab:
+      runtimeEffect?.resolvedPrefab && typeof runtimeEffect.resolvedPrefab === "object"
+        ? runtimeEffect.resolvedPrefab
+        : originalModel.prefab,
     ready: Boolean(originalModel.ready || resolvedEffectPath || preparedFallbackUrl),
     cacheMeta: cachedTryOn?.cacheMeta || null,
     runtimeEffectMeta: runtimeEffect?.runtimeEffectMeta || null,
@@ -203,6 +245,8 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
   const usdzUrl = toText(tryOn.usdzUrl);
   const launchUrl = toText(tryOn.launchUrl);
   const effectPath = toText(tryOn.effectPath || tryOn.effect || "");
+  const scene = toText(tryOn.scene);
+  const prefab = normalizePrefab(tryOn.prefab);
   const resolvedFallback = canUseExternalFallbackUrl(fallbackUrl) ? toText(fallbackUrl) : "";
   const resourcePaths = toStringArray(tryOn.resourcePaths);
   const models = Array.isArray(tryOn.models)
@@ -217,8 +261,10 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
           arUrl: toText(model?.arUrl),
           launchUrl: toText(model?.launchUrl),
           effectPath: toText(model?.effectPath),
+          scene: toText(model?.scene),
           fallbackUrl: toText(model?.fallbackUrl),
           resourcePaths: toStringArray(model?.resourcePaths),
+          prefab: normalizePrefab(model?.prefab),
         }))
         .filter(
           (model) =>
@@ -254,6 +300,7 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
         ? (canUseOpenableUrl(launchUrl) ? launchUrl : "")
         : (isWebFallbackUrl(launchUrl) ? launchUrl : ""),
     effectPath: resolvedEffectPath,
+    scene,
     resourcePaths,
     modelUrl,
     glbUrl,
@@ -261,6 +308,7 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
     fallbackUrl: resolvedFallback,
     assetIds: Array.isArray(tryOn.assetIds) ? tryOn.assetIds.map((id) => toText(id)).filter(Boolean) : [],
     models,
+    ...(prefab ? { prefab } : {}),
     platform: Platform.OS,
   };
 }
@@ -346,8 +394,10 @@ export async function startNativeTryOnSession({ product = {}, tryOn = {}, fallba
       arUrl: toText(model.arUrl),
       launchUrl: toText(model.launchUrl),
       effectPath: toText(model.effectPath),
+      scene: toText(model.scene),
       fallbackUrl: toText(model.fallbackUrl),
       resourcePaths: toStringArray(model.resourcePaths),
+      prefab: normalizePrefab(model.prefab),
     })),
     resourcePaths: uniqueStrings([
       toStringArray(activePreparedTryOn?.resourcePaths),
@@ -360,6 +410,9 @@ export async function startNativeTryOnSession({ product = {}, tryOn = {}, fallba
     tryOn: payloadTryOn,
     fallbackUrl: preparedFallbackUrl,
   });
+
+  logTryOnDebug("[TryOn Native] Prepared tryOn config", payloadTryOn);
+  logTryOnDebug("[TryOn Native] Bridge payload", payload);
 
   if (!payload.productId) {
     throw new Error("Native try-on requires productId");
