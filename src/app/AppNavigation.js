@@ -9,9 +9,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "../store/authStore";
 import { useCartStore } from "../store/cartStore";
+import { useSystemConfigStore } from "../store/systemConfigStore";
 // import { useFavoriteStore } from "../store/favoriteStore";
 
 import LoginScreen from "../screens/LoginScreen";
+import MaintenanceScreen from "../screens/MaintenanceScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 
 import HomeScreen from "../screens/HomeScreen";
@@ -345,6 +347,10 @@ export default function AppNavigation() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
   const isHydratingAuth = useAuthStore((s) => s.isHydrating);
   const userKey = useAuthStore((s) => s.userKey);
+  const user = useAuthStore((s) => s.user);
+  const hydrateSystemConfig = useSystemConfigStore((s) => s.hydrate);
+  const runtimeConfig = useSystemConfigStore((s) => s.config);
+  const isHydratingRuntimeConfig = useSystemConfigStore((s) => s.isHydrating);
 
   const setCartUser = useCartStore((s) => s.setUser);
   const isHydratingCart = useCartStore((s) => s.isHydrating);
@@ -354,21 +360,38 @@ export default function AppNavigation() {
   }, [hydrateAuth]);
 
   useEffect(() => {
+    hydrateSystemConfig();
+  }, [hydrateSystemConfig]);
+
+  useEffect(() => {
     if (!isHydratingAuth) {
       setCartUser(userKey);
     }
   }, [isHydratingAuth, userKey, setCartUser]);
 
-  if (isHydratingAuth || isHydratingCart) return null;
+  if (isHydratingAuth || isHydratingCart || isHydratingRuntimeConfig) return null;
+
+  const isAdmin = String(user?.role || "").trim().toLowerCase() === "admin";
+  const maintenanceMode = runtimeConfig?.maintenanceMode === true;
 
   return (
     <NavigationContainer>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        <RootStack.Screen name="Tabs" component={MainTabs} />
-        <RootStack.Screen name="TryOnAR" component={TryOnARScreen} />
-        <RootStack.Screen name="Login" component={LoginScreen} />
-        <RootStack.Screen name="Register" component={RegisterScreen} />
-        <RootStack.Screen name="CartFlow" component={CartStackScreen} />
+        {maintenanceMode && !isAdmin ? (
+          <>
+            <RootStack.Screen name="Maintenance" component={MaintenanceScreen} />
+            <RootStack.Screen name="Login" component={LoginScreen} />
+            <RootStack.Screen name="Register" component={RegisterScreen} />
+          </>
+        ) : (
+          <>
+            <RootStack.Screen name="Tabs" component={MainTabs} />
+            <RootStack.Screen name="TryOnAR" component={TryOnARScreen} />
+            <RootStack.Screen name="Login" component={LoginScreen} />
+            <RootStack.Screen name="Register" component={RegisterScreen} />
+            <RootStack.Screen name="CartFlow" component={CartStackScreen} />
+          </>
+        )}
       </RootStack.Navigator>
     </NavigationContainer>
   );

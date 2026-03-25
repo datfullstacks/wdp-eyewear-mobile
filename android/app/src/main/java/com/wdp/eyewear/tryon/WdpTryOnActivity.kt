@@ -21,7 +21,9 @@ private data class TryOnModelOption(
   val label: String,
   val effectPath: String,
   val ready: Boolean,
-  val fallbackUrl: String
+  val fallbackUrl: String,
+  val scene: String,
+  val prefabJson: String
 )
 
 class WdpTryOnActivity : AppCompatActivity() {
@@ -30,6 +32,8 @@ class WdpTryOnActivity : AppCompatActivity() {
     const val EXTRA_PRODUCT_NAME = "wdp.tryon.extra.PRODUCT_NAME"
     const val EXTRA_SDK_KEY = "wdp.tryon.extra.SDK_KEY"
     const val EXTRA_EFFECT_PATH = "wdp.tryon.extra.EFFECT_PATH"
+    const val EXTRA_SCENE = "wdp.tryon.extra.SCENE"
+    const val EXTRA_PREFAB_JSON = "wdp.tryon.extra.PREFAB_JSON"
     const val EXTRA_FALLBACK_URL = "wdp.tryon.extra.FALLBACK_URL"
     const val EXTRA_RESOURCE_PATHS = "wdp.tryon.extra.RESOURCE_PATHS"
     const val EXTRA_MODELS_JSON = "wdp.tryon.extra.MODELS_JSON"
@@ -66,6 +70,12 @@ class WdpTryOnActivity : AppCompatActivity() {
   private val initialEffectPath: String by lazy {
     intent?.getStringExtra(EXTRA_EFFECT_PATH)?.trim().orEmpty()
   }
+  private val initialScene: String by lazy {
+    intent?.getStringExtra(EXTRA_SCENE)?.trim().orEmpty()
+  }
+  private val initialPrefabJson: String by lazy {
+    intent?.getStringExtra(EXTRA_PREFAB_JSON)?.trim().orEmpty()
+  }
   private val fallbackUrl: String by lazy {
     intent?.getStringExtra(EXTRA_FALLBACK_URL)?.trim().orEmpty()
   }
@@ -91,7 +101,9 @@ class WdpTryOnActivity : AppCompatActivity() {
           label = if (productName.isNotEmpty()) productName else "Default",
           effectPath = initialEffectPath,
           ready = true,
-          fallbackUrl = fallbackUrl
+          fallbackUrl = fallbackUrl,
+          scene = initialScene,
+          prefabJson = initialPrefabJson
         )
       )
     } else {
@@ -318,8 +330,10 @@ class WdpTryOnActivity : AppCompatActivity() {
           val id = item.optString("id").trim().ifEmpty { "model-${index + 1}" }
           val label = item.optString("label").trim().ifEmpty { "Model ${index + 1}" }
           val effectPath = item.optString("effectPath").trim()
+          val scene = item.optString("scene").trim()
           val ready = item.optBoolean("ready", effectPath.isNotEmpty())
           val modelFallbackUrl = item.optString("fallbackUrl").trim()
+          val prefabJson = item.optJSONObject("prefab")?.toString()?.trim().orEmpty()
 
           if (!ready && effectPath.isBlank() && modelFallbackUrl.isBlank()) continue
           add(
@@ -328,7 +342,9 @@ class WdpTryOnActivity : AppCompatActivity() {
               label = label,
               effectPath = effectPath,
               ready = ready,
-              fallbackUrl = modelFallbackUrl
+              fallbackUrl = modelFallbackUrl,
+              scene = scene,
+              prefabJson = prefabJson
             )
           )
         }
@@ -514,6 +530,20 @@ class WdpTryOnActivity : AppCompatActivity() {
       activeModel?.let {
         append("\nModel: ")
         append(it.label)
+        if (it.scene.isNotEmpty()) {
+          append("\nScene: ")
+          append(it.scene)
+        }
+        if (it.prefabJson.isNotEmpty()) {
+          append("\nPrefab: yes")
+        }
+      }
+      if (activeModel == null && initialScene.isNotEmpty()) {
+        append("\nScene: ")
+        append(initialScene)
+      }
+      if (activeModel == null && initialPrefabJson.isNotEmpty()) {
+        append("\nPrefab: yes")
       }
       append("\n")
       append(extraLine)

@@ -39,6 +39,7 @@ import {
   summarizeLensPrescription,
   validateLensPrescriptionDraft,
 } from "../services/lensPrescriptionService";
+import { useSystemConfigStore } from "../store/systemConfigStore";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v || 0) + "đ";
 
@@ -313,6 +314,10 @@ function buildClearCombinePatch(ci) {
 export default function CartScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const { products } = useProducts();
+  const preorderRuntimeEnabled = useSystemConfigStore(
+    (s) => s.config?.featureFlags?.preorderEnabled !== false,
+  );
+  const refreshSystemConfig = useSystemConfigStore((s) => s.refresh);
 
   const [isQuoting, setIsQuoting] = useState(false);
   const [loadingCart, setLoadingCart] = useState(false);
@@ -360,9 +365,16 @@ export default function CartScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
+      void refreshSystemConfig().catch(() => {});
       loadCarts();
-    }, [loadCarts])
+    }, [loadCarts, refreshSystemConfig])
   );
+
+  useEffect(() => {
+    if (!preorderRuntimeEnabled && activeCartType === CART_TYPES.PREORDER) {
+      setActiveCartType(CART_TYPES.ORDER);
+    }
+  }, [activeCartType, preorderRuntimeEnabled]);
 
   const readyItems = useMemo(() => {
     const items = Array.isArray(readyCart?.items) ? readyCart.items : [];
@@ -567,6 +579,10 @@ export default function CartScreen({ navigation, route }) {
 
   const proceedCheckout = async () => {
     if (!canCheckout || isQuoting) return;
+    if (activeCartType === CART_TYPES.PREORDER && !preorderRuntimeEnabled) {
+      Alert.alert("Đặt trước đang tắt", "Admin đang tắt pre-order trong system config.");
+      return;
+    }
 
     if (checkoutItems.length !== cartItems.length) {
       Alert.alert(
@@ -683,17 +699,30 @@ export default function CartScreen({ navigation, route }) {
             <TabBadge count={readyItems.length} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={[styles.cartTypeBtn, activeCartType === CART_TYPES.PREORDER && styles.cartTypeBtnActive]}
-            onPress={() => setActiveCartType(CART_TYPES.PREORDER)}
-          >
-            <Text style={[styles.cartTypeText, activeCartType === CART_TYPES.PREORDER && styles.cartTypeTextActive]}>
-              Đặt trước
-            </Text>
-            <TabBadge count={preorderItems.length} />
-          </TouchableOpacity>
+          {preorderRuntimeEnabled ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[styles.cartTypeBtn, activeCartType === CART_TYPES.PREORDER && styles.cartTypeBtnActive]}
+              onPress={() => setActiveCartType(CART_TYPES.PREORDER)}
+            >
+              <Text style={[styles.cartTypeText, activeCartType === CART_TYPES.PREORDER && styles.cartTypeTextActive]}>
+                Đặt trước
+              </Text>
+              <TabBadge count={preorderItems.length} />
+            </TouchableOpacity>
+          ) : null}
         </View>
+
+        {!preorderRuntimeEnabled && preorderItems.length > 0 ? (
+          <View style={styles.warnBar}>
+            <View style={styles.warnIconWrap}>
+              <Ionicons name="information-circle" size={16} color="#B45309" />
+            </View>
+            <Text style={styles.warnText}>
+              Pre-order đang tắt trong system config. Các sản phẩm đặt trước hiện không thể tiếp tục checkout.
+            </Text>
+          </View>
+        ) : null}
 
         {loadingCart ? (
           <View style={styles.emptyBox}>

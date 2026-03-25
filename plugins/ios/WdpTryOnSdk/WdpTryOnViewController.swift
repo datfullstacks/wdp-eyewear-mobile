@@ -13,12 +13,16 @@ struct WdpTryOnPayload {
   let productId: String
   let productName: String
   let effectPath: String
+  let scene: String
   let arUrl: String
   let fallbackUrl: String
   let modelUrl: String
   let glbUrl: String
   let usdzUrl: String
   let resourcePaths: [String]
+  let selectedModelId: String
+  let prefab: [String: Any]
+  let models: [[String: Any]]
   let metadata: [String: Any]
 
   init(payload: [String: Any]) {
@@ -26,12 +30,16 @@ struct WdpTryOnPayload {
     productId = Self.readString(payload["productId"])
     productName = Self.readString(payload["productName"])
     effectPath = Self.readString(payload["effectPath"])
+    scene = Self.readString(payload["scene"])
     arUrl = Self.readString(payload["arUrl"])
     fallbackUrl = Self.readString(payload["fallbackUrl"])
     modelUrl = Self.readString(payload["modelUrl"])
     glbUrl = Self.readString(payload["glbUrl"])
     usdzUrl = Self.readString(payload["usdzUrl"])
     resourcePaths = Self.readStringArray(payload["resourcePaths"])
+    selectedModelId = Self.readString(payload["selectedModelId"])
+    prefab = Self.readDictionary(payload["prefab"])
+    models = Self.readDictionaryArray(payload["models"])
     metadata = payload
   }
 
@@ -53,6 +61,24 @@ struct WdpTryOnPayload {
       .compactMap { $0 as? String }
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
+  }
+
+  private static func readDictionary(_ value: Any?) -> [String: Any] {
+    if let dict = value as? [String: Any] {
+      return dict
+    }
+    if let dict = value as? NSDictionary {
+      return dict as? [String: Any] ?? [:]
+    }
+    return [:]
+  }
+
+  private static func readDictionaryArray(_ value: Any?) -> [[String: Any]] {
+    guard let array = value as? [Any] else { return [] }
+    return array.compactMap { item in
+      let dict = readDictionary(item)
+      return dict.isEmpty ? nil : dict
+    }
   }
 }
 
@@ -115,7 +141,13 @@ final class WdpTryOnViewController: UIViewController {
       "Banuba AR session",
       "Product: \(payload.productName.isEmpty ? "N/A" : payload.productName)",
       "Product ID: \(payload.productId.isEmpty ? "N/A" : payload.productId)",
-    ].joined(separator: "\n")
+      payload.scene.isEmpty ? nil : "Scene: \(payload.scene)",
+      payload.selectedModelId.isEmpty ? nil : "Selected model: \(payload.selectedModelId)",
+      payload.prefab.isEmpty ? nil : "Prefab: yes",
+      payload.models.isEmpty ? nil : "Models: \(payload.models.count)",
+    ]
+      .compactMap { $0 }
+      .joined(separator: "\n")
 
     let buttonsContainer = UIStackView()
     buttonsContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -156,6 +188,9 @@ final class WdpTryOnViewController: UIViewController {
   }
 
   private func startTryOn() {
+#if DEBUG
+    debugPrintPayload()
+#endif
 #if canImport(BanubaSDK) || canImport(BanubaSdk)
     guard !payload.sdkKey.isEmpty else {
       finish(.failure(code: "E_MISSING_TOKEN", message: "Banuba token is missing."))
@@ -245,4 +280,17 @@ final class WdpTryOnViewController: UIViewController {
       self.completion(result)
     }
   }
+
+#if DEBUG
+  private func debugPrintPayload() {
+    if JSONSerialization.isValidJSONObject(payload.metadata),
+       let data = try? JSONSerialization.data(withJSONObject: payload.metadata, options: [.prettyPrinted]),
+       let text = String(data: data, encoding: .utf8) {
+      print("[TryOn Native][iOS] payload:\n\(text)")
+      return
+    }
+
+    print("[TryOn Native][iOS] payload: \(payload.metadata)")
+  }
+#endif
 }

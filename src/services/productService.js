@@ -1,5 +1,6 @@
 ﻿import { api } from "./apiClient";
 import { attachSupabaseTryOnToProducts } from "./tryOnSupabaseService";
+import { getRuntimeSystemConfigSnapshot } from "../store/systemConfigStore";
 
 const DEFAULT_IMAGE =
   "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
@@ -47,6 +48,22 @@ const STATUS_LABEL = {
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
 const MODEL_FILE_PATTERN = /\.(glb|gltf|usdz)(\?|#|$)/i;
+
+function getRuntimeConfig() {
+  return getRuntimeSystemConfigSnapshot();
+}
+
+function isRuntimePreorderEnabled() {
+  return getRuntimeConfig()?.featureFlags?.preorderEnabled !== false;
+}
+
+function isRuntimeSplitPaymentEnabled() {
+  return getRuntimeConfig()?.featureFlags?.splitPaymentEnabled !== false;
+}
+
+function isRuntimeCodEnabled() {
+  return getRuntimeConfig()?.payments?.codEnabled !== false;
+}
 
 export const PRODUCT_CATALOG_TYPES = Object.freeze({
   FRAME: "FRAME",
@@ -391,8 +408,8 @@ function computePricing(pricing = {}) {
 function computeStockStatus(product, totalStock) {
   const statusRaw = String(product?.status || "").toLowerCase();
 
-  // ✅ nếu preOrder.enabled true và hết hàng => PREORDER
-  const preorderEnabled = product?.preOrder?.enabled === true;
+  const preorderEnabled =
+    product?.preOrder?.enabled === true && isRuntimePreorderEnabled();
 
   if (product?.inventory?.track && typeof totalStock === "number") {
     if (totalStock <= 0) return preorderEnabled ? "PREORDER" : "OUT_OF_STOCK";
@@ -715,9 +732,12 @@ export function mapApiProductSummaryToUi(product) {
   const supportsTryOn = computeSupportsTryOn(catalogType);
   const supportsLensPairing = computeSupportsLensPairing(product, catalogType);
   const requiresLensRxFlow = catalogType === PRODUCT_CATALOG_TYPES.LENS;
-  const preorderEnabled = product?.preOrder?.enabled === true;
+  const preorderEnabled =
+    product?.preOrder?.enabled === true && isRuntimePreorderEnabled();
+  const splitPaymentEnabled = isRuntimeSplitPaymentEnabled();
+  const codEnabled = isRuntimeCodEnabled();
   const allowCod = preorderEnabled
-    ? Boolean(product?.preOrder?.allowCod ?? true)
+    ? Boolean(product?.preOrder?.allowCod ?? true) && splitPaymentEnabled && codEnabled
     : true;
 
   const orderTypes =
@@ -776,7 +796,19 @@ export function mapApiProductSummaryToUi(product) {
     sizes,
     qtyLimits: { min: 1, max: 99 },
     allowCod,
-    preOrder: product?.preOrder ?? { enabled: false, allowCod: true },
+    preOrder: preorderEnabled
+      ? {
+          ...(product?.preOrder || {}),
+          enabled: true,
+          allowCod,
+          depositPercent: splitPaymentEnabled
+            ? Number(product?.preOrder?.depositPercent ?? 100)
+            : 100,
+          shippingCollectionTiming: splitPaymentEnabled
+            ? product?.preOrder?.shippingCollectionTiming || "upfront"
+            : "upfront",
+        }
+      : { enabled: false, allowCod: true, depositPercent: 100, shippingCollectionTiming: "upfront" },
     canTryOn,
     storeScope,
   };
