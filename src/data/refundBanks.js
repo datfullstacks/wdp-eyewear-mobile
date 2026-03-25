@@ -1,21 +1,32 @@
+const BANK_LOGOS_BY_CODE = {
+  VCB: require("../assets/banks/vietcombank.png"),
+  BIDV: require("../assets/banks/bidv.png"),
+  CTG: require("../assets/banks/viettinbank.png"),
+  TCB: require("../assets/banks/techcombank.png"),
+  MBB: require("../assets/banks/MB-Bank.png"),
+  ACB: require("../assets/banks/acb.png"),
+  VPB: require("../assets/banks/vpbank.png"),
+  TPB: require("../assets/banks/tpbank.png"),
+};
+
 export const REFUND_BANK_OPTIONS = [
-  { code: "VCB", name: "Vietcombank" },
-  { code: "BIDV", name: "BIDV" },
-  { code: "CTG", name: "VietinBank" },
-  { code: "TCB", name: "Techcombank" },
-  { code: "MBB", name: "MB Bank" },
-  { code: "ACB", name: "ACB" },
-  { code: "VPB", name: "VPBank" },
-  { code: "TPB", name: "TPBank" },
-  { code: "VIB", name: "VIB" },
-  { code: "STB", name: "Sacombank" },
-  { code: "HDB", name: "HDBank" },
-  { code: "OCB", name: "OCB" },
-  { code: "SHB", name: "SHB" },
-  { code: "MSB", name: "MSB" },
-  { code: "EIB", name: "Eximbank" },
-  { code: "LPB", name: "LPBank" },
-  { code: "SEAB", name: "SeABank" },
+  { code: "VCB", name: "Vietcombank", logo: BANK_LOGOS_BY_CODE.VCB },
+  { code: "BIDV", name: "BIDV", logo: BANK_LOGOS_BY_CODE.BIDV },
+  { code: "CTG", name: "VietinBank", logo: BANK_LOGOS_BY_CODE.CTG },
+  { code: "TCB", name: "Techcombank", logo: BANK_LOGOS_BY_CODE.TCB },
+  { code: "MBB", name: "MB Bank", logo: BANK_LOGOS_BY_CODE.MBB },
+  { code: "ACB", name: "ACB", logo: BANK_LOGOS_BY_CODE.ACB },
+  { code: "VPB", name: "VPBank", logo: BANK_LOGOS_BY_CODE.VPB },
+  { code: "TPB", name: "TPBank", logo: BANK_LOGOS_BY_CODE.TPB },
+  { code: "VIB", name: "VIB", logo: null },
+  { code: "STB", name: "Sacombank", logo: null },
+  { code: "HDB", name: "HDBank", logo: null },
+  { code: "OCB", name: "OCB", logo: null },
+  { code: "SHB", name: "SHB", logo: null },
+  { code: "MSB", name: "MSB", logo: null },
+  { code: "EIB", name: "Eximbank", logo: null },
+  { code: "LPB", name: "LPBank", logo: null },
+  { code: "SEAB", name: "SeABank", logo: null },
 ];
 
 function normalizeLookupText(value = "") {
@@ -42,6 +53,15 @@ export function findRefundBankByName(name) {
       (bank) => normalizeLookupText(bank.name) === normalizedName,
     ) || null
   );
+}
+
+export function getRefundBankLogo(bank) {
+  if (!bank) return null;
+  if (bank.logo) return bank.logo;
+  const matched =
+    findRefundBankByCode(bank.code) ||
+    findRefundBankByName(bank.name);
+  return matched?.logo || null;
 }
 
 export function normalizeRefundAccountNumber(value = "") {

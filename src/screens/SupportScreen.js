@@ -21,23 +21,23 @@ import {
 
 const CATEGORY_OPTIONS = [
   { key: "general", label: "Chung" },
-  { key: "order", label: "Don hang" },
+  { key: "order", label: "Đơn hàng" },
   { key: "refund", label: "Refund" },
-  { key: "warranty", label: "Bao hanh" },
+  { key: "warranty", label: "Bảo hành" },
 ];
 
 const FILTER_OPTIONS = [
-  { key: "all", label: "Tat ca" },
+  { key: "all", label: "Tất cả" },
   { key: "general", label: "Chung" },
-  { key: "order", label: "Don hang" },
+  { key: "order", label: "Đơn hàng" },
   { key: "refund", label: "Refund" },
-  { key: "warranty", label: "Bao hanh" },
+  { key: "warranty", label: "Bảo hành" },
 ];
 
 const PRIORITY_OPTIONS = [
-  { key: "normal", label: "Binh thuong" },
-  { key: "high", label: "Uu tien cao" },
-  { key: "low", label: "Uu tien thap" },
+  { key: "normal", label: "Bình thường" },
+  { key: "high", label: "Ưu tiên cao" },
+  { key: "low", label: "Ưu tiên thấp" },
 ];
 
 function formatTime(value) {
@@ -50,18 +50,18 @@ function formatTime(value) {
 function buildDefaultSubject({ category, orderCode, orderItemName }) {
   if (category === "warranty") {
     return orderItemName
-      ? `Bao hanh: ${orderItemName}`
+      ? `Bảo hành: ${orderItemName}`
       : orderCode
-        ? `Bao hanh don ${orderCode}`
-        : "Yeu cau bao hanh";
+        ? `Bảo hành đơn ${orderCode}`
+        : "Yêu cầu bảo hành";
   }
 
   if (category === "order" && orderCode) {
-    return `Ho tro don ${orderCode}`;
+    return `Hỗ trợ đơn ${orderCode}`;
   }
 
   if (category === "refund" && orderCode) {
-    return `Hoi dap refund don ${orderCode}`;
+    return `Hỏi đáp refund đơn ${orderCode}`;
   }
 
   return "";
@@ -116,23 +116,23 @@ function TicketCard({ item, onPress }) {
 
       {item?.warranty ? (
         <Text style={styles.secondaryText}>
-          Bao hanh: {item.warranty.itemName || "--"} - {item.warranty.eligibility || "--"}
+          Bảo hành: {item.warranty.itemName || "--"} - {item.warranty.eligibility || "--"}
         </Text>
       ) : null}
 
       {item?.order?.paymentCode ? (
-        <Text style={styles.secondaryText}>Don: {item.order.paymentCode}</Text>
+        <Text style={styles.secondaryText}>Đơn: {item.order.paymentCode}</Text>
       ) : null}
 
       {item?.store?.name ? (
         <Text style={styles.secondaryText}>
-          Cua hang: {item.store.name}
+          Cửa hàng: {item.store.name}
           {item.store.code ? ` (${item.store.code})` : ""}
         </Text>
       ) : null}
 
       <View style={styles.cardBottom}>
-        <Text style={styles.time}>Cap nhat: {formatTime(item?.lastMessageAt || item?.updatedAt)}</Text>
+        <Text style={styles.time}>Cập nhật: {formatTime(item?.lastMessageAt || item?.updatedAt)}</Text>
         <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
       </View>
     </TouchableOpacity>
@@ -213,7 +213,7 @@ export default function SupportScreen({ navigation, route }) {
           err?.response?.data?.message ||
           err?.response?.data?.error ||
           err?.message ||
-          "Khong tai duoc phieu ho tro";
+          "Không tải được phiếu hỗ trợ";
         Alert.alert("Support", msg);
       } finally {
         if (!silent) setLoading(false);
@@ -236,14 +236,14 @@ export default function SupportScreen({ navigation, route }) {
     const nextMessage = String(message || "").trim();
 
     if (!nextSubject || !nextMessage) {
-      Alert.alert("Support", "Subject va message la bat buoc.");
+      Alert.alert("Support", "Subject và message là bắt buộc.");
       return;
     }
 
     if (category === "warranty" && (!prefillOrderId || !prefillOrderItemId)) {
       Alert.alert(
-        "Bao hanh",
-        "Bao hanh phai duoc tao tu mot mat hang da giao trong chi tiet don."
+        "Bảo hành",
+        "Bảo hành phải được tạo từ một mặt hàng đã giao trong chi tiết đơn."
       );
       return;
     }
@@ -280,7 +280,7 @@ export default function SupportScreen({ navigation, route }) {
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
-        "Khong tao duoc phieu ho tro";
+        "Không tạo được phiếu hỗ trợ";
       Alert.alert("Support", msg);
     } finally {
       setSubmitting(false);
@@ -297,7 +297,7 @@ export default function SupportScreen({ navigation, route }) {
       return (
         <View style={styles.emptyWrap}>
           <ActivityIndicator size="small" color="#2563EB" />
-          <Text style={styles.emptyText}>Dang tai ticket...</Text>
+          <Text style={styles.emptyText}>Đang tải ticket...</Text>
         </View>
       );
     }
@@ -305,8 +305,8 @@ export default function SupportScreen({ navigation, route }) {
     return (
       <View style={styles.emptyWrap}>
         <Ionicons name="chatbubble-ellipses-outline" size={42} color="#9CA3AF" />
-        <Text style={styles.emptyTitle}>Chua co case ho tro</Text>
-        <Text style={styles.emptyText}>Case moi se hien o day sau khi gui yeu cau.</Text>
+        <Text style={styles.emptyTitle}>Chưa có case hỗ trợ</Text>
+        <Text style={styles.emptyText}>Case mới sẽ hiện ở đây sau khi gửi yêu cầu.</Text>
       </View>
     );
   }, [loading]);
@@ -322,7 +322,7 @@ export default function SupportScreen({ navigation, route }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Ho tro & bao hanh</Text>
+          <Text style={styles.headerTitle}>Hỗ trợ & bảo hành</Text>
         </View>
       </View>
 
@@ -335,46 +335,31 @@ export default function SupportScreen({ navigation, route }) {
             <View style={styles.formCard}>
               <View style={styles.formHeading}>
                 <View>
-                  <Text style={styles.formTitle}>Tao case moi</Text>
+                  <Text style={styles.formTitle}>Tạo case mới</Text>
                   <Text style={styles.formSubTitle}>
-                    Gui ticket don hang, refund, hoac bao hanh cho staff.
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.metaBadge,
-                    { backgroundColor: selectedCategoryMeta.bg || "#F3F4F6" },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.metaBadgeText,
-                      { color: selectedCategoryMeta.fg || "#374151" },
-                    ]}
-                  >
-                    {selectedCategoryMeta.label || category}
+                    Gửi ticket đơn hàng, refund, hoặc bảo hành cho staff.
                   </Text>
                 </View>
               </View>
 
               {hasOrderContext ? (
                 <View style={styles.contextCard}>
-                  <Text style={styles.contextTitle}>Lien ket don hang</Text>
-                  <Text style={styles.contextText}>Ma don: {prefillOrderCode || prefillOrderId}</Text>
+                  <Text style={styles.contextTitle}>Liên kết đơn hàng</Text>
+                  <Text style={styles.contextText}>Mã đơn: {prefillOrderCode || prefillOrderId}</Text>
                   {prefillOrderItemName ? (
-                    <Text style={styles.contextText}>Mat hang: {prefillOrderItemName}</Text>
+                    <Text style={styles.contextText}>Mặt hàng: {prefillOrderItemName}</Text>
                   ) : null}
                   <Text style={styles.contextHint}>
                     {isWarrantyDraft
-                      ? "Case nay se duoc tao duoi category Bao hanh va gan voi item da chon."
-                      : "Case nay se duoc gan voi don hang hien tai."}
+                      ? "Case này sẽ được tạo dưới category Bảo hành và gắn với item đã chọn."
+                      : "Case này sẽ được gắn với đơn hàng hiện tại."}
                   </Text>
                 </View>
               ) : null}
 
               {!lockCategory ? (
                 <View style={styles.optionGroup}>
-                  <Text style={styles.optionLabel}>Loai case</Text>
+                  <Text style={styles.optionLabel}>Loại case</Text>
                   <View style={styles.optionRow}>
                     {CATEGORY_OPTIONS.map((option) => {
                       const active = category === option.key;
@@ -409,7 +394,7 @@ export default function SupportScreen({ navigation, route }) {
               ) : null}
 
               <View style={styles.optionGroup}>
-                <Text style={styles.optionLabel}>Muc uu tien</Text>
+                <Text style={styles.optionLabel}>Mức ưu tiên</Text>
                 <View style={styles.optionRow}>
                   {PRIORITY_OPTIONS.map((option) => {
                     const active = priority === option.key;
@@ -441,8 +426,8 @@ export default function SupportScreen({ navigation, route }) {
                 style={[styles.input, styles.inputMulti]}
                 placeholder={
                   isWarrantyDraft
-                    ? "Mo ta loi, tinh trang san pham, va nhu cau bao hanh..."
-                    : "Mo ta van de can staff ho tro..."
+                    ? "Mô tả lỗi, tình trạng sản phẩm, và nhu cầu bảo hành..."
+                    : "Mô tả vấn đề cần staff hỗ trợ..."
                 }
                 multiline
                 textAlignVertical="top"
@@ -456,7 +441,7 @@ export default function SupportScreen({ navigation, route }) {
                 disabled={submitting}
               >
                 <Text style={styles.submitText}>
-                  {submitting ? "Dang gui..." : "Tao case"}
+                  {submitting ? "Đang gửi..." : "Tạo case"}
                 </Text>
               </TouchableOpacity>
             </View>

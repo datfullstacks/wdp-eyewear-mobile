@@ -16,8 +16,8 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AntDesign, Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 
@@ -80,7 +80,7 @@ const ORDER_TYPES = {
 };
 
 const TRY_ON_STATUS_LABEL = {
-  draft: "Try-on chưa được publish",
+  draft: "Try-on chưa được phát hành",
   pending_review: "Try-on đang chờ duyệt",
   approved: "Try-on đã duyệt, chờ phát hành",
   published: "Try-on đã sẵn sàng",
@@ -159,6 +159,10 @@ function pick2DAsset(assets = []) {
   );
 }
 
+function pick2DAssets(assets = []) {
+  return assets.filter((asset) => asset?.assetType === "2d");
+}
+
 function pick3DAsset(assets = []) {
   return (
     assets.find((a) => a?.assetType === "3d" && a?.role === "viewer") ||
@@ -174,6 +178,23 @@ function getVariantAssets(product, variant) {
   const byVariant = product?.media?.byVariant;
   const assets = byVariant?.[variantId];
   return Array.isArray(assets) ? assets : [];
+}
+
+function buildImageGallery(variantAssets = [], productAssets = []) {
+  const seen = new Set();
+  const items = [];
+
+  const pushAsset = (asset) => {
+    const imageUrl = toText(asset?.url || asset?.posterUrl);
+    if (!imageUrl || seen.has(imageUrl)) return;
+    seen.add(imageUrl);
+    items.push(asset);
+  };
+
+  pick2DAssets(variantAssets).forEach(pushAsset);
+  pick2DAssets(productAssets).forEach(pushAsset);
+
+  return items;
 }
 
 function buildTryOnPayload(baseTryOn = {}, asset = null) {
@@ -425,6 +446,102 @@ function buildCartItemPayload({
   };
 }
 
+function normalizeTextValue(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeAttachmentUrl(value) {
+  return String(value ?? "").trim();
+}
+
+function hasPrescriptionValues(prescription = {}) {
+  return Boolean(
+    normalizeTextValue(prescription?.rightEye?.cyl) ||
+      normalizeTextValue(prescription?.rightEye?.axis) ||
+      normalizeTextValue(prescription?.leftEye?.cyl) ||
+      normalizeTextValue(prescription?.leftEye?.axis)
+  );
+}
+
+function arePrescriptionEqual(left = {}, right = {}) {
+  const leftMode = normalizeTextValue(left?.mode);
+  const rightMode = normalizeTextValue(right?.mode);
+  const leftHasValues = hasPrescriptionValues(left);
+  const rightHasValues = hasPrescriptionValues(right);
+  const leftFirstUrl = normalizeAttachmentUrl(left?.attachmentUrls?.[0]);
+  const rightFirstUrl = normalizeAttachmentUrl(right?.attachmentUrls?.[0]);
+
+  if (leftHasValues || rightHasValues || leftMode === "manual" || rightMode === "manual") {
+    return (
+      normalizeTextValue(left?.rightEye?.cyl) === normalizeTextValue(right?.rightEye?.cyl) &&
+      normalizeTextValue(left?.rightEye?.axis) === normalizeTextValue(right?.rightEye?.axis) &&
+      normalizeTextValue(left?.leftEye?.cyl) === normalizeTextValue(right?.leftEye?.cyl) &&
+      normalizeTextValue(left?.leftEye?.axis) === normalizeTextValue(right?.leftEye?.axis)
+    );
+  }
+
+  if (
+    leftFirstUrl ||
+    rightFirstUrl ||
+    leftMode === "attachment" ||
+    leftMode === "upload" ||
+    rightMode === "attachment" ||
+    rightMode === "upload"
+  ) {
+    return leftFirstUrl === rightFirstUrl;
+  }
+
+  return true;
+}
+
+function isSameCartConfiguration(cartItem = {}, payload = {}) {
+  if (String(cartItem?.productId || "") !== String(payload?.productId || "")) return false;
+  if (String(cartItem?.variantId || "") !== String(payload?.variantId || "")) return false;
+
+  const cartCustomization = cartItem?.customization || {};
+  const payloadCustomization = payload?.customization || {};
+
+  if (
+    normalizeTextValue(cartCustomization?.selectedColor) !==
+      normalizeTextValue(payloadCustomization?.selectedColor) ||
+    normalizeTextValue(cartCustomization?.selectedSize) !==
+      normalizeTextValue(payloadCustomization?.selectedSize) ||
+    normalizeTextValue(cartCustomization?.note) !==
+      normalizeTextValue(payloadCustomization?.note)
+  ) {
+    return false;
+  }
+
+  return arePrescriptionEqual(
+    cartCustomization?.prescription || {},
+    payloadCustomization?.prescription || {},
+  );
+}
+
+function isSameCartIdentity(cartItem = {}, payload = {}) {
+  return (
+    String(cartItem?.productId || "") === String(payload?.productId || "") &&
+    String(cartItem?.variantId || "") === String(payload?.variantId || "")
+  );
+}
+
+function summarizePrescriptionForDebug(prescription = {}) {
+  return {
+    mode: normalizeTextValue(prescription?.mode) || "none",
+    rightEye: {
+      cyl: normalizeTextValue(prescription?.rightEye?.cyl ?? prescription?.rightEye?.CYL),
+      axis: normalizeTextValue(prescription?.rightEye?.axis ?? prescription?.rightEye?.AXIS),
+    },
+    leftEye: {
+      cyl: normalizeTextValue(prescription?.leftEye?.cyl ?? prescription?.leftEye?.CYL),
+      axis: normalizeTextValue(prescription?.leftEye?.axis ?? prescription?.leftEye?.AXIS),
+    },
+    attachmentUrls: Array.isArray(prescription?.attachmentUrls)
+      ? prescription.attachmentUrls.filter(Boolean)
+      : [],
+  };
+}
+
 /* -------------------- Screen -------------------- */
 
 export default function ProductDetailScreen({ navigation, route }) {
@@ -448,6 +565,7 @@ export default function ProductDetailScreen({ navigation, route }) {
   const { stores } = useStores();
   const [specsOpen, setSpecsOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState("");
 
   const requireLogin = () => {
     Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để sử dụng tính năng này.", [
@@ -627,6 +745,20 @@ export default function ProductDetailScreen({ navigation, route }) {
   const image2DAsset = useMemo(() => {
     return pick2DAsset(variantAssets) || pick2DAsset(product?.media?.assets || []);
   }, [variantAssets, product?.media?.assets]);
+  const imageGallery = useMemo(() => {
+    return buildImageGallery(variantAssets, product?.media?.assets || []);
+  }, [product?.media?.assets, variantAssets]);
+  const activeImageAsset = useMemo(() => {
+    if (!selectedImageUrl) return imageGallery[0] || image2DAsset || null;
+    return (
+      imageGallery.find(
+        (asset) => toText(asset?.url || asset?.posterUrl) === selectedImageUrl,
+      ) ||
+      imageGallery[0] ||
+      image2DAsset ||
+      null
+    );
+  }, [image2DAsset, imageGallery, selectedImageUrl]);
 
   const image3DAsset = useMemo(() => {
     if (selectedVariantId && hasVariantSpecificTryOnModels) {
@@ -693,6 +825,24 @@ export default function ProductDetailScreen({ navigation, route }) {
     }
   }, [has3DAsset, mediaMode]);
 
+  useEffect(() => {
+    const firstImageUrl = toText(
+      imageGallery[0]?.url || imageGallery[0]?.posterUrl || image2DAsset?.url,
+    );
+    if (!firstImageUrl) {
+      setSelectedImageUrl("");
+      return;
+    }
+
+    setSelectedImageUrl((prev) => {
+      if (!prev) return firstImageUrl;
+      const exists = imageGallery.some(
+        (asset) => toText(asset?.url || asset?.posterUrl) === prev,
+      );
+      return exists ? prev : firstImageUrl;
+    });
+  }, [image2DAsset?.url, imageGallery, selectedVariantId]);
+
   const mainImage = useMemo(() => {
     if (!product) return null;
     if (mediaMode === "3d" && has3DAsset) {
@@ -704,8 +854,14 @@ export default function ProductDetailScreen({ navigation, route }) {
         product.image
       );
     }
-    return image2DAsset?.url || fallbackColorImage || product.image;
-  }, [product, mediaMode, has3DAsset, image3DAsset, image2DAsset, fallbackColorImage]);
+    return (
+      activeImageAsset?.url ||
+      activeImageAsset?.posterUrl ||
+      image2DAsset?.url ||
+      fallbackColorImage ||
+      product.image
+    );
+  }, [product, mediaMode, has3DAsset, image3DAsset, activeImageAsset, image2DAsset, fallbackColorImage]);
 
   const related = useMemo(() => {
     if (!product) return [];
@@ -934,7 +1090,7 @@ export default function ProductDetailScreen({ navigation, route }) {
       const uiCartType = isPreorderMode ? CART_TYPES.PREORDER : CART_TYPES.ORDER;
       const apiCartType = UI_TO_API_CART_TYPE[uiCartType] || API_CART_TYPES.READY_STOCK;
 
-      const payload = buildCartItemPayload({
+      const nextPayload = buildCartItemPayload({
         product,
         qty,
         colorId,
@@ -945,12 +1101,84 @@ export default function ProductDetailScreen({ navigation, route }) {
         selectedVariant,
       });
 
+      const currentCart = await getMyCartApi(apiCartType);
+      const currentItems = Array.isArray(currentCart?.items) ? currentCart.items : [];
+      const matchedItem =
+        currentItems.find((item) => isSameCartConfiguration(item, nextPayload)) ||
+        (() => {
+          const sameIdentityItems = currentItems.filter((item) =>
+            isSameCartIdentity(item, nextPayload)
+          );
+          return sameIdentityItems.length === 1 ? sameIdentityItems[0] : null;
+        })();
+
+      const payload = matchedItem
+        ? {
+            ...nextPayload,
+            itemId: matchedItem._id || matchedItem.id,
+            quantity: Number(matchedItem.quantity || 0) + Number(qty || 1),
+          }
+        : nextPayload;
+
       await upsertCartItemApi(apiCartType, payload);
+
+      if (typeof __DEV__ !== "undefined" && __DEV__ && product?.type === "LENS") {
+        console.log(
+          "[Cart] lens add payload",
+          JSON.stringify(
+            {
+              productId: payload.productId,
+              variantId: payload.variantId || "",
+              quantity: payload.quantity,
+              customization: {
+                selectedColor: payload?.customization?.selectedColor || "",
+                selectedSize: payload?.customization?.selectedSize || "",
+                prescription: summarizePrescriptionForDebug(
+                  payload?.customization?.prescription
+                ),
+              },
+            },
+            null,
+            2
+          )
+        );
+
+        const latestCart = await getMyCartApi(apiCartType);
+        const latestItems = Array.isArray(latestCart?.items) ? latestCart.items : [];
+        const savedItem =
+          latestItems.find((item) => isSameCartConfiguration(item, payload)) ||
+          latestItems.find((item) => isSameCartIdentity(item, payload)) ||
+          null;
+
+        console.log(
+          "[Cart] lens saved customization",
+          JSON.stringify(
+            savedItem
+              ? {
+                  itemId: savedItem?._id || savedItem?.id || "",
+                  productId: savedItem?.productId || "",
+                  variantId: savedItem?.variantId || "",
+                  quantity: Number(savedItem?.quantity || 0),
+                  customization: {
+                    selectedColor: savedItem?.customization?.selectedColor || "",
+                    selectedSize: savedItem?.customization?.selectedSize || "",
+                    prescription: summarizePrescriptionForDebug(
+                      savedItem?.customization?.prescription
+                    ),
+                  },
+                }
+              : null,
+            null,
+            2
+          )
+        );
+      }
+
       changeCartBadgeQty(qty);
 
       Toast.show({
         type: "success",
-        text1: isPreorderMode ? "Đã đặt trước" : "Đã thêm vào giỏ",
+        text1: "Đã thêm vào giỏ hàng",
         text2: product.name,
       });
 
@@ -1125,7 +1353,7 @@ export default function ProductDetailScreen({ navigation, route }) {
             "Không tải được dữ liệu try-on đầy đủ cho sản phẩm này. Kiểm tra kết nối rồi thử lại."
           );
         } else {
-          Alert.alert("Try-on", "Dữ liệu try-on của sản phẩm này chưa đầy đủ hoặc chưa publish.");
+          Alert.alert("Try-on", "Dữ liệu try-on của sản phẩm này chưa đầy đủ hoặc chưa phát hành.");
         }
         return;
       }
@@ -1202,6 +1430,12 @@ export default function ProductDetailScreen({ navigation, route }) {
         <Hero
           product={product}
           image={mainImage}
+          gallery={imageGallery}
+          selectedImageUrl={selectedImageUrl}
+          onSelectImage={(imageUrl) => {
+            setSelectedImageUrl(imageUrl);
+            setMediaMode("2d");
+          }}
           discountPct={discountPct}
           fav={fav}
           onToggleFav={onToggleFav}
@@ -1366,18 +1600,6 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
       </View>
 
       <View style={styles.headerRight}>
-        <TouchableOpacity
-          style={styles.headerIconBtn}
-          activeOpacity={0.8}
-          onPress={() =>
-            navigation.navigate("Tabs", {
-              screen: "FavTab",
-              params: { screen: "Favorites" },
-            })
-          }
-        >
-          <Ionicons name="heart" size={24} color="#EF4444" />
-        </TouchableOpacity>
 
         <CartIconButton
           onPress={() =>
@@ -1387,6 +1609,9 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
             })
           }
         />
+        <View  style={styles.headerIconBtn}>
+          <AntDesign name="comment" size={24} color="black" />
+        </View>
       </View>
     </View>
   );
@@ -1395,6 +1620,9 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
 function Hero({
   product,
   image,
+  gallery = [],
+  selectedImageUrl = "",
+  onSelectImage,
   discountPct,
   fav,
   onToggleFav,
@@ -1513,6 +1741,36 @@ function Hero({
           </View>
         ) : null}
       </View>
+
+      {gallery.length > 1 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.heroThumbList}
+        >
+          {gallery.map((asset, index) => {
+            const thumbUrl = toText(asset?.url || asset?.posterUrl);
+            if (!thumbUrl) return null;
+
+            const isActive = thumbUrl === selectedImageUrl || (!selectedImageUrl && index === 0);
+
+            return (
+              <TouchableOpacity
+                key={`${thumbUrl}-${index}`}
+                activeOpacity={0.9}
+                onPress={() => onSelectImage?.(thumbUrl)}
+                style={[styles.heroThumbItem, isActive && styles.heroThumbItemActive]}
+              >
+                <Image
+                  source={{ uri: thumbUrl }}
+                  style={styles.heroThumbImage}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : null}
     </Card>
   );
 }
@@ -2113,19 +2371,19 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
 
   return (
     <Card>
-      <Text style={styles.sectionTitle}>Cua hang</Text>
+      <Text style={styles.sectionTitle}>Cửa hàng</Text>
 
       {mode === "all" ? (
         <>
           <Text style={styles.mutedText}>
-            San pham nay dang duoc mo ban theo mo hinh tat ca cua hang dang hoat dong.
+            Sản phẩm này đang được mở bán theo mô hình tất cả cửa hàng đang hoạt động.
           </Text>
 
           {selectedStore ? (
             <View style={styles.storeHintBox}>
               <Ionicons name="business-outline" size={16} color="#1D4ED8" />
               <Text style={styles.storeHintText}>
-                Ban dang xem theo cua hang: {selectedStore.name} ({selectedStore.code})
+                Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
               </Text>
             </View>
           ) : null}
@@ -2147,10 +2405,10 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
                     {store.name} ({store.code})
                   </Text>
                   <Text style={styles.storeCardMeta}>
-                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chua co dia chi"}
+                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
                   </Text>
                   <Text style={styles.storeCardMeta}>
-                    Try-on: {store.supportsTryOn ? "Co" : "Khong"} | Pickup: {store.supportsPickup ? "Co" : "Khong"}
+                    Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
                   </Text>
                 </View>
                 {selectedStoreId === store.id ? (
@@ -2163,7 +2421,7 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
             </View>
           ) : (
             <Text style={[styles.mutedText, { marginTop: 8 }]}>
-              Chua tai duoc danh sach cua hang dang hoat dong.
+              Chưa tải được danh sách cửa hàng đang hoạt động.
             </Text>
           )}
         </>
@@ -2173,7 +2431,7 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
             <View style={styles.storeHintBox}>
               <Ionicons name="business-outline" size={16} color="#1D4ED8" />
               <Text style={styles.storeHintText}>
-                Ban dang xem theo cua hang: {selectedStore.name} ({selectedStore.code})
+                Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
               </Text>
             </View>
           ) : null}
@@ -2194,10 +2452,10 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
                     {store.name} ({store.code})
                   </Text>
                   <Text style={styles.storeCardMeta}>
-                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chua co dia chi"}
+                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
                   </Text>
                   <Text style={styles.storeCardMeta}>
-                    Try-on: {store.supportsTryOn ? "Co" : "Khong"} | Pickup: {store.supportsPickup ? "Co" : "Khong"}
+                    Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
                   </Text>
                 </View>
                 {selectedStoreId === store.id ? (
@@ -2211,18 +2469,18 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
         </>
       ) : (
         <Text style={styles.mutedText}>
-          San pham nay dang duoc quan ly theo cua hang, nhung chua co danh sach cua hang duoc map.
+          Sản phẩm này đang được quản lý theo cửa hàng, nhưng chưa có danh sách cửa hàng được map.
         </Text>
       )}
 
       {canSwitchStore ? (
         <Text style={[styles.mutedText, { marginTop: 10 }]}>
-          Bam vao tung cua hang de doi nhanh cua hang dang ap dung cho san pham nay.
+          Bấm vào từng cửa hàng để đổi nhanh cửa hàng đang áp dụng cho sản phẩm này.
         </Text>
       ) : null}
 
       {storeScope?.note ? (
-        <Text style={[styles.mutedText, { marginTop: 10 }]}>Ghi chu: {storeScope.note}</Text>
+        <Text style={[styles.mutedText, { marginTop: 10 }]}>Ghi chú: {storeScope.note}</Text>
       ) : null}
     </Card>
   );
@@ -2532,6 +2790,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   heroImage: { width: "100%", height: "100%" },
+  heroThumbList: {
+    gap: 10,
+    paddingTop: 12,
+    paddingHorizontal: 2,
+  },
+  heroThumbItem: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+  },
+  heroThumbItemActive: {
+    borderColor: "#111827",
+  },
+  heroThumbImage: {
+    width: "100%",
+    height: "100%",
+  },
 
   discountBadge: {
     position: "absolute",

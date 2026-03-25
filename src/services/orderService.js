@@ -11,6 +11,9 @@ import {
   summarizeLensPrescription,
 } from "./lensPrescriptionService";
 
+const orderProductCache = new Map();
+const orderProductInFlight = new Map();
+
 function localizeOrderActionMessage(message, fallback = "Không thể thực hiện thao tác.") {
   const normalized = String(message || "").trim();
   if (!normalized) return fallback;
@@ -250,10 +253,27 @@ async function enrichItemWithProduct(item) {
   if (!item?.productId) return item;
 
   try {
-    const product = await fetchProductById(item.productId);
+    const cacheKey = String(item.productId);
+
+    if (orderProductCache.has(cacheKey)) {
+      return enrichVariantWithProduct(item, orderProductCache.get(cacheKey));
+    }
+
+    if (orderProductInFlight.has(cacheKey)) {
+      const product = await orderProductInFlight.get(cacheKey);
+      return product ? enrichVariantWithProduct(item, product) : item;
+    }
+
+    const request = fetchProductById(item.productId);
+    orderProductInFlight.set(cacheKey, request);
+
+    const product = await request;
+    orderProductInFlight.delete(cacheKey);
     if (!product) return item;
+    orderProductCache.set(cacheKey, product);
     return enrichVariantWithProduct(item, product);
   } catch {
+    orderProductInFlight.delete(String(item.productId));
     return item;
   }
 }

@@ -924,6 +924,22 @@ export default function CheckoutScreen({ navigation, route }) {
         cartType: API_CART_TYPE[cartType] || "ready_stock",
       });
 
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.log("[Checkout] createCheckout prescription payload");
+        console.log(
+          JSON.stringify(
+            payload.items.map((item) => ({
+              productId: item.productId || item.product_id,
+              variantId: item.variantId || item.variant_id || null,
+              customization: item.customization || null,
+              prescription: item.customization?.prescription || null,
+            })),
+            null,
+            2,
+          )
+        );
+      }
+
       const data = await createCheckout(payload);
       const orderId = data?.orderId || data?._id || data?.id || null;
       if (!orderId) {

@@ -462,7 +462,7 @@ export default function HomeScreen({ navigation }) {
 
   const selectedStoreLabel = useMemo(() => {
     const selectedStore = stores.find((store) => store.id === selectedStoreId);
-    return selectedStore?.name || "Tat ca cua hang";
+    return selectedStore?.name || "Tất cả cửa hàng";
   }, [selectedStoreId, stores]);
 
   const loadAddress = useCallback(async () => {
@@ -553,7 +553,7 @@ export default function HomeScreen({ navigation }) {
         setAddressModalVisible(false);
       } catch (err) {
         const message =
-          err?.response?.data?.message || err?.message || "Không thiết lập lại mặt định được";
+          err?.response?.data?.message || err?.message || "Không thiết lập lại mặc định được";
         Alert.alert("Address", message);
       } finally {
         setSettingDefaultId(null);
@@ -629,7 +629,7 @@ export default function HomeScreen({ navigation }) {
               >
                 <Ionicons name="business-outline" size={16} color="#111827" />
                 <Text style={styles.locationText} numberOfLines={1}>
-                  Cua hang: {selectedStoreLabel}
+                  Cửa hàng: {selectedStoreLabel}
                 </Text>
                 <Ionicons name="chevron-down" size={14} color="#6B7280" />
               </TouchableOpacity>
@@ -804,7 +804,7 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Cua hang dang xem</Text>
+              <Text style={styles.modalTitle}>Cửa hàng đang xem</Text>
               <TouchableOpacity onPress={() => setStoreModalVisible(false)}>
                 <Ionicons name="close" size={20} color="#111827" />
               </TouchableOpacity>
@@ -824,7 +824,7 @@ export default function HomeScreen({ navigation }) {
                   color={!selectedStoreId ? "#2563EB" : "#6B7280"}
                   style={{ marginRight: 10 }}
                 />
-                <Text style={styles.addressText}>Tat ca cua hang</Text>
+                <Text style={styles.addressText}>Tất cả cửa hàng</Text>
               </TouchableOpacity>
 
               {stores.map((store) => {
@@ -858,7 +858,7 @@ export default function HomeScreen({ navigation }) {
                         </Text>
                       ) : null}
                     </View>
-                    {store.isDefault ? <Text style={styles.defaultBadge}>Mac dinh</Text> : null}
+                    {store.isDefault ? <Text style={styles.defaultBadge}>Mặc định</Text> : null}
                   </TouchableOpacity>
                 );
               })}
@@ -913,7 +913,7 @@ export default function HomeScreen({ navigation }) {
                       )}
 
                       <Text style={styles.addressText}>{label}</Text>
-                      {a.isDefault && <Text style={styles.defaultBadge}>Mặt định</Text>}
+                      {a.isDefault && <Text style={styles.defaultBadge}>Mặc định</Text>}
                     </TouchableOpacity>
                   );
                 })}

@@ -172,7 +172,7 @@ function mapApiCartItemToUi(item, products = []) {
     matchedProduct?.colors?.find(
       (c) =>
         String(c.name || c.label || c.id).toLowerCase() ===
-      String(selectedColor || "").toLowerCase()
+        String(selectedColor || "").toLowerCase()
     ) || null;
 
   const imageOverride = colorObj?.imageOverride || null;
@@ -187,25 +187,25 @@ function mapApiCartItemToUi(item, products = []) {
 
   const product = matchedProduct
     ? {
-        ...matchedProduct,
-        image: imageOverride || matchedProduct.image,
-        preOrder: item?.preOrderConfig || matchedProduct.preOrder || null,
-      }
+      ...matchedProduct,
+      image: imageOverride || matchedProduct.image,
+      preOrder: item?.preOrderConfig || matchedProduct.preOrder || null,
+    }
     : {
-        id: item.productId,
-        apiId: item.productId,
-        name: item.name || "Sản phẩm",
-        type: normalizeType(catalogType),
-        apiType: item.type || null,
-        catalogType,
-        displayLabel,
-        requiresLensRxFlow,
-        supportsLensPairing,
-        image: "",
-        price: item.unitPrice || 0,
-        originalPrice: null,
-        preOrder: item?.preOrderConfig || null,
-      };
+      id: item.productId,
+      apiId: item.productId,
+      name: item.name || "Sản phẩm",
+      type: normalizeType(catalogType),
+      apiType: item.type || null,
+      catalogType,
+      displayLabel,
+      requiresLensRxFlow,
+      supportsLensPairing,
+      image: "",
+      price: item.unitPrice || 0,
+      originalPrice: null,
+      preOrder: item?.preOrderConfig || null,
+    };
 
   let variantText = null;
   if (catalogType === "FRAME" || catalogType === "SUNGLASSES") {
@@ -228,8 +228,8 @@ function mapApiCartItemToUi(item, products = []) {
     depositPercent: (() => {
       const value = Number(
         item.depositPercent ??
-          item?.preOrderConfig?.depositPercent ??
-          product?.preOrder?.depositPercent,
+        item?.preOrderConfig?.depositPercent ??
+        product?.preOrder?.depositPercent,
       );
       return Number.isFinite(value) ? value : 100;
     })(),
@@ -267,6 +267,33 @@ function buildCheckoutItemsFromApiUi(cartItems) {
     }));
 }
 
+function getItemShippingCollectionTiming(ci) {
+  return String(
+    ci?.preOrderConfig?.shippingCollectionTiming ||
+    ci?.product?.preOrder?.shippingCollectionTiming ||
+    "",
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function getMixedPreorderShippingTiming(cartItems = []) {
+  const grouped = new Map();
+
+  for (const ci of cartItems) {
+    if (!ci?.isPreorder) continue;
+
+    const timing = getItemShippingCollectionTiming(ci);
+    if (!timing) continue;
+    const names = grouped.get(timing) || [];
+    names.push(ci?.product?.name || ci?.name || "Sản phẩm");
+    grouped.set(timing, names);
+  }
+
+  if (grouped.size <= 1) return null;
+  return grouped;
+}
+
 function isCombinableType(type) {
   if (!type || typeof type !== "object") return false;
   return productRequiresLensRxFlow(type) || productSupportsLensPairing(type);
@@ -281,7 +308,7 @@ function findCombinedPartner(cartItems, ci) {
       (item) =>
         item?._id !== ci?._id &&
         String(item?.productId || item?.product?.apiId || item?.product?.id || "") ===
-          String(combineWith.productId) &&
+        String(combineWith.productId) &&
         String(item?.variantId || "") === String(combineWith.variantId || ""),
     ) || null
   );
@@ -593,6 +620,15 @@ export default function CartScreen({ navigation, route }) {
     }
 
     const autoNote = buildAutoPairingNote(cartItems);
+    const mixedPreorderShippingTiming = getMixedPreorderShippingTiming(cartItems);
+
+    if (activeCartType === CART_TYPES.PREORDER && mixedPreorderShippingTiming) {
+      Alert.alert(
+        "Không thể thanh toán chung",
+        "Các sản phẩm đặt trước trong cùng một đơn phải có cùng thời điểm thu phí vận chuyển. Vui lòng tách thành các đơn riêng hoặc xóa bớt sản phẩm trong giỏ.",
+      );
+      return;
+    }
 
     try {
       setIsQuoting(true);
@@ -627,7 +663,13 @@ export default function CartScreen({ navigation, route }) {
       const errors = Array.isArray(data.errors)
         ? data.errors.map((e) => e.msg).filter(Boolean).join("\n")
         : null;
-      const message = errors || data.message || data.error || err?.message;
+      const rawMessage = errors || data.message || data.error || err?.message;
+      const message =
+        String(rawMessage || "").includes(
+          "Pre-order items in the same order must share the same shipping collection timing",
+        )
+          ? "Các sản phẩm đặt trước trong cùng một đơn phải có cùng thời điểm thu phí vận chuyển. Vui lòng tách thành các đơn riêng hoặc xóa bớt sản phẩm trong giỏ."
+          : rawMessage;
       Alert.alert("Không lấy được báo giá", message || "Vui lòng thử lại.");
     } finally {
       setIsQuoting(false);

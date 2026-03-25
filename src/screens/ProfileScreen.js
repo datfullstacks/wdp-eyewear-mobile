@@ -29,6 +29,7 @@ const STAT_ACCENTS = {
 
 const SETTING_ACCENTS = {
   payments: { bg: "#FFFBEB", fg: "#D97706" },
+  refund: { bg: "#FEE2E2", fg: "#DC2626" },
   support: { bg: "#F3E8FF", fg: "#7C3AED" },
   noti: { bg: "#ECFEFF", fg: "#0891B2" },
 };
@@ -390,7 +391,7 @@ export default function ProfileScreen({ navigation }) {
               icon="star-outline"
               label="Đánh giá"
               count={stats.orderReview}
-              onPress={() => navigation.navigate("Orders", { initialFilter: "review" })}
+              onPress={() => navigation.navigate("Orders", { initialFilter: "delivered" })}
             />
           </View>
         </Card>

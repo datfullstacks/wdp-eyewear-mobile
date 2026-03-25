@@ -30,16 +30,16 @@ import {
 } from "../data/refundBanks";
 
 const REFUND_REASON_OPTIONS = [
-  { code: "wrong_item", label: "Giao sai san pham" },
-  { code: "defective_item", label: "San pham loi" },
-  { code: "damaged_delivery", label: "San pham bi hong" },
-  { code: "duplicate_payment", label: "Thanh toan trung" },
-  { code: "order_cancelled", label: "Muon huy don / khong nhan hang" },
-  { code: "other", label: "Ly do khac" },
+  { code: "wrong_item", label: "Giao sai sản phẩm" },
+  { code: "defective_item", label: "Sản phẩm lỗi" },
+  { code: "damaged_delivery", label: "Sản phẩm bị hỏng" },
+  { code: "duplicate_payment", label: "Thanh toán trùng" },
+  { code: "order_cancelled", label: "Muốn hủy đơn / không nhận hàng" },
+  { code: "other", label: "Lý do khác" },
 ];
 
 function formatVND(value) {
-  return new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + "d";
+  return new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + "đ";
 }
 
 function resolveOrderId(explicitOrderId, order) {
@@ -103,10 +103,10 @@ function canCustomerCreateRefundRequest(order) {
 
 function getRefundEligibilityMessage(order) {
   if (getRefundPaidAmount(order) <= 0) {
-    return "Don hang nay chua co khoan thanh toan co the hoan.";
+    return "Đơn hàng này chưa có khoản thanh toán có thể hoàn.";
   }
 
-  return "Yeu cau refund chi ap dung cho don da thanh toan dang cho xac nhan, da huy, da giao hoac da tra.";
+  return "Yêu cầu refund chỉ áp dụng cho đơn đã thanh toán đang chờ xác nhận, đã hủy, đã giao hoặc đã trả.";
 }
 
 function getRefundShippingFeeLimit(order) {
@@ -352,7 +352,7 @@ export default function RefundRequestScreen({ navigation, route }) {
           const message =
             error?.response?.data?.message ||
             error?.message ||
-            "Khong tai duoc thong tin don hang";
+            "Không tải được thông tin đơn hàng";
           Alert.alert("Refund", message);
         }
       } finally {
@@ -409,8 +409,8 @@ export default function RefundRequestScreen({ navigation, route }) {
   const hasBlockingActiveRefund = hasExistingRefund && !isCustomerUpdateMode;
   const shippingFeeHelper =
     refundableShippingFee > 0
-      ? "Bat khi loi den tu he thong, giao sai hang hoac giao hong."
-      : "Phi ship hien chua thu o dot da thanh toan nen khong the refund trong luc nay.";
+      ? "Bật khi lỗi đến từ hệ thống, giao sai hàng hoặc giao hỏng."
+      : "Phí ship hiện chưa thu ở đợt đã thanh toán nên không thể refund trong lúc này.";
 
   useEffect(() => {
     if (!orderId) return;
@@ -460,19 +460,19 @@ export default function RefundRequestScreen({ navigation, route }) {
     if (submitting) return;
 
     if (!orderId) {
-      Alert.alert("Refund", "Khong tim thay ma don hang.");
+      Alert.alert("Refund", "Không tìm thấy mã đơn hàng.");
       return;
     }
 
     if (hasBlockingActiveRefund) {
-      Alert.alert("Refund", "Don hang nay da co yeu cau hoan tien dang xu ly.");
+      Alert.alert("Refund", "Đơn hàng này đã có yêu cầu hoàn tiền đang xử lý.");
       return;
     }
 
     if (isCustomerUpdateMode && !isWaitingCustomerInfo) {
       Alert.alert(
         "Refund",
-        "Case refund hien khong o trang thai cho bo sung thong tin.",
+        "Case refund hiện không ở trạng thái chờ bổ sung thông tin.",
       );
       return;
     }
@@ -485,27 +485,27 @@ export default function RefundRequestScreen({ navigation, route }) {
     if (!bankCode.trim() || !accountNumber.trim() || !accountHolder.trim()) {
       Alert.alert(
         "Refund",
-        "Vui long chon ngan hang, nhap so tai khoan va chu tai khoan.",
+        "Vui lòng chọn ngân hàng, nhập số tài khoản và chủ tài khoản.",
       );
       return;
     }
 
     const selectedBank = findRefundBankByCode(bankCode);
     if (!selectedBank) {
-      Alert.alert("Refund", "Ngan hang da chon khong hop le.");
+      Alert.alert("Refund", "Ngân hàng đã chọn không hợp lệ.");
       return;
     }
 
     const normalizedAccountNumber = normalizeRefundAccountNumber(accountNumber);
     if (!isRefundAccountNumberFormatValid(normalizedAccountNumber)) {
-      Alert.alert("Refund", "So tai khoan phai gom 8 den 19 chu so.");
+      Alert.alert("Refund", "Số tài khoản phải gồm 8 đến 19 chữ số.");
       return;
     }
 
     if (requestedBreakdown.total <= 0) {
       Alert.alert(
         "Refund",
-        "So tien de nghi refund phai lon hon 0 va khong vuot qua so tien da thanh toan.",
+        "Số tiền đề nghị refund phải lớn hơn 0 và không vượt quá số tiền đã thanh toán.",
       );
       return;
     }
@@ -543,8 +543,8 @@ export default function RefundRequestScreen({ navigation, route }) {
       Alert.alert(
         "Refund",
         isCustomerUpdateMode
-          ? "Da gui bo sung thong tin refund. Staff se tiep tuc review."
-          : "Da gui yeu cau hoan tien. Staff se tiep nhan va cap nhat trang thai som.",
+          ? "Đã gửi bổ sung thông tin refund. Staff sẽ tiếp tục review."
+          : "Đã gửi yêu cầu hoàn tiền. Staff sẽ tiếp nhận và cập nhật trạng thái sớm.",
         [
           {
             text: "OK",
@@ -558,8 +558,8 @@ export default function RefundRequestScreen({ navigation, route }) {
         error?.response?.data?.message ||
         error?.message ||
         (isCustomerUpdateMode
-          ? "Khong cap nhat duoc thong tin refund"
-          : "Khong tao duoc yeu cau hoan tien");
+          ? "Không cập nhật được thông tin refund"
+          : "Không tạo được yêu cầu hoàn tiền");
       Alert.alert("Refund", message);
     } finally {
       setSubmitting(false);
@@ -569,7 +569,7 @@ export default function RefundRequestScreen({ navigation, route }) {
   const handlePickEvidence = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Refund", "Vui long cap quyen truy cap thu vien anh.");
+      Alert.alert("Refund", "Vui lòng cấp quyền truy cập thư viện ảnh.");
       return;
     }
 
@@ -607,7 +607,7 @@ export default function RefundRequestScreen({ navigation, route }) {
       const message =
         error?.response?.data?.message ||
         error?.message ||
-        "Khong tai anh chung tu len duoc";
+        "Không tải ảnh chứng từ lên được";
       Alert.alert("Refund", message);
     } finally {
       setUploadingEvidence(false);
@@ -632,9 +632,9 @@ export default function RefundRequestScreen({ navigation, route }) {
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>
-            {isCustomerUpdateMode
-              ? "Bo sung thong tin hoan tien"
-              : "Yeu cau hoan tien"}
+              {isCustomerUpdateMode
+              ? "Bổ sung thông tin hoàn tiền"
+              : "Yêu cầu hoàn tiền"}
           </Text>
         </View>
       </View>
@@ -649,37 +649,37 @@ export default function RefundRequestScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Thong tin don hang</Text>
+            <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Ma don</Text>
+              <Text style={styles.metaLabel}>Mã đơn</Text>
               <Text style={styles.metaValue}>{summary.id}</Text>
             </View>
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Tien hang</Text>
+              <Text style={styles.metaLabel}>Tiền hàng</Text>
               <Text style={styles.metaValue}>
                 {formatVND(Math.max(summary.total - summary.shippingFee, 0))}
               </Text>
             </View>
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Phi giao hang</Text>
+              <Text style={styles.metaLabel}>Phí giao hàng</Text>
               <Text style={styles.metaValue}>{formatVND(summary.shippingFee)}</Text>
             </View>
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Da thanh toan</Text>
+              <Text style={styles.metaLabel}>Đã thanh toán</Text>
               <Text style={styles.metaValue}>{formatVND(summary.paidAmount)}</Text>
             </View>
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Chua thu</Text>
+              <Text style={styles.metaLabel}>Chưa thu</Text>
               <Text style={styles.metaValue}>{formatVND(summary.unpaidAmount)}</Text>
             </View>
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Tong don</Text>
+              <Text style={styles.metaLabel}>Tổng đơn</Text>
               <Text style={styles.metaValueStrong}>{formatVND(summary.total)}</Text>
             </View>
 
             {summary.payLaterTotal > 0 ? (
               <Text style={styles.noticeText}>
-                Refund hien tai chi ap dung tren tien coc/tien da thanh toan.
+                Refund hiện tại chỉ áp dụng trên tiền cọc/tiền đã thanh toán.
               </Text>
             ) : null}
           </View>
@@ -687,7 +687,7 @@ export default function RefundRequestScreen({ navigation, route }) {
           {isCustomerUpdateMode &&
           (summary.refundContactNote || summary.refundDecisionNote) ? (
             <View style={[styles.card, styles.noticeCard]}>
-              <Text style={styles.sectionTitle}>Staff can bo sung</Text>
+              <Text style={styles.sectionTitle}>Staff cần bổ sung</Text>
               {summary.refundDecisionNote ? (
                 <Text style={styles.noticeText}>{summary.refundDecisionNote}</Text>
               ) : null}
@@ -699,15 +699,15 @@ export default function RefundRequestScreen({ navigation, route }) {
 
           {!isCustomerUpdateMode && !canCreateRefund ? (
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Chua the tao refund</Text>
+              <Text style={styles.sectionTitle}>Chưa thể tạo refund</Text>
               <Text style={styles.helperText}>{refundEligibilityMessage}</Text>
             </View>
           ) : hasBlockingActiveRefund ? (
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Don da co refund</Text>
+              <Text style={styles.sectionTitle}>Đơn đã có refund</Text>
               <Text style={styles.helperText}>
-                Don hang nay da co yeu cau hoan tien dang xu ly. Vui long quay
-                lai man hinh chi tiet don de theo doi trang thai.
+                Đơn hàng này đã có yêu cầu hoàn tiền đang xử lý. Vui lòng quay
+                lại màn hình chi tiết đơn để theo dõi trạng thái.
               </Text>
             </View>
           ) : (
@@ -715,8 +715,8 @@ export default function RefundRequestScreen({ navigation, route }) {
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>
                   {isCustomerUpdateMode
-                    ? "Cap nhat ly do va thong tin"
-                    : "Ly do hoan tien"}
+                    ? "Cập nhật lý do và thông tin"
+                    : "Lý do hoàn tiền"}
                 </Text>
                 <View style={styles.reasonGrid}>
                   {REFUND_REASON_OPTIONS.map((option) => {
@@ -745,10 +745,10 @@ export default function RefundRequestScreen({ navigation, route }) {
                   })}
                 </View>
 
-                <Text style={styles.fieldLabel}>Mo ta chi tiet</Text>
+                <Text style={styles.fieldLabel}>Mô tả chi tiết</Text>
                 <TextInput
                   style={[styles.input, styles.textarea]}
-                  placeholder="Mo ta van de, tinh trang san pham hoac ly do can refund..."
+                  placeholder="Mô tả vấn đề, tình trạng sản phẩm hoặc lý do cần refund..."
                   multiline
                   textAlignVertical="top"
                   value={reasonDetail}
@@ -757,22 +757,22 @@ export default function RefundRequestScreen({ navigation, route }) {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Dieu kien refund</Text>
+                <Text style={styles.sectionTitle}>Điều kiện refund</Text>
                 <ToggleRow
-                  label="Yeu cau hoan phi giao hang"
+                  label="Yêu cầu hoàn phí giao hàng"
                   helper={shippingFeeHelper}
                   value={requestShippingFee}
                   disabled={refundableShippingFee <= 0}
                   onToggle={() => setRequestShippingFee((value) => !value)}
                 />
                 <ToggleRow
-                  label="Can tra hang"
-                  helper="Bat neu khach can gui hang ve de doi soat truoc khi hoan tien."
+                  label="Cần trả hàng"
+                  helper="Bật nếu khách cần gửi hàng về để đối soát trước khi hoàn tiền."
                   value={requiresReturn}
                   onToggle={() => setRequiresReturn((value) => !value)}
                 />
 
-                <Text style={styles.fieldLabel}>Phi gui tra hang da tra</Text>
+                <Text style={styles.fieldLabel}>Phí gửi trả hàng đã trả</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="0"
@@ -783,8 +783,8 @@ export default function RefundRequestScreen({ navigation, route }) {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Tai khoan nhan tien</Text>
-                <Text style={styles.fieldLabel}>Ngan hang</Text>
+                <Text style={styles.sectionTitle}>Tài khoản nhận tiền</Text>
+                <Text style={styles.fieldLabel}>Ngân hàng</Text>
                 <View style={styles.pickerBox}>
                   <Picker
                     selectedValue={bankCode}
@@ -794,7 +794,7 @@ export default function RefundRequestScreen({ navigation, route }) {
                       setBankName(selectedBank?.name || "");
                     }}
                   >
-                    <Picker.Item label="Chon ngan hang" value="" />
+                    <Picker.Item label="Chọn ngân hàng" value="" />
                     {REFUND_BANK_OPTIONS.map((bank) => (
                       <Picker.Item
                         key={bank.code}
@@ -805,11 +805,11 @@ export default function RefundRequestScreen({ navigation, route }) {
                   </Picker>
                 </View>
                 <Text style={styles.helperText}>
-                  Chon dung ngan hang nhan refund. He thong se luu theo ma ngan hang da chon.
+                  Chọn đúng ngân hàng nhận refund. Hệ thống sẽ lưu theo mã ngân hàng đã chọn.
                 </Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="So tai khoan"
+                  placeholder="Số tài khoản"
                   keyboardType="numeric"
                   value={accountNumber}
                   onChangeText={(value) =>
@@ -818,13 +818,13 @@ export default function RefundRequestScreen({ navigation, route }) {
                 />
                 <TextInput
                   style={styles.input}
-                  placeholder="Chu tai khoan"
+                  placeholder="Chủ tài khoản"
                   value={accountHolder}
                   onChangeText={setAccountHolder}
                 />
                 <TextInput
                   style={[styles.input, styles.textarea]}
-                  placeholder="Ghi chu tai khoan (neu co)"
+                  placeholder="Ghi chú tài khoản (nếu có)"
                   multiline
                   textAlignVertical="top"
                   value={bankNote}
@@ -833,10 +833,10 @@ export default function RefundRequestScreen({ navigation, route }) {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Anh chung tu / bang chung</Text>
+                <Text style={styles.sectionTitle}>Ảnh chứng từ / bằng chứng</Text>
                 <Text style={styles.helperText}>
-                  Them anh neu can chung minh giao sai, san pham loi, hang hong
-                  hoac noi dung staff dang yeu cau.
+                  Thêm ảnh nếu cần chứng minh giao sai, sản phẩm lỗi, hàng hỏng
+                  hoặc nội dung staff đang yêu cầu.
                 </Text>
 
                 <TouchableOpacity
@@ -855,10 +855,10 @@ export default function RefundRequestScreen({ navigation, route }) {
                   />
                   <Text style={styles.uploadBtnText}>
                     {uploadingEvidence
-                      ? "Dang upload..."
+                      ? "Đang upload..."
                       : evidence.length >= 6
-                        ? "Da dat gioi han 6 anh"
-                        : "Chon anh chung tu"}
+                        ? "Đã đạt giới hạn 6 ảnh"
+                        : "Chọn ảnh chứng từ"}
                   </Text>
                 </TouchableOpacity>
 
@@ -881,28 +881,28 @@ export default function RefundRequestScreen({ navigation, route }) {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Tong hop so tien de nghi</Text>
+                <Text style={styles.sectionTitle}>Tổng hợp số tiền đề nghị</Text>
                 <View style={styles.rowBetween}>
-                  <Text style={styles.metaLabel}>Tien hang</Text>
+                  <Text style={styles.metaLabel}>Tiền hàng</Text>
                   <Text style={styles.metaValue}>
                     {formatVND(requestedBreakdown.itemAmount)}
                   </Text>
                 </View>
                 <View style={styles.rowBetween}>
-                  <Text style={styles.metaLabel}>Phi giao hang</Text>
+                  <Text style={styles.metaLabel}>Phí giao hàng</Text>
                   <Text style={styles.metaValue}>
                     {formatVND(requestedBreakdown.shippingFeeAmount)}
                   </Text>
                 </View>
                 <View style={styles.rowBetween}>
-                  <Text style={styles.metaLabel}>Phi gui tra hang</Text>
+                  <Text style={styles.metaLabel}>Phí gửi trả hàng</Text>
                   <Text style={styles.metaValue}>
                     {formatVND(requestedBreakdown.returnShippingFeeAmount)}
                   </Text>
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.rowBetween}>
-                  <Text style={styles.totalLabel}>Tong de nghi refund</Text>
+                  <Text style={styles.totalLabel}>Tổng đề nghị refund</Text>
                   <Text style={styles.totalValue}>
                     {formatVND(requestedBreakdown.total)}
                   </Text>
@@ -911,14 +911,14 @@ export default function RefundRequestScreen({ navigation, route }) {
 
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>
-                  {isCustomerUpdateMode ? "Noi dung bo sung" : "Ghi chu them"}
+                  {isCustomerUpdateMode ? "Nội dung bổ sung" : "Ghi chú thêm"}
                 </Text>
                 <TextInput
                   style={[styles.input, styles.textarea]}
                   placeholder={
                     isCustomerUpdateMode
-                      ? "Bo sung them thong tin/chung tu cho staff..."
-                      : "Them mo ta cho staff neu can..."
+                      ? "Bổ sung thêm thông tin/chứng từ cho staff..."
+                      : "Thêm mô tả cho staff nếu cần..."
                   }
                   multiline
                   textAlignVertical="top"
@@ -935,10 +935,10 @@ export default function RefundRequestScreen({ navigation, route }) {
               >
                 <Text style={styles.submitText}>
                   {submitting
-                    ? "Dang gui..."
+                    ? "Đang gửi..."
                     : isCustomerUpdateMode
-                      ? "Gui bo sung thong tin"
-                      : "Gui yeu cau hoan tien"}
+                      ? "Gửi bổ sung thông tin"
+                      : "Gửi yêu cầu hoàn tiền"}
                 </Text>
               </TouchableOpacity>
             </>

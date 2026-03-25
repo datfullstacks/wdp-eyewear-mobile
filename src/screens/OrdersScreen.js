@@ -25,6 +25,12 @@ const STATUS_FILTERS = [
   { key: "cancelled", label: "Đã hủy", icon: "close-circle-outline", color: "#991B1B" },
 ];
 
+const ORDER_TYPE_FILTERS = [
+  { key: "all", label: "Tất cả" },
+  { key: "order", label: "Đơn thường" },
+  { key: "preorder", label: "Đơn đặt trước" },
+];
+
 const SORT_OPTIONS = [
   {
     key: "newest",
@@ -100,6 +106,7 @@ export default function OrdersScreen({ navigation, route }) {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [sortBy, setSortBy] = useState("newest");
   const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [activeOrderTypeFilter, setActiveOrderTypeFilter] = useState("all");
 
   useEffect(() => {
     setActiveFilter(Array.isArray(initialFilter) ? initialFilter : [initialFilter]);
@@ -110,7 +117,10 @@ export default function OrdersScreen({ navigation, route }) {
     setError("");
 
     try {
-      const result = await getMyOrdersApi({ page: 1, limit: 1000 });
+      const result = await getMyOrdersApi(
+        { page: 1, limit: 1000 },
+        { enrichProducts: true, includeItems: true, detailLevel: "summary" }
+      );
       const ordersData = Array.isArray(result?.items) ? result.items : [];
       setOrders(ordersData);
     } catch (err) {
@@ -127,6 +137,18 @@ export default function OrdersScreen({ navigation, route }) {
   useEffect(() => {
     let filtered = [...orders];
     const selectedFilters = normalizeFilterArray(activeFilter);
+
+    if (activeOrderTypeFilter !== "all") {
+      filtered = filtered.filter((order) => {
+        const hasPreorder =
+          Boolean(order?.preOrder ?? order?.preorder) ||
+          String(order?.orderType || "").toUpperCase() === "PREORDER" ||
+          (Array.isArray(order?.items) &&
+            order.items.some((item) => Boolean(item?.preOrder ?? item?.preorder)));
+
+        return activeOrderTypeFilter === "preorder" ? hasPreorder : !hasPreorder;
+      });
+    }
 
     if (!selectedFilters.includes("all")) {
       filtered = filtered.filter((order) => {
@@ -156,7 +178,7 @@ export default function OrdersScreen({ navigation, route }) {
     });
 
     setFilteredOrders(filtered);
-  }, [orders, activeFilter, sortBy]);
+  }, [orders, activeFilter, sortBy, activeOrderTypeFilter]);
 
   useEffect(() => {
     loadOrders();
@@ -470,6 +492,32 @@ export default function OrdersScreen({ navigation, route }) {
           </View>
         )}
 
+      <View style={styles.orderTypeFilterWrap}>
+        {ORDER_TYPE_FILTERS.map((filter) => {
+          const isActive = activeOrderTypeFilter === filter.key;
+          return (
+            <TouchableOpacity
+              key={filter.key}
+              style={[
+                styles.orderTypeChip,
+                isActive && styles.orderTypeChipActive,
+              ]}
+              activeOpacity={0.7}
+              onPress={() => setActiveOrderTypeFilter(filter.key)}
+            >
+              <Text
+                style={[
+                  styles.orderTypeChipText,
+                  isActive && styles.orderTypeChipTextActive,
+                ]}
+              >
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
@@ -695,6 +743,41 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     color: "#6B7280",
+  },
+
+  orderTypeFilterWrap: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 6,
+    padding: 4,
+    gap: 6,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+  },
+
+  orderTypeChip: {
+    flex: 1,
+    minHeight: 36,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: "transparent",
+  },
+
+  orderTypeChipActive: {
+    backgroundColor: "#FFFFFF",
+  },
+
+  orderTypeChipText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#6B7280",
+  },
+
+  orderTypeChipTextActive: {
+    color: "#2563EB",
   },
 
   activeFilterBar: {

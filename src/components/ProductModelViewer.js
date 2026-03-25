@@ -4,6 +4,35 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber/native";
 import { GLTFLoader, OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
+class ModelErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error) {
+    this.props.onError?.(error);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return this.props.fallback ?? null;
+    }
+
+    return this.props.children;
+  }
+}
+
 function prepareSceneForNative(scene) {
   let hasUnsupportedPhysicalMaterial = false;
 
@@ -13,14 +42,13 @@ function prepareSceneForNative(scene) {
     const materials = Array.isArray(node.material) ? node.material : [node.material];
     hasUnsupportedPhysicalMaterial = materials.some(
       (material) =>
-        material?.isMeshPhysicalMaterial && (
-          Number(material.transmission) > 0 ||
+        material?.isMeshPhysicalMaterial &&
+        (Number(material.transmission) > 0 ||
           Number(material.dispersion) > 0 ||
           Number(material.iridescence) > 0 ||
           Number(material.clearcoat) > 0 ||
           Number(material.anisotropy) > 0 ||
-          Number(material.sheen) > 0
-        )
+          Number(material.sheen) > 0)
     );
   });
 
@@ -39,14 +67,13 @@ function prepareSceneForNative(scene) {
     if (cachedMaterial) return cachedMaterial;
 
     const hasUnsupportedPhysicalProps =
-      material.isMeshPhysicalMaterial && (
-        Number(material.transmission) > 0 ||
+      material.isMeshPhysicalMaterial &&
+      (Number(material.transmission) > 0 ||
         Number(material.dispersion) > 0 ||
         Number(material.iridescence) > 0 ||
         Number(material.clearcoat) > 0 ||
         Number(material.anisotropy) > 0 ||
-        Number(material.sheen) > 0
-      );
+        Number(material.sheen) > 0);
 
     if (!hasUnsupportedPhysicalProps) {
       materialCache.set(material.uuid, material);
@@ -148,6 +175,34 @@ function NativeOrbitControls({
   );
 }
 
+function sanitizeSceneMaterials(root) {
+  root?.traverse?.((child) => {
+    if (!child?.isMesh) {
+      return;
+    }
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+
+    materials.forEach((material) => {
+      if (!material) {
+        return;
+      }
+
+      if ("transmission" in material && material.transmission > 0) {
+        material.transmission = 0;
+        material.opacity = Math.min(material.opacity ?? 1, 0.85);
+        material.transparent = true;
+      }
+
+      if ("thickness" in material) {
+        material.thickness = 0;
+      }
+
+      material.needsUpdate = true;
+    });
+  });
+}
+
 function Model({
   uri,
   scale = [4.5, 4.5, 4.5],
@@ -168,6 +223,10 @@ function Model({
       preparedScene.disposableMaterials.forEach((material) => material.dispose());
     };
   }, [preparedScene]);
+
+  useEffect(() => {
+    sanitizeSceneMaterials(gltf?.scene);
+  }, [gltf]);
 
   return (
     <primitive
@@ -191,6 +250,7 @@ export default function ProductModelViewer({
   const [localUri, setLocalUri] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const fallbackMessage = err || "Không mở được model 3D";
 
   useEffect(() => {
     let mounted = true;
@@ -199,9 +259,10 @@ export default function ProductModelViewer({
       try {
         setLoading(true);
         setErr("");
+        setLocalUri(null);
 
         if (!glbUrl) {
-          throw new Error("Không có GLB URL");
+          throw new Error("Không có file model 3D");
         }
 
         const fileName = `model-${Date.now()}.glb`;
@@ -241,30 +302,47 @@ export default function ProductModelViewer({
   if (err || !localUri) {
     return (
       <View style={[styles.center, style]}>
-        <Text style={styles.errText}>
-          {err || "Không hiển thị được model 3D"}
-        </Text>
+        <Text style={styles.errText}>{fallbackMessage}</Text>
+        <Text style={styles.helpText}>Model không đúng định dạng hoặc file đã bị lỗi.</Text>
       </View>
     );
   }
 
   return (
     <View style={[styles.viewerContainer, style]}>
-      <Canvas style={styles.canvas} camera={{ position: [0, 0, cameraZ], fov }}>
+      <Canvas
+        style={styles.canvas}
+        gl={{ antialias: false }}
+        camera={{ position: [0, 0, cameraZ], fov }}
+      >
         <ambientLight intensity={2} />
         <directionalLight position={[20, 20, 20]} intensity={2} />
         <directionalLight position={[-20, -10, 15]} intensity={1.5} />
 
-        <Suspense fallback={null}>
-          <Model
-            uri={localUri}
-            scale={scale}
-            position={position}
-            rotation={rotation}
-          />
-          <NativeOrbitControls enablePan enableZoom enableRotate />
-        </Suspense>
+        <ModelErrorBoundary
+          resetKey={localUri}
+          fallback={null}
+          onError={(error) => {
+            setErr(error?.message || "Không mở được model 3D");
+          }}
+        >
+          <Suspense fallback={null}>
+            <Model
+              uri={localUri}
+              scale={scale}
+              position={position}
+              rotation={rotation}
+            />
+            <NativeOrbitControls enablePan enableZoom enableRotate />
+          </Suspense>
+        </ModelErrorBoundary>
       </Canvas>
+      {!!err && (
+        <View style={styles.overlayError}>
+          <Text style={styles.errText}>{fallbackMessage}</Text>
+          <Text style={styles.helpText}>Không mở được model này. Vui lòng thử file khác.</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -294,6 +372,21 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#DC2626",
     textAlign: "center",
+    paddingHorizontal: 16,
+  },
+  helpText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+    textAlign: "center",
+    paddingHorizontal: 20,
+  },
+  overlayError: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#F9FAFB",
     paddingHorizontal: 16,
   },
 });
