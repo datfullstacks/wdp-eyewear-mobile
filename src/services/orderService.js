@@ -14,6 +14,22 @@ import {
 const orderProductCache = new Map();
 const orderProductInFlight = new Map();
 
+function localizeOrderActionMessage(message, fallback = "Không thể thực hiện thao tác.") {
+  const normalized = String(message || "").trim();
+  if (!normalized) return fallback;
+
+  const knownMessages = {
+    "shipping fee refund is only allowed when responsibility is system, carrier, or mixed":
+      "Chỉ được hoàn phí vận chuyển khi trách nhiệm thuộc hệ thống, đơn vị vận chuyển hoặc hỗn hợp.",
+    "Order cannot be cancelled at this stage":
+      "Đơn hàng không thể hủy ở giai đoạn hiện tại.",
+    "Order already cancelled": "Đơn hàng này đã được hủy trước đó.",
+    Forbidden: "Bạn không có quyền thực hiện thao tác này.",
+  };
+
+  return knownMessages[normalized] || normalized;
+}
+
 function pickData(res) {
   const raw = res?.data;
   if (Array.isArray(raw?.data)) return raw.data;
@@ -438,9 +454,22 @@ export async function patchOrderItemApi(orderId, itemId, orderItem, patch = {}) 
 export async function cancelOrderApi(orderId) {
   if (!orderId) throw new Error("Missing orderId");
 
-  // API doc: PUT /api/orders/{id}/cancel
-  const res = await api.put(`/api/orders/${orderId}/cancel`);
-  return res?.data?.data ?? res?.data ?? null;
+  try {
+    const res = await api.put(`/api/orders/${orderId}/cancel`);
+    return res?.data?.data ?? res?.data ?? null;
+  } catch (error) {
+    const localizedMessage = localizeOrderActionMessage(
+      error?.response?.data?.message || error?.response?.data?.error || error?.message,
+      "Không thể hủy đơn.",
+    );
+
+    if (error?.response?.data) {
+      error.response.data.message = localizedMessage;
+      error.response.data.error = localizedMessage;
+    }
+    error.message = localizedMessage;
+    throw error;
+  }
 }
 
 export async function requestRefundApi(orderId, payload = {}) {

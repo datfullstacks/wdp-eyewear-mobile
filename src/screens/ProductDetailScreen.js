@@ -695,12 +695,24 @@ export default function ProductDetailScreen({ navigation, route }) {
     if (isFrameLike) return getSelectedVariant(product, { colorId, size });
     return getSelectedVariant(product, { colorId, size: null });
   }, [product, colorId, isFrameLike, size]);
+  const selectedVariantId = useMemo(
+    () => toIdString(selectedVariant?._id || selectedVariant?.id),
+    [selectedVariant]
+  );
 
   const variantAssets = useMemo(
     () => getVariantAssets(product, selectedVariant),
     [product, selectedVariant]
   );
   const tryOnModels = useMemo(() => buildTryOnModels(product), [product]);
+  const hasVariantSpecificTryOnModels = useMemo(
+    () => tryOnModels.some((model) => Boolean(model?.variantId)),
+    [tryOnModels]
+  );
+  const selectedVariantTryOnModel = useMemo(() => {
+    if (!selectedVariantId) return null;
+    return tryOnModels.find((model) => model.id === selectedVariantId) || null;
+  }, [selectedVariantId, tryOnModels]);
 
   const fallbackColorImage = useMemo(() => {
     if (!product || !isFrameLike) return null;
@@ -713,6 +725,10 @@ export default function ProductDetailScreen({ navigation, route }) {
   }, [variantAssets, product?.media?.assets]);
 
   const image3DAsset = useMemo(() => {
+    if (selectedVariantId && hasVariantSpecificTryOnModels) {
+      return pick3DAsset(variantAssets) || null;
+    }
+
     return (
       pick3DAsset(variantAssets) ||
       pick3DAsset(product?.media?.tryOn?.assets || []) ||
@@ -720,9 +736,25 @@ export default function ProductDetailScreen({ navigation, route }) {
       product?.model3D?.defaultAsset ||
       null
     );
-  }, [variantAssets, product?.media?.tryOn?.assets, product?.media?.assets, product?.model3D?.defaultAsset]);
+  }, [
+    hasVariantSpecificTryOnModels,
+    product?.media?.assets,
+    product?.media?.tryOn?.assets,
+    product?.model3D?.defaultAsset,
+    selectedVariantId,
+    variantAssets,
+  ]);
 
   const model3DUrl = useMemo(() => {
+    if (selectedVariantId && hasVariantSpecificTryOnModels) {
+      return (
+        selectedVariantTryOnModel?.tryOn?.glbUrl ||
+        image3DAsset?.ar?.glbUrl ||
+        image3DAsset?.url ||
+        ""
+      );
+    }
+
     return (
       image3DAsset?.ar?.glbUrl ||
       image3DAsset?.url ||
@@ -730,7 +762,7 @@ export default function ProductDetailScreen({ navigation, route }) {
       product?.tryOn?.glbUrl ||
       ""
     );
-  }, [image3DAsset, product]);
+  }, [hasVariantSpecificTryOnModels, image3DAsset, product, selectedVariantId, selectedVariantTryOnModel]);
 
   const has3DAsset = Boolean(image3DAsset);
   const canOpenTryOn = useMemo(() => {
@@ -1232,16 +1264,29 @@ export default function ProductDetailScreen({ navigation, route }) {
         null;
 
       const selectedModelId = toIdString(sourceSelectedVariant?._id || sourceSelectedVariant?.id);
+      const hasSourceVariantSpecificModels = sourceTryOnModels.some((model) =>
+        Boolean(model?.variantId)
+      );
       const selectedModel =
-        sourceTryOnModels.find((model) => model.id === selectedModelId) ||
-        sourceTryOnModels.find((model) => model.ready) ||
-        sourceTryOnModels[0] ||
-        null;
+        selectedModelId && hasSourceVariantSpecificModels
+          ? sourceTryOnModels.find((model) => model.id === selectedModelId) || null
+          : sourceTryOnModels.find((model) => model.id === selectedModelId) ||
+            sourceTryOnModels.find((model) => model.ready) ||
+            sourceTryOnModels[0] ||
+            null;
       const tryOn =
         selectedModel?.tryOn ||
         buildTryOnPayload(sourceProduct?.tryOn || {}, sourceImage3DAsset || null);
 
       if (!tryOn?.ready) {
+        if (selectedModelId && hasSourceVariantSpecificModels) {
+          Alert.alert(
+            "Try-on",
+            "Variant đang chọn chưa có model 3D riêng hoặc dữ liệu mới chưa được map đúng. Kiểm tra lại GLB của variant trong manager."
+          );
+          return;
+        }
+
         if (fetchFailed || detailLoadError) {
           Alert.alert(
             "Try-on",

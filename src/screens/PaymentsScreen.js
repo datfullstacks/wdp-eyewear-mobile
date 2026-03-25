@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -55,13 +55,15 @@ function maskBankNumber(value = "") {
 
 function BankLogo({ bank, size = 20 }) {
   const logo = getRefundBankLogo(bank);
+  const displayName = bank?.name || bank?.code || "BANK";
   const label = bank?.code || bank?.name?.slice(0, 3)?.toUpperCase() || "BANK";
+  const width = Math.max(size * 1.8, Math.min(96, displayName.length * (size < 20 ? 4.8 : 5.6)));
 
   if (logo) {
     return (
       <Image
         source={logo}
-        style={[styles.bankLogo, { width: size, height: size }]}
+        style={[styles.bankLogo, { width, height: size }]}
         resizeMode="contain"
       />
     );
@@ -71,7 +73,7 @@ function BankLogo({ bank, size = 20 }) {
     <View
       style={[
         styles.bankLogoFallback,
-        { width: size, height: size, borderRadius: size / 2 },
+        { width, height: size, borderRadius: 6 },
       ]}
     >
       <Text style={styles.bankLogoFallbackText}>{label.slice(0, 3)}</Text>
@@ -342,7 +344,7 @@ export default function PaymentsScreen({ navigation }) {
                     }))
                   }
                 >
-                  <BankLogo bank={bank} size={18} />
+                  <BankLogo bank={bank} size={38} />
                   <Text style={styles.suggestionText}>{bank.name}</Text>
                 </Pressable>
               ))}
@@ -496,9 +498,9 @@ const styles = StyleSheet.create({
   suggestionChip: {
     paddingHorizontal: 10,
     paddingVertical: 7,
-    borderRadius: 999,
+    borderRadius: 20,
     backgroundColor: "#EFF6FF",
-    flexDirection: "row",
+    flexDirection: "column",
     alignItems: "center",
     gap: 6,
   },
@@ -533,13 +535,14 @@ const styles = StyleSheet.create({
   linkText: { color: "#2563EB", fontWeight: "900", fontSize: 12 },
   bankMetaRow: { marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 },
   bankLogo: {
-    borderRadius: 999,
+    borderRadius: 6,
     backgroundColor: "#FFFFFF",
   },
   bankLogoFallback: {
     backgroundColor: "#E5E7EB",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 6,
   },
   bankLogoFallbackText: {
     fontSize: 8.5,
