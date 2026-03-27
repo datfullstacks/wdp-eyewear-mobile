@@ -135,9 +135,9 @@ function getShippingFeeModeLabel(value) {
 
 function getRefundOwnerLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "sales") return "Sale/Staff";
+  if (normalized === "sales") return "Sale";
   if (normalized === "manager") return "Manager";
-  if (normalized === "operations") return "Operations";
+  if (normalized === "operations") return "Bộ phận nhận hàng hoàn";
   if (normalized === "customer") return "Bạn";
   return "Đã đóng case";
 }
@@ -145,11 +145,11 @@ function getRefundOwnerLabel(value) {
 function getRefundNextStepLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "customer_submit_info") return "Bạn bổ sung thông tin";
-  if (normalized === "manager_approve") return "Manager quyết định";
-  if (normalized === "confirm_return_received") return "Operations nhận / QC hàng";
-  if (normalized === "start_processing") return "Operations bắt đầu payout";
-  if (normalized === "complete") return "Operations xác nhận đã chuyển tiền";
-  if (normalized === "start_review") return "Staff review hồ sơ";
+  if (normalized === "manager_approve") return "Đang chờ phê duyệt thêm";
+  if (normalized === "confirm_return_received") return "Đang chờ xác nhận hàng hoàn";
+  if (normalized === "start_processing") return "Sale đang chuẩn bị chuyển khoản";
+  if (normalized === "complete") return "Sale xác nhận đã chuyển tiền";
+  if (normalized === "start_review") return "Sale đang xem xét hồ sơ";
   return "--";
 }
 
@@ -920,10 +920,6 @@ export default function OrderDetailScreen({ navigation, route }) {
             <InfoRow label="Ghi chú" value={order?.refund?.contactNote || "--"} />
             <InfoRow label="Từ chối" value={order?.refund?.rejectReason || "--"} />
             <InfoRow
-              label="Owner hiện tại"
-              value={getRefundOwnerLabel(order?.refund?.currentOwnerRole)}
-            />
-            <InfoRow
               label="Bước tiếp theo"
               value={getRefundNextStepLabel(order?.refund?.nextActionCode)}
             />
@@ -1026,8 +1022,8 @@ export default function OrderDetailScreen({ navigation, route }) {
           <SectionCard title="Yêu cầu hoàn tiền" icon="return-down-back-outline">
             <Text style={styles.refundHelperText}>
               {canSubmitRefundInfo
-                ? "Refund này đang chờ bạn bổ sung thông tin để staff tiếp tục review."
-                : "Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để staff tiếp nhận và xử lý."}
+                ? "Refund này đang chờ bạn bổ sung thông tin để sale tiếp tục xem xét."
+                : "Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để sale tiếp nhận và xử lý."}
             </Text>
             <TouchableOpacity
               style={styles.refundActionBtn}

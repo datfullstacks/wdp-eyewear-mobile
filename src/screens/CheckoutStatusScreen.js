@@ -62,13 +62,13 @@ const PAYMENT_STATUS_META = {
 const REFUND_STATUS_META = {
   requested: {
     label: "Đã gửi yêu cầu",
-    desc: "Yêu cầu hoàn tiền đã được ghi nhận và đang chờ staff tiếp nhận.",
+    desc: "Yêu cầu hoàn tiền đã được ghi nhận và đang chờ sale tiếp nhận.",
     color: "#B45309",
     bg: "#FFF7ED",
   },
   reviewing: {
     label: "Đang review",
-    desc: "Staff đang kiểm tra thông tin hoàn tiền của bạn.",
+    desc: "Sale đang kiểm tra thông tin hoàn tiền của bạn.",
     color: "#1D4ED8",
     bg: "#EFF6FF",
   },
@@ -86,25 +86,25 @@ const REFUND_STATUS_META = {
   },
   approved: {
     label: "Đã duyệt",
-    desc: "Yêu cầu hoàn tiền đã được duyệt, hệ thống đang chuyển sang bước xử lý.",
+    desc: "Yêu cầu hoàn tiền đã được duyệt. Sale đang chuẩn bị xử lý chuyển khoản.",
     color: "#15803D",
     bg: "#ECFDF5",
   },
   return_pending: {
     label: "Chờ trả hàng",
-    desc: "Case cần đối soát hàng hoàn trước khi payout.",
+    desc: "Case cần xác nhận hàng hoàn trước khi tiếp tục chuyển khoản.",
     color: "#B45309",
     bg: "#FFF7ED",
   },
   return_received: {
     label: "Đã nhận hàng hoàn",
-    desc: "Operations đã xác nhận hàng hoàn và sẽ tiếp tục payout.",
+    desc: "Hàng hoàn đã được xác nhận. Sale sẽ tiếp tục xử lý hoàn tiền.",
     color: "#1D4ED8",
     bg: "#EFF6FF",
   },
   processing: {
     label: "Đang hoàn tiền",
-    desc: "Hệ thống đang xử lý giao dịch hoàn tiền.",
+    desc: "Sale đang xử lý giao dịch hoàn tiền cho bạn.",
     color: "#1D4ED8",
     bg: "#EFF6FF",
   },
@@ -439,9 +439,9 @@ const normalizeRefund = (refund, { total = 0, shippingFee = 0 } = {}) => {
 
 const getRefundOwnerLabel = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "sales") return "Sale/Staff";
+  if (normalized === "sales") return "Sale";
   if (normalized === "manager") return "Manager";
-  if (normalized === "operations") return "Operations";
+  if (normalized === "operations") return "Bộ phận nhận hàng hoàn";
   if (normalized === "customer") return "Bạn";
   return "Đã đóng case";
 };
@@ -449,13 +449,13 @@ const getRefundOwnerLabel = (value) => {
 const getRefundNextStepLabel = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "customer_submit_info") return "Bạn bổ sung thông tin";
-  if (normalized === "manager_approve") return "Manager quyết định";
+  if (normalized === "manager_approve") return "Đang chờ phê duyệt thêm";
   if (normalized === "confirm_return_received") {
-    return "Operations nhận và đối soát hàng hoàn";
+    return "Đang chờ xác nhận hàng hoàn";
   }
-  if (normalized === "start_processing") return "Operations bắt đầu payout";
-  if (normalized === "complete") return "Operations xác nhận đã chuyển tiền";
-  if (normalized === "start_review") return "Staff review hồ sơ";
+  if (normalized === "start_processing") return "Sale đang chuẩn bị chuyển khoản";
+  if (normalized === "complete") return "Sale xác nhận đã chuyển tiền";
+  if (normalized === "start_review") return "Sale đang xem xét hồ sơ";
   return "--";
 };
 
@@ -1461,13 +1461,6 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             </View>
 
             <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Owner hiện tại</Text>
-              <Text style={styles.metaValue}>
-                {getRefundOwnerLabel(order.refund.currentOwnerRole)}
-              </Text>
-            </View>
-
-            <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Bước tiếp theo</Text>
               <Text style={styles.metaValue}>
                 {getRefundNextStepLabel(order.refund.nextActionCode)}
@@ -1501,7 +1494,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.contactNote ? (
               <Text style={styles.refundNote}>
-                Staff yêu cầu: {order.refund.contactNote}
+                Sale yêu cầu: {order.refund.contactNote}
               </Text>
             ) : null}
 
@@ -1649,7 +1642,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Yêu cầu hoàn tiền</Text>
             <Text style={styles.mutedText}>
-              Neu don hang co van de, ban co the gui yeu cau refund de staff tiep
+              Neu don hang co van de, ban co the gui yeu cau refund de sale tiep
               nhan va xu ly.
             </Text>
 

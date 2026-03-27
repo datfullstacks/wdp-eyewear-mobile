@@ -93,6 +93,21 @@ export async function setDefaultMyPaymentMethodApi(methodId) {
   return pickData(res) || [];
 }
 
+export async function getMyRefundAccountApi() {
+  const res = await api.get("/api/users/me/refund-account");
+  return pickData(res) || null;
+}
+
+export async function upsertMyRefundAccountApi(payload) {
+  const res = await api.put("/api/users/me/refund-account", payload);
+  return pickData(res) || null;
+}
+
+export async function deleteMyRefundAccountApi() {
+  const res = await api.delete("/api/users/me/refund-account");
+  return pickData(res) || null;
+}
+
 //Lấy Prescriptions
 export async function getMyPrescriptionsApi() {
   const res = await api.get("/api/users/me/prescriptions");
