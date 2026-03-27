@@ -24,6 +24,28 @@ function localizeOrderActionMessage(message, fallback = "Không thể thực hi�
     "Order cannot be cancelled at this stage":
       "Đơn hàng không thể hủy ở giai đoạn hiện tại.",
     "Order already cancelled": "Đơn hàng này đã được hủy trước đó.",
+    "This order already has an active refund request":
+      "Đơn hàng này đã có yêu cầu hoàn tiền đang được xử lý.",
+    "This order has no refundable paid amount":
+      "Đơn hàng này chưa có khoản thanh toán có thể hoàn.",
+    "Refund request is only available for paid pending-confirmation, cancelled, delivered, or returned orders":
+      "Yêu cầu hoàn tiền chỉ áp dụng cho đơn đã thanh toán đang chờ xác nhận, đã hủy, đã giao hoặc đã trả.",
+    "This order has no active refund request":
+      "Đơn hàng này hiện không có yêu cầu hoàn tiền đang xử lý.",
+    "Invalid refund action":
+      "Thao tác hoàn tiền không hợp lệ.",
+    "bankCode is required":
+      "Vui lòng chọn ngân hàng nhận tiền.",
+    "bankName is required":
+      "Tên ngân hàng không hợp lệ.",
+    "accountNumber is required":
+      "Vui lòng nhập số tài khoản nhận tiền.",
+    "accountHolder is required":
+      "Vui lòng nhập tên chủ tài khoản nhận tiền.",
+    "accountNumber must contain 8 to 19 digits":
+      "Số tài khoản phải gồm từ 8 đến 19 chữ số.",
+    "Refund workflow is currently disabled.":
+      "Tính năng hoàn tiền hiện đang tạm khóa.",
     Forbidden: "Bạn không có quyền thực hiện thao tác này.",
   };
 
@@ -475,13 +497,41 @@ export async function cancelOrderApi(orderId) {
 export async function requestRefundApi(orderId, payload = {}) {
   if (!orderId) throw new Error("Missing orderId");
 
-  const res = await api.post(`/api/orders/${orderId}/refund-request`, payload);
-  return res?.data?.data ?? res?.data ?? null;
+  try {
+    const res = await api.post(`/api/orders/${orderId}/refund-request`, payload);
+    return res?.data?.data ?? res?.data ?? null;
+  } catch (error) {
+    const localizedMessage = localizeOrderActionMessage(
+      error?.response?.data?.message || error?.response?.data?.error || error?.message,
+      "Không thể tạo yêu cầu hoàn tiền.",
+    );
+
+    if (error?.response?.data) {
+      error.response.data.message = localizedMessage;
+      error.response.data.error = localizedMessage;
+    }
+    error.message = localizedMessage;
+    throw error;
+  }
 }
 
 export async function updateRefundApi(orderId, payload = {}) {
   if (!orderId) throw new Error("Missing orderId");
 
-  const res = await api.put(`/api/orders/${orderId}/refund`, payload);
-  return res?.data?.data ?? res?.data ?? null;
+  try {
+    const res = await api.put(`/api/orders/${orderId}/refund`, payload);
+    return res?.data?.data ?? res?.data ?? null;
+  } catch (error) {
+    const localizedMessage = localizeOrderActionMessage(
+      error?.response?.data?.message || error?.response?.data?.error || error?.message,
+      "Không thể cập nhật yêu cầu hoàn tiền.",
+    );
+
+    if (error?.response?.data) {
+      error.response.data.message = localizedMessage;
+      error.response.data.error = localizedMessage;
+    }
+    error.message = localizedMessage;
+    throw error;
+  }
 }
