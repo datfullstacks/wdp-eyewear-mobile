@@ -99,6 +99,11 @@ function normalizeStatusText(value) {
     cancelled: "Đã hủy",
     returned: "Hoàn hàng",
     picking: "Đang lấy hàng",
+    waiting_lab: "Chờ vào gia công tròng",
+    lens_processing: "Đang cắt mài tròng",
+    lens_fitting: "Đang lắp tròng vào gọng",
+    qc_check: "Đang QC sau gia công",
+    ready_to_pack: "Đã gia công xong, chờ đóng gói",
     packing: "Đang đóng gói",
     ready_to_ship: "Sẵn sàng tạo vận đơn",
     shipment_created: "Đã tạo vận đơn",
@@ -180,7 +185,16 @@ function normalizeOrderProgressStatus(status, opsStage) {
   const normalized = String(status || "").trim().toLowerCase();
 
   if (normalizedOps === "awaiting_stock") return "AWAITING_STOCK";
-  if (normalizedOps === "packing") return "PACKING";
+  if (
+    normalizedOps === "waiting_lab" ||
+    normalizedOps === "lens_processing" ||
+    normalizedOps === "lens_fitting" ||
+    normalizedOps === "qc_check" ||
+    normalizedOps === "ready_to_pack" ||
+    normalizedOps === "packing"
+  ) {
+    return "PACKING";
+  }
   if (normalizedOps === "shipped" || normalizedOps === "shipping") return "SHIPPING";
   if (normalizedOps === "delivered") return "DELIVERED";
 
