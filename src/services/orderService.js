@@ -14,6 +14,30 @@ import {
 const orderProductCache = new Map();
 const orderProductInFlight = new Map();
 
+function toEntityId(value) {
+  if (value == null) return null;
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).trim();
+    return text || null;
+  }
+  if (typeof value === "object") {
+    if (value._id != null) return toEntityId(value._id);
+    if (value.id != null) return toEntityId(value.id);
+  }
+  return null;
+}
+
+function pickOrderItemImage(raw) {
+  return (
+    raw?.image ||
+    raw?.thumbnail ||
+    raw?.thumb ||
+    raw?.product?.image ||
+    raw?.productId?.image ||
+    null
+  );
+}
+
 function localizeOrderActionMessage(message, fallback = "Không thể thực hiện thao tác.") {
   const normalized = String(message || "").trim();
   if (!normalized) return fallback;
@@ -79,6 +103,18 @@ function buildOrderType(raw) {
   return "READY";
 }
 
+function resolveOrderType(raw) {
+  const explicitOrderType = String(raw?.orderType || "").trim();
+  if (explicitOrderType) return explicitOrderType;
+
+  if (Array.isArray(raw?.items) && raw.items.length > 0) {
+    const inferred = buildOrderType(raw.items[0]);
+    if (inferred) return inferred;
+  }
+
+  return "";
+}
+
 function buildVariantText(productType, variant) {
   const colorName = variant?.colorName || null;
   const size = variant?.size || null;
@@ -137,7 +173,7 @@ function normalizeOrderItemDetail(raw) {
 
   return {
     itemId: raw?._id ?? null,
-    productId: raw?.productId ?? null,
+    productId: toEntityId(raw?.productId),
     variantId: raw?.variantId ?? null,
 
     name: raw?.name ?? "Sản phẩm",
@@ -173,7 +209,7 @@ function normalizeOrderItemDetail(raw) {
     variant,
     variantText: buildVariantText(productType, variant),
 
-    image: null,
+    image: pickOrderItemImage(raw),
     productColors: [],
     productSizes: [],
   };
@@ -183,7 +219,7 @@ function normalizeOrderItemSummary(raw) {
   const catalogType = normalizeProductType(raw?.type);
   return {
     itemId: raw?._id ?? null,
-    productId: raw?.productId ?? null,
+    productId: toEntityId(raw?.productId),
     variantId: raw?.variantId ?? null,
     name: raw?.name ?? "Sản phẩm",
     type: raw?.type ?? "other",
@@ -199,7 +235,7 @@ function normalizeOrderItemSummary(raw) {
     depositPercent: raw?.depositPercent ?? 100,
     payNow: raw?.payNow ?? 0,
     payLater: raw?.payLater ?? 0,
-    image: null,
+    image: pickOrderItemImage(raw),
   };
 }
 
@@ -377,6 +413,7 @@ function normalizeOrderForList(raw, options = {}) {
   const detailLevel = options?.detailLevel === "detail" ? "detail" : "summary";
   const itemMapper =
     detailLevel === "detail" ? normalizeOrderItemDetail : normalizeOrderItemSummary;
+  const orderType = resolveOrderType(raw);
 
   return {
     _id: raw?._id ?? raw?.id ?? null,
@@ -390,6 +427,7 @@ function normalizeOrderForList(raw, options = {}) {
     subTotal: raw?.subTotal ?? raw?.subtotal ?? 0,
     shippingFee: raw?.shippingFee ?? 0,
     discountAmount: raw?.discountAmount ?? 0,
+    orderType,
     promotionApplied: raw?.promotionApplied ?? null,
     payNowTotal: raw?.payNowTotal ?? 0,
     payLaterTotal: raw?.payLaterTotal ?? 0,

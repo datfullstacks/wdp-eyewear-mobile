@@ -707,6 +707,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const [open, setOpen] = useState({
     desc: false,
+    stores: true,
     sizeGuide: false,
     reviews: false,
     qa: false,
@@ -1463,6 +1464,8 @@ export default function ProductDetailScreen({ navigation, route }) {
           selectedStoreId={selectedStoreId}
           stores={stores}
           onSelectStore={handleSelectStore}
+          open={open.stores}
+          onToggle={() => onToggleAccordion("stores")}
         />
 
         {canShowTryOnCard ? (
@@ -2356,7 +2359,14 @@ function TryOnCard({ tryOn, onOpenTryOn, canOpen, modelCount = 0, isLaunching = 
   );
 }
 
-function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSelectStore }) {
+function StoreAvailabilityCard({
+  storeScope,
+  selectedStoreId,
+  stores = [],
+  onSelectStore,
+  open = false,
+  onToggle,
+}) {
   const mode = String(storeScope?.mode || "all").trim().toLowerCase();
   const scopedStores = Array.isArray(storeScope?.stores) ? storeScope.stores : [];
   const availableStores =
@@ -2370,119 +2380,146 @@ function StoreAvailabilityCard({ storeScope, selectedStoreId, stores = [], onSel
   const canSwitchStore = availableStores.length > 0 && typeof onSelectStore === "function";
 
   return (
-    <Card>
-      <Text style={styles.sectionTitle}>Cửa hàng</Text>
+    <View style={styles.accWrap}>
+      <TouchableOpacity activeOpacity={0.85} onPress={onToggle} style={styles.accHeader}>
+        <Text style={styles.accTitle}>Cửa hàng</Text>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color="#9AA4B2" />
+      </TouchableOpacity>
 
-      {mode === "all" ? (
-        <>
-          <Text style={styles.mutedText}>
-            Sản phẩm này đang được mở bán theo mô hình tất cả cửa hàng đang hoạt động.
-          </Text>
-
-          {selectedStore ? (
-            <View style={styles.storeHintBox}>
-              <Ionicons name="business-outline" size={16} color="#1D4ED8" />
-              <Text style={styles.storeHintText}>
-                Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
+      {open ? (
+        <View style={styles.accBody}>
+          {mode === "all" ? (
+            <>
+              <Text style={styles.mutedText}>
+                Sản phẩm này đang được mở bán theo mô hình tất cả cửa hàng đang hoạt động.
               </Text>
-            </View>
-          ) : null}
 
-          {availableStores.length > 0 ? (
-            <View style={{ gap: 10, marginTop: selectedStore ? 12 : 8 }}>
-              {availableStores.map((store) => (
-                <TouchableOpacity
-                key={store.id}
-                activeOpacity={0.88}
-                onPress={() => onSelectStore?.(store)}
-                style={[
-                  styles.storeCardRow,
-                  selectedStoreId === store.id && styles.storeCardRowActive,
-                ]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.storeCardTitle}>
-                    {store.name} ({store.code})
-                  </Text>
-                  <Text style={styles.storeCardMeta}>
-                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
-                  </Text>
-                  <Text style={styles.storeCardMeta}>
-                    Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
+              {selectedStore ? (
+                <View style={styles.storeHintBox}>
+                  <Ionicons name="business-outline" size={16} color="#1D4ED8" />
+                  <Text style={styles.storeHintText}>
+                    Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
                   </Text>
                 </View>
-                {selectedStoreId === store.id ? (
-                  <Ionicons name="checkmark-circle" size={18} color="#1D4ED8" />
-                ) : canSwitchStore ? (
-                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                ) : null}
-                </TouchableOpacity>
-              ))}
-            </View>
+              ) : null}
+
+              {availableStores.length > 0 ? (
+                <View style={{ gap: 10, marginTop: selectedStore ? 12 : 8 }}>
+                  {availableStores.map((store) => (
+                    <TouchableOpacity
+                      key={store.id}
+                      activeOpacity={0.88}
+                      onPress={() => onSelectStore?.(store)}
+                      style={[
+                        styles.storeCardRow,
+                        selectedStoreId === store.id && styles.storeCardRowActive,
+                      ]}
+                    >
+                      <View style={styles.storeCardContent}>
+                        <Text style={styles.storeCardTitle}>
+                          {store.name} ({store.code})
+                        </Text>
+                        <Text style={styles.storeCardMeta}>
+                          {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
+                        </Text>
+                        <Text style={styles.storeCardMeta}>
+                          Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
+                        </Text>
+                      </View>
+                      {selectedStoreId === store.id ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={18}
+                          color="#1D4ED8"
+                          style={styles.storeCardStatusIcon}
+                        />
+                      ) : canSwitchStore ? (
+                        <Ionicons
+                          name="chevron-forward"
+                          size={16}
+                          color="#9CA3AF"
+                          style={styles.storeCardStatusIcon}
+                        />
+                      ) : null}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <Text style={[styles.mutedText, { marginTop: 8 }]}>
+                  Chưa tải được danh sách cửa hàng đang hoạt động.
+                </Text>
+              )}
+            </>
+          ) : scopedStores.length > 0 ? (
+            <>
+              {selectedStore ? (
+                <View style={styles.storeHintBox}>
+                  <Ionicons name="business-outline" size={16} color="#1D4ED8" />
+                  <Text style={styles.storeHintText}>
+                    Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={{ gap: 10, marginTop: selectedStore ? 12 : 8 }}>
+                {scopedStores.map((store) => (
+                  <TouchableOpacity
+                    key={store.id}
+                    activeOpacity={0.88}
+                    onPress={() => onSelectStore?.(store)}
+                    style={[
+                      styles.storeCardRow,
+                      selectedStoreId === store.id && styles.storeCardRowActive,
+                    ]}
+                  >
+                    <View style={styles.storeCardContent}>
+                      <Text style={styles.storeCardTitle}>
+                        {store.name} ({store.code})
+                      </Text>
+                      <Text style={styles.storeCardMeta}>
+                        {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
+                      </Text>
+                      <Text style={styles.storeCardMeta}>
+                        Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
+                      </Text>
+                    </View>
+                    {selectedStoreId === store.id ? (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color="#1D4ED8"
+                        style={styles.storeCardStatusIcon}
+                      />
+                    ) : canSwitchStore ? (
+                      <Ionicons
+                        name="chevron-forward"
+                        size={16}
+                        color="#9CA3AF"
+                        style={styles.storeCardStatusIcon}
+                      />
+                    ) : null}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
           ) : (
-            <Text style={[styles.mutedText, { marginTop: 8 }]}>
-              Chưa tải được danh sách cửa hàng đang hoạt động.
+            <Text style={styles.mutedText}>
+              Sản phẩm này đang được quản lý theo cửa hàng, nhưng chưa có danh sách cửa hàng được map.
             </Text>
           )}
-        </>
-      ) : scopedStores.length > 0 ? (
-        <>
-          {selectedStore ? (
-            <View style={styles.storeHintBox}>
-              <Ionicons name="business-outline" size={16} color="#1D4ED8" />
-              <Text style={styles.storeHintText}>
-                Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
-              </Text>
-            </View>
+
+          {canSwitchStore ? (
+            <Text style={[styles.mutedText, { marginTop: 10 }]}>
+              Bấm vào từng cửa hàng để đổi nhanh cửa hàng đang áp dụng cho sản phẩm này.
+            </Text>
           ) : null}
 
-          <View style={{ gap: 10, marginTop: selectedStore ? 12 : 8 }}>
-            {scopedStores.map((store) => (
-              <TouchableOpacity
-                key={store.id}
-                activeOpacity={0.88}
-                onPress={() => onSelectStore?.(store)}
-                style={[
-                  styles.storeCardRow,
-                  selectedStoreId === store.id && styles.storeCardRowActive,
-                ]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.storeCardTitle}>
-                    {store.name} ({store.code})
-                  </Text>
-                  <Text style={styles.storeCardMeta}>
-                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
-                  </Text>
-                  <Text style={styles.storeCardMeta}>
-                    Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
-                  </Text>
-                </View>
-                {selectedStoreId === store.id ? (
-                  <Ionicons name="checkmark-circle" size={18} color="#1D4ED8" />
-                ) : canSwitchStore ? (
-                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </>
-      ) : (
-        <Text style={styles.mutedText}>
-          Sản phẩm này đang được quản lý theo cửa hàng, nhưng chưa có danh sách cửa hàng được map.
-        </Text>
-      )}
-
-      {canSwitchStore ? (
-        <Text style={[styles.mutedText, { marginTop: 10 }]}>
-          Bấm vào từng cửa hàng để đổi nhanh cửa hàng đang áp dụng cho sản phẩm này.
-        </Text>
+          {storeScope?.note ? (
+            <Text style={[styles.mutedText, { marginTop: 10 }]}>Ghi chú: {storeScope.note}</Text>
+          ) : null}
+        </View>
       ) : null}
-
-      {storeScope?.note ? (
-        <Text style={[styles.mutedText, { marginTop: 10 }]}>Ghi chú: {storeScope.note}</Text>
-      ) : null}
-    </Card>
+    </View>
   );
 }
 
@@ -2572,7 +2609,7 @@ function FrameOptions({
           <Text style={styles.qtyBtnText}>+</Text>
         </TouchableOpacity>
       </View>
-
+{/* 
       {orderType === "READY" ? (
         <View style={{ marginTop: 14 }}>
           <Text style={styles.sectionTitle}>Thông số / Ghi chú</Text>
@@ -2585,7 +2622,7 @@ function FrameOptions({
             multiline
           />
         </View>
-      ) : null}
+      ) : null} */}
 
       <CTAButtons canBuy={canBuy} onAdd={onAdd} onBuyNow={onBuyNow} isPreorder={isPreorderMode} />
     </Card>
@@ -2898,7 +2935,7 @@ const styles = StyleSheet.create({
 
   name: { fontSize: 16, fontWeight: "900", color: "#111827" },
   sectionTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  mutedText: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  mutedText: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "black" },
   tryOnHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   tryOnTitleWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
   tryOnStatusPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
@@ -2920,6 +2957,7 @@ const styles = StyleSheet.create({
   },
   storeHintText: { flex: 1, fontSize: 12, fontWeight: "700", color: "#1D4ED8" },
   storeCardRow: {
+    position: "relative",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -2927,9 +2965,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
+  storeCardContent: {
+    flex: 1,
+    paddingRight: 24,
+  },
   storeCardRowActive: {
     borderColor: "#2563EB",
     backgroundColor: "#EFF6FF",
+  },
+  storeCardStatusIcon: {
+    position: "absolute",
+    top: 12,
+    right: 12,
   },
   storeCardTitle: { fontSize: 12.5, fontWeight: "800", color: "#111827" },
   storeCardMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "600", color: "#6B7280" },

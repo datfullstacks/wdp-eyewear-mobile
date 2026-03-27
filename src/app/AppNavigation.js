@@ -41,6 +41,19 @@ import {
   isNotificationRealtimeEvent,
 } from "../services/realtimeService";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#fcd675",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const RootStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -211,8 +224,8 @@ function MainTabs({ navigation }) {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: "#EF4444",
-        tabBarInactiveTintColor: "#6B7280",
+        tabBarActiveTintColor: PALETTE.navy,
+        tabBarInactiveTintColor: "black",
         tabBarLabelStyle: { fontSize: 12, paddingBottom: 2 },
         tabBarStyle: {
           height: 56 + insets.bottom,
@@ -330,14 +343,22 @@ function MainTabs({ navigation }) {
         name="ProfileTab"
         component={ProfileStackScreen}
         options={{ tabBarLabel: "Tài khoản" }}
-        listeners={{
+        listeners={({ navigation }) => ({
           tabPress: (e) => {
             if (!token) {
               e.preventDefault();
               navigation.navigate("Login");
+              return;
             }
+            e.preventDefault();
+            navigation.dispatch(
+              CommonActions.navigate({
+                name: "ProfileTab",
+                params: { screen: "Profile" },
+              })
+            );
           },
-        }}
+        })}
       />
     </Tab.Navigator>
   );

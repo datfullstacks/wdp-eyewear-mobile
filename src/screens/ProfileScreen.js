@@ -20,6 +20,19 @@ import {
 } from "../services/userService";
 import { getMyOrdersApi } from "../services/orderService";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#fcd675",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const STAT_ACCENTS = {
   orders: { bg: "#EEF2FF", fg: "#4F46E5" },
   favorites: { bg: "#FCE7F3", fg: "#DB2777" },

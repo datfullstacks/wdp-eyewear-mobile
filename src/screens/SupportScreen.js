@@ -335,7 +335,7 @@ export default function SupportScreen({ navigation, route }) {
             <View style={styles.formCard}>
               <View style={styles.formHeading}>
                 <View>
-                  <Text style={styles.formTitle}>Tạo case mới</Text>
+                  <Text style={styles.formTitle}>Tạo yêu cầu hỗ trợ mới</Text>
                   <Text style={styles.formSubTitle}>
                     Gửi ticket đơn hàng, refund, hoặc bảo hành cho staff.
                   </Text>
@@ -441,7 +441,7 @@ export default function SupportScreen({ navigation, route }) {
                 disabled={submitting}
               >
                 <Text style={styles.submitText}>
-                  {submitting ? "Đang gửi..." : "Tạo case"}
+                  {submitting ? "Đang gửi..." : "Tạo yêu cầu hỗ trợ"}
                 </Text>
               </TouchableOpacity>
             </View>

@@ -273,11 +273,13 @@ function ProductRow({ item }) {
           <Text style={styles.productVariant}>{item.variantText}</Text>
         )}
 
-        {!!item?.prescriptionSummary?.shortLabel && (
+        {showLensSpecs && !!item?.prescriptionSummary?.shortLabel && (
           <Text style={styles.productVariant}>{item.prescriptionSummary.shortLabel}</Text>
         )}
 
-        {Array.isArray(item?.prescriptionSummary?.lines) && item.prescriptionSummary.lines.length ? (
+        {showLensSpecs &&
+        Array.isArray(item?.prescriptionSummary?.lines) &&
+        item.prescriptionSummary.lines.length ? (
           <View style={{ marginTop: 6, gap: 4 }}>
             {item.prescriptionSummary.lines.map((line) => (
               <Text key={`${item?.itemId || item?.name}-${line}`} style={styles.productVariant}>
@@ -1560,13 +1562,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     height: 42,
     borderRadius: 14,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#216afc",
     alignItems: "center",
     justifyContent: "center",
   },
 
   secondaryActionText: {
-    color: "#111827",
+    color: "#fff",
     fontSize: 13,
     fontWeight: "900",
   },

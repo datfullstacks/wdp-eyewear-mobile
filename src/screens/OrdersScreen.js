@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { getMyOrdersApi, cancelOrderApi } from "../services/orderService";
 import OrderCard from "../components/OrderCard";
 
@@ -27,9 +28,62 @@ const STATUS_FILTERS = [
 
 const ORDER_TYPE_FILTERS = [
   { key: "all", label: "Tất cả" },
-  { key: "order", label: "Đơn thường" },
-  { key: "preorder", label: "Đơn đặt trước" },
+  { key: "order", label: "Có sẵn" },
+  { key: "preorder", label: "Đặt trước" },
+  { key: "prescription", label: "Đơn kính" },
 ];
+
+function normalizeOrderTypeFilterKey(orderType) {
+  const normalized = String(orderType || "").trim().toLowerCase();
+
+  if (!normalized) return "order";
+
+  if (
+    normalized === "preorder" ||
+    normalized === "pre_order" ||
+    normalized === "đơn đặt trước" ||
+    normalized === "don dat truoc"
+  ) {
+    return "preorder";
+  }
+
+  if (
+    normalized === "custom" ||
+    normalized === "prescription" ||
+    normalized === "đơn kính" ||
+    normalized === "don kinh" ||
+    normalized === "đơn prescription" ||
+    normalized === "don prescription"
+  ) {
+    return "prescription";
+  }
+
+  if (
+    normalized === "ready_stock" ||
+    normalized === "order" ||
+    normalized === "có sẵn" ||
+    normalized === "co san"
+  ) {
+    return "order";
+  }
+
+  return normalized;
+}
+
+function resolveOrderTypeFilterKey(order) {
+  const orderTypeKey = normalizeOrderTypeFilterKey(order?.orderType);
+  if (orderTypeKey && orderTypeKey !== "all") return orderTypeKey;
+
+  if (Array.isArray(order?.items) && order.items.length > 0) {
+    const firstMatched = order.items
+      .map((item) => normalizeOrderTypeFilterKey(item?.orderType))
+      .find(Boolean);
+
+    if (firstMatched && firstMatched !== "all") return firstMatched;
+  }
+
+  return "order";
+}
 
 const SORT_OPTIONS = [
   {
@@ -94,6 +148,7 @@ const toggleFilter = (prevFilters, key) => {
 
 export default function OrdersScreen({ navigation, route }) {
   const initialFilter = route?.params?.initialFilter || ["all"];
+  const autoOpenOrderId = route?.params?.autoOpenOrderId || null;
 
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
@@ -140,13 +195,7 @@ export default function OrdersScreen({ navigation, route }) {
 
     if (activeOrderTypeFilter !== "all") {
       filtered = filtered.filter((order) => {
-        const hasPreorder =
-          Boolean(order?.preOrder ?? order?.preorder) ||
-          String(order?.orderType || "").toUpperCase() === "PREORDER" ||
-          (Array.isArray(order?.items) &&
-            order.items.some((item) => Boolean(item?.preOrder ?? item?.preorder)));
-
-        return activeOrderTypeFilter === "preorder" ? hasPreorder : !hasPreorder;
+        return resolveOrderTypeFilterKey(order) === activeOrderTypeFilter;
       });
     }
 
@@ -183,6 +232,24 @@ export default function OrdersScreen({ navigation, route }) {
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (orders.length > 0) {
+        loadOrders({ silent: true });
+      }
+    }, [loadOrders, orders.length])
+  );
+
+  useEffect(() => {
+    if (!autoOpenOrderId) return;
+
+    navigation.setParams({ autoOpenOrderId: null });
+    navigation.navigate("OrderDetail", {
+      orderId: autoOpenOrderId,
+      source: route?.params?.source || null,
+    });
+  }, [autoOpenOrderId, navigation, route?.params?.source]);
 
   const emptyComponent = useMemo(() => {
     const selectedFilters = normalizeFilterArray(activeFilter);

@@ -6,6 +6,19 @@ import { useNavigation } from "@react-navigation/native";
 import CartIconButton from "./CartIconButton";
 import { useAuthStore } from "../store/authStore";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#fcd675",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 export default function HeaderSearchActions({
   value,
   onChangeText,
@@ -52,7 +65,7 @@ export default function HeaderSearchActions({
 
       <CartIconButton onPress={handlePressCart} />
       <View>
-        <AntDesign name="comment" size={25} color="black" />
+        <AntDesign name="comment" size={25} color={PALETTE.navy} />
       </View>
     </View>
   );

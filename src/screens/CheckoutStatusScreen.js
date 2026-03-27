@@ -980,8 +980,12 @@ export default function CheckoutStatusScreen({ navigation, route }) {
       navigation.navigate("Tabs", {
         screen: "ProfileTab",
         params: {
-          screen: "OrderDetail",
-          params: { orderId: pollOrderId },
+          screen: "Orders",
+          params: {
+            initialFilter: "all",
+            autoOpenOrderId: pollOrderId,
+            source: "checkout_status",
+          },
         },
       });
       return;

@@ -43,25 +43,37 @@ const GAP = 12;
 const PAGE_PADDING = 16;
 const PAGE_W = width - PAGE_PADDING * 2;
 const CARD_W = (PAGE_W - GAP) / 2;
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#fcd675",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
 
 const BANNERS = [
   {
     id: "b1",
-    title: "Giảm 30% cho kính râm mùa hè",
+    title: "",
     image:
-      "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=1200&q=80",
+      "https://matkinhtamduc.com/wp-content/uploads/2024/04/giam-100k-trong-kinh-khi-mua-kem-gong-kinh-seeson-banner-ngang-768x384.jpg",
   },
   {
     id: "b2",
-    title: "Ưu đãi tròng kính chính hãng",
+    title: "",
     image:
-      "https://images.unsplash.com/photo-1520975958225-1c6f7b9c9a64?w=1200&q=80",
+      "https://vicogroup.vn/images/upload/images/Banner-Website.jpg",
   },
   {
     id: "b3",
-    title: "Mua 1 tặng 1 phụ kiện",
+    title: "",
     image:
-      "https://images.unsplash.com/photo-1508296695146-257a814070b4?w=1200&q=80",
+      "https://matkinhvietphat.com/wp-content/uploads/banner-essilor-transition0gen-s-1.webp",
   },
 ];
 
@@ -71,40 +83,40 @@ const CATEGORIES = [
     name: "Gọng kính",
     icon: "glasses",
     iconSet: "FontAwesome5",
-    color: "#4F46E5",
-    bg: "#EEF2FF",
+    color: PALETTE.gold,
+    bg: PALETTE.navy,
   },
   {
     id: "2",
     name: "Tròng kính",
     icon: "aperture-outline",
     iconSet: "Ionicons",
-    color: "#E11D48",
-    bg: "#FFE4E6",
+    color: PALETTE.gold,
+    bg: PALETTE.navy,
   },
   {
     id: "3",
     name: "Kính mát",
     icon: "glasses",
     iconSet: "Ionicons",
-    color: "#F59E0B",
-    bg: "#FEF3C7",
+    color: PALETTE.gold,
+    bg: PALETTE.navy,
   },
   {
     id: "4",
     name: "Kính áp tròng",
     icon: "eye-outline",
     iconSet: "Ionicons",
-    color: "#2563EB",
-    bg: "#DBEAFE",
+    color: PALETTE.gold,
+    bg: PALETTE.navy,
   },
   {
     id: "5",
     name: "Phụ kiện",
     icon: "sparkles-sharp",
     iconSet: "Ionicons",
-    color: "#10B981",
-    bg: "#D1FAE5",
+    color: PALETTE.gold,
+    bg: PALETTE.navy,
   },
 ];
 
@@ -260,7 +272,7 @@ function ProductPager({
                   {
                     width: dotWidth,
                     opacity,
-                    backgroundColor: idx === pageIndex ? "#2563EB" : "#D1D5DB",
+                    backgroundColor: idx === pageIndex ? PALETTE.navy : "#D1D5DB",
                   },
                 ]}
               />
@@ -376,6 +388,15 @@ const SeasonalIcon = ({ season }) => {
     >
       {renderIcon()}
     </Animated.View>
+  );
+};
+
+const SeeAllButton = ({ onPress }) => {
+  return (
+    <TouchableOpacity style={styles.seeAllBtn} onPress={onPress} activeOpacity={0.85}>
+      <Text style={styles.seeAllBtnText}>Xem tất cả</Text>
+      <Ionicons name="chevron-forward" size={14} color={PALETTE.navy} />
+    </TouchableOpacity>
   );
 };
 
@@ -508,12 +529,16 @@ export default function HomeScreen({ navigation }) {
     }
   }, [addresses, selectedAddressId]);
 
+  const navigateToProductsTab = useCallback((params = undefined) => {
+    navigation.getParent()?.navigate("ProductsTab", {
+      screen: "Products",
+      params,
+    });
+  }, [navigation]);
+
   const submitSearch = () => {
     const q = query.trim();
-    navigation.navigate("ProductsTab", {
-      screen: "Products",
-      params: { q },
-    });
+    navigateToProductsTab({ q });
   };
 
   const handlePressLocation = () => {
@@ -613,11 +638,11 @@ export default function HomeScreen({ navigation }) {
                 style={styles.locationRow}
                 activeOpacity={0.85}
               >
-                <Ionicons name="location-outline" size={16} color="#111827" />
+                <Ionicons name="location-outline" size={16} color={PALETTE.navy} />
                 <Text style={styles.locationText} numberOfLines={1}>
                   Giao đến: {locationLabel || "Chọn địa chỉ"}
                 </Text>
-                <Ionicons name="chevron-down" size={14} color="#6B7280" />
+                <Ionicons name="chevron-down" size={14} color={PALETTE.muted} />
               </TouchableOpacity>
             </View>
 
@@ -627,11 +652,11 @@ export default function HomeScreen({ navigation }) {
                 style={styles.locationRow}
                 activeOpacity={0.85}
               >
-                <Ionicons name="business-outline" size={16} color="#111827" />
+                <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
                 <Text style={styles.locationText} numberOfLines={1}>
                   Cửa hàng: {selectedStoreLabel}
                 </Text>
-                <Ionicons name="chevron-down" size={14} color="#6B7280" />
+                <Ionicons name="chevron-down" size={14} color={PALETTE.muted} />
               </TouchableOpacity>
             </View>
 
@@ -652,9 +677,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.categoriesSection}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Danh mục</Text>
-              <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
-                <Text style={styles.sectionLink}>Xem tất cả</Text>
-              </TouchableOpacity>
+              <SeeAllButton onPress={() => navigateToProductsTab()} />
             </View>
 
             <ScrollView
@@ -688,13 +711,10 @@ export default function HomeScreen({ navigation }) {
                         filterType = cat.name.toLowerCase();
                     }
 
-                    navigation.navigate("ProductsTab", {
-                      screen: "Products",
-                      params: {
-                        category: cat.name,
-                        filterType,
-                        autoApplyFilter: true,
-                      },
+                    navigateToProductsTab({
+                      category: cat.name,
+                      filterType,
+                      autoApplyFilter: true,
                     });
                   }}
                 />
@@ -705,11 +725,9 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.section}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>
-                <FontAwesome5 name="fire-alt" size={20} color="red" /> Bán chạy
+                <FontAwesome5 name="fire-alt" size={20} color="#f2531d" /> Bán chạy
               </Text>
-              <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
-                <Text style={styles.sectionLink}>Xem tất cả</Text>
-              </TouchableOpacity>
+              <SeeAllButton onPress={() => navigateToProductsTab()} />
             </View>
 
             <ProductPager
@@ -727,9 +745,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.sectionTitle}>
                 <Entypo name="new" size={20} color="orange" /> Mới về
               </Text>
-              <TouchableOpacity onPress={() => navigation.navigate("ProductsTab")}>
-                <Text style={styles.sectionLink}>Xem tất cả</Text>
-              </TouchableOpacity>
+              <SeeAllButton onPress={() => navigateToProductsTab()} />
             </View>
 
             <ProductPager
@@ -748,9 +764,9 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.flashSaleTitle}>FLASH SALE</Text>
                 <Text style={styles.flashSaleSubtitle}>Giảm đến 50%</Text>
               </View>
-              <TouchableOpacity style={styles.flashSaleBtn}>
+              <TouchableOpacity style={styles.flashSaleBtn} onPress={() => navigateToProductsTab()}>
                 <Text style={styles.flashSaleBtnText}>Mua ngay</Text>
-                <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                <Ionicons name="arrow-forward" size={16} color={PALETTE.navy} />
               </TouchableOpacity>
             </View>
           </View>
@@ -764,19 +780,14 @@ export default function HomeScreen({ navigation }) {
                   <Text style={styles.seasonalSubtitle}>{currentSeason.subtitle}</Text>
                 </View>
               </View>
-              <TouchableOpacity
+              <SeeAllButton
                 onPress={() =>
-                  navigation.navigate("ProductsTab", {
-                    screen: "Products",
-                    params: {
-                      season: currentSeason.name,
-                      autoApplyFilter: true,
-                    },
+                  navigateToProductsTab({
+                    season: currentSeason.name,
+                    autoApplyFilter: true,
                   })
                 }
-              >
-                <Text style={styles.sectionLink}>Xem tất cả</Text>
-              </TouchableOpacity>
+              />
             </View>
 
             <ProductPager
@@ -806,12 +817,12 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Cửa hàng đang xem</Text>
               <TouchableOpacity onPress={() => setStoreModalVisible(false)}>
-                <Ionicons name="close" size={20} color="#111827" />
+                <Ionicons name="close" size={20} color={PALETTE.navy} />
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={styles.addressList}>
               <TouchableOpacity
-                style={styles.addressItem}
+                style={styles.storeItem}
                 activeOpacity={0.8}
                 onPress={() => {
                   void setSelectedStoreId(null);
@@ -821,10 +832,12 @@ export default function HomeScreen({ navigation }) {
                 <Ionicons
                   name={!selectedStoreId ? "radio-button-on" : "radio-button-off"}
                   size={18}
-                  color={!selectedStoreId ? "#2563EB" : "#6B7280"}
-                  style={{ marginRight: 10 }}
+                  color={!selectedStoreId ? PALETTE.navy : PALETTE.muted}
+                  style={styles.storeSelectIcon}
                 />
-                <Text style={styles.addressText}>Tất cả cửa hàng</Text>
+                <View style={styles.storeInfo}>
+                  <Text style={styles.storeTitle}>Tất cả cửa hàng</Text>
+                </View>
               </TouchableOpacity>
 
               {stores.map((store) => {
@@ -835,7 +848,7 @@ export default function HomeScreen({ navigation }) {
                 return (
                   <TouchableOpacity
                     key={store.id}
-                    style={styles.addressItem}
+                    style={styles.storeItem}
                     activeOpacity={0.8}
                     onPress={() => {
                       void setSelectedStoreId(store.id);
@@ -845,15 +858,15 @@ export default function HomeScreen({ navigation }) {
                     <Ionicons
                       name={selected ? "radio-button-on" : "radio-button-off"}
                       size={18}
-                      color={selected ? "#2563EB" : "#6B7280"}
-                      style={{ marginRight: 10 }}
+                      color={selected ? PALETTE.navy : PALETTE.muted}
+                      style={styles.storeSelectIcon}
                     />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.addressText}>
+                    <View style={styles.storeInfo}>
+                      <Text style={styles.storeTitle}>
                         {store.name} ({store.code})
                       </Text>
                       {label ? (
-                        <Text style={{ marginTop: 4, fontSize: 12, color: "#6B7280" }}>
+                        <Text style={styles.storeMeta}>
                           {label}
                         </Text>
                       ) : null}
@@ -878,7 +891,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Địa chỉ của bạn</Text>
               <TouchableOpacity onPress={() => setAddressModalVisible(false)}>
-                <Ionicons name="close" size={20} color="#111827" />
+                <Ionicons name="close" size={20} color={PALETTE.navy} />
               </TouchableOpacity>
             </View>
             {addressLoading ? (
@@ -907,7 +920,7 @@ export default function HomeScreen({ navigation }) {
                         <Ionicons
                           name={selected ? "radio-button-on" : "radio-button-off"}
                           size={18}
-                          color={selected ? "#2563EB" : "#6B7280"}
+                          color={selected ? PALETTE.navy : PALETTE.muted}
                           style={{ marginRight: 10 }}
                         />
                       )}
@@ -929,7 +942,7 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#F6F7FB",
+    backgroundColor: PALETTE.bg,
   },
 
   container: {
@@ -959,15 +972,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#FFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 38,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
 
   locationText: {
     fontSize: 12.5,
-    color: "#111827",
+    color: PALETTE.text,
     fontWeight: "800",
     flexShrink: 1,
   },
@@ -999,7 +1014,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
   },
 
   categoryText: {
@@ -1022,14 +1038,26 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.navy,
     marginLeft: 4,
   },
 
-  sectionLink: {
-    fontSize: 13,
+  seeAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: PALETTE.gold,
+    borderWidth: 1,
+    borderColor: PALETTE.navy,
+  },
+
+  seeAllBtnText: {
+    fontSize: 12.5,
     fontWeight: "800",
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 
   pagerContainer: {
@@ -1070,10 +1098,10 @@ const styles = StyleSheet.create({
     marginHorizontal: PAGE_PADDING,
     borderRadius: 20,
     padding: 20,
-    backgroundColor: "#E11D48",
-    shadowColor: "#E11D48",
+    backgroundColor: PALETTE.navy,
+    shadowColor: PALETTE.navy,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.18,
     shadowRadius: 8,
     elevation: 4,
   },
@@ -1091,32 +1119,32 @@ const styles = StyleSheet.create({
   flashSaleTitle: {
     fontSize: 20,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: PALETTE.white,
     letterSpacing: 1,
   },
 
   flashSaleSubtitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.9)",
+    color: PALETTE.goldSoft,
   },
 
   flashSaleBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: PALETTE.gold,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 30,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
+    borderColor: PALETTE.gold,
   },
 
   flashSaleBtnText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: PALETTE.navy,
   },
 
   seasonalTitleContainer: {
@@ -1140,7 +1168,7 @@ const styles = StyleSheet.create({
 
   seasonalSubtitle: {
     fontSize: 12,
-    color: "#6B7280",
+    color: PALETTE.muted,
     marginTop: 2,
     fontWeight: "500",
   },
@@ -1154,7 +1182,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: "90%",
     maxHeight: "80%",
-    backgroundColor: "#fff",
+    backgroundColor: PALETTE.white,
     borderRadius: 12,
     padding: 16,
   },
@@ -1166,7 +1194,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 16,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.navy,
   },
   addressList: {
     paddingVertical: 10,
@@ -1174,7 +1202,7 @@ const styles = StyleSheet.create({
   addressItem: {
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: "#ccc",
+    borderColor: PALETTE.border,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -1182,16 +1210,46 @@ const styles = StyleSheet.create({
   addressText: {
     flex: 1,
     fontSize: 14,
-    color: "#111827",
+    color: PALETTE.text,
+  },
+  storeItem: {
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: PALETTE.border,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  storeSelectIcon: {
+    marginTop: 3,
+  },
+  storeInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 8,
+  },
+  storeTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: PALETTE.text,
+    lineHeight: 20,
+  },
+  storeMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 18,
+    color: PALETTE.muted,
   },
   defaultBadge: {
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.gold,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-    color: "#fff",
+    color: PALETTE.navy,
     fontSize: 12,
     fontWeight: "700",
     overflow: "hidden",
+    alignSelf: "flex-start",
+    marginTop: 2,
   },
 });
