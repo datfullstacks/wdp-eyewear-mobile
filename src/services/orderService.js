@@ -473,11 +473,11 @@ export async function patchOrderItemApi(orderId, itemId, orderItem, patch = {}) 
   return res?.data?.data ?? res?.data ?? null;
 }
 
-export async function cancelOrderApi(orderId) {
+export async function cancelOrderApi(orderId, payload = {}) {
   if (!orderId) throw new Error("Missing orderId");
 
   try {
-    const res = await api.put(`/api/orders/${orderId}/cancel`);
+    const res = await api.put(`/api/orders/${orderId}/cancel`, payload);
     return res?.data?.data ?? res?.data ?? null;
   } catch (error) {
     const localizedMessage = localizeOrderActionMessage(

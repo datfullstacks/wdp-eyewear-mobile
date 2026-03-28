@@ -931,6 +931,11 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     ["completed", "rejected"].includes(refundStatus);
   const hasActiveRefund = Boolean(order.refund && !hasClosedRefund);
   const rawPaidAmount = Math.max(0, Number(order.paidAmount || 0));
+  const canCancelWithRefund =
+    Boolean(pollOrderId) &&
+    !hasActiveRefund &&
+    rawOrderStatusKey === "PENDING" &&
+    rawPaidAmount > 0;
   const refundMeta = order.refund
     ? REFUND_STATUS_META[refundStatus] || REFUND_STATUS_META.requested
     : null;
@@ -939,7 +944,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const canRequestRefund =
     Boolean(pollOrderId) &&
     !hasActiveRefund &&
-    ["PENDING", "CONFIRMED", "PROCESSING", "CANCELLED", "DELIVERED", "RETURNED"].includes(
+    ["CONFIRMED", "PROCESSING", "CANCELLED", "DELIVERED", "RETURNED"].includes(
       rawOrderStatusKey,
     ) &&
     rawPaidAmount > 0;
@@ -1016,6 +1021,16 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
     if (!orderId || orderId === "OD--" || /^OD\d+$/i.test(String(orderId))) {
       Alert.alert("Không thể hủy", "Thiếu orderId hợp lệ.");
+      return;
+    }
+
+    if (canCancelWithRefund) {
+      navigation.navigate("RefundRequest", {
+        orderId,
+        order: rawOrder,
+        cartType,
+        refundAction: "cancel_order",
+      });
       return;
     }
 
@@ -1223,12 +1238,13 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               </Text>
             </View>
 
-            {canCancelOrder ? (
+            {(canCancelOrder || canCancelWithRefund) ? (
               <View style={styles.actionSection}>
                 <Text style={styles.sectionTitle}>Thao tác</Text>
                 <Text style={styles.mutedText}>
-                  Nếu bạn không muốn tiếp tục thanh toán, có thể hủy đơn hàng
-                  này.
+                  {canCancelWithRefund
+                    ? "Nếu muốn hủy đơn đã thanh toán, vui lòng xác nhận tài khoản hoàn tiền trước khi gửi."
+                    : "Nếu bạn không muốn tiếp tục thanh toán, có thể hủy đơn hàng này."}
                 </Text>
 
                 <TouchableOpacity
@@ -1243,7 +1259,11 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 >
                   <Ionicons name="close-circle-outline" size={16} color="#B91C1C" />
                   <Text style={styles.cancelBtnText}>
-                    {isCancelling ? "Đang hủy..." : "Hủy thanh toán"}
+                    {isCancelling
+                      ? "Đang hủy..."
+                      : canCancelWithRefund
+                        ? "Hủy đơn và hoàn tiền"
+                        : "Hủy thanh toán"}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1272,7 +1292,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               </Text>
             </TouchableOpacity>
 
-            {canCancelOrder ? (
+            {(canCancelOrder || canCancelWithRefund) ? (
               <TouchableOpacity
                 style={[styles.actionBtn, styles.cancelBtn, { marginTop: 10 }]}
                 activeOpacity={0.85}
@@ -1281,7 +1301,11 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               >
                   <Ionicons name="close-circle-outline" size={16} color="#B91C1C" />
                   <Text style={styles.cancelBtnText}>
-                    {isCancelling ? "Đang hủy..." : "Hủy thanh toán"}
+                    {isCancelling
+                      ? "Đang hủy..."
+                      : canCancelWithRefund
+                        ? "Hủy đơn và hoàn tiền"
+                        : "Hủy thanh toán"}
                   </Text>
               </TouchableOpacity>
             ) : null}
