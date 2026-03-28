@@ -80,7 +80,7 @@ function BottomSheet({ visible, title, onClose, children }) {
               <Ionicons name="close" size={20} color="#111827" />
             </TouchableOpacity>
           </View>
-          {children}
+          <View style={styles.sheetBody}>{children}</View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -600,6 +600,9 @@ export default function ProductsScreen({ navigation }) {
         onClose={() => setStoreOpen(false)}
       >
         <ScrollView
+          style={styles.sheetScroll}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator
           contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}
         >
@@ -657,6 +660,9 @@ export default function ProductsScreen({ navigation }) {
         onClose={() => setFilterOpen(false)}
       >
         <ScrollView
+          style={styles.sheetScroll}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator
           contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24, gap: 14 }}
         >
@@ -987,6 +993,13 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 18,
     paddingTop: 10,
     maxHeight: "78%",
+  },
+  sheetBody: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  sheetScroll: {
+    flexGrow: 0,
   },
   sheetHeader: {
     paddingHorizontal: 14,

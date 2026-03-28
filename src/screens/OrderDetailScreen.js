@@ -63,10 +63,17 @@ const STATUS_META = {
   },
 };
 
-const ORDER_STEPS = [
+const PREORDER_STEPS = [
   { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
   { key: "AWAITING_STOCK", label: "Chờ hàng về", desc: "Đang chờ sản phẩm về kho" },
   { key: "PACKING", label: "Đóng gói", desc: "Đơn hàng đang được đóng gói" },
+  { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
+  { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
+];
+
+const READY_ORDER_STEPS = [
+  { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
+  { key: "PACKING", label: "Đóng gói", desc: "Sản phẩm có sẵn đang được chuẩn bị và đóng gói" },
   { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
   { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
 ];
@@ -180,11 +187,37 @@ function getRefundHistoryEntries(refund) {
   }));
 }
 
-function normalizeOrderProgressStatus(status, opsStage) {
+function normalizeOrderTypeKey(orderType, items = []) {
+  const normalized = String(orderType || "").trim().toLowerCase();
+
+  if (normalized === "preorder" || normalized === "pre_order" || normalized === "đơn đặt trước") {
+    return "preorder";
+  }
+
+  if (
+    normalized === "ready_stock" ||
+    normalized === "order" ||
+    normalized === "prescription" ||
+    normalized === "custom" ||
+    normalized === "đơn kính"
+  ) {
+    return "ready";
+  }
+
+  const hasPreorderItem = Array.isArray(items)
+    ? items.some((item) => Boolean(item?.preOrder ?? item?.preorder))
+    : false;
+
+  return hasPreorderItem ? "preorder" : "ready";
+}
+
+function normalizeOrderProgressStatus(status, opsStage, orderTypeKey = "ready") {
   const normalizedOps = String(opsStage || "").trim().toLowerCase();
   const normalized = String(status || "").trim().toLowerCase();
 
-  if (normalizedOps === "awaiting_stock") return "AWAITING_STOCK";
+  if (normalizedOps === "awaiting_stock") {
+    return orderTypeKey === "preorder" ? "AWAITING_STOCK" : "PACKING";
+  }
   if (
     normalizedOps === "waiting_lab" ||
     normalizedOps === "lens_processing" ||
@@ -404,7 +437,9 @@ export default function OrderDetailScreen({ navigation, route }) {
   const statusKey = String(order?.status || "").toLowerCase();
   const paymentKey = String(order?.paymentStatus || order?.payment?.status || "").toLowerCase();
   const isPaid = ["paid", "success", "succeeded"].includes(paymentKey);
-  const canCancel = ["pending", "confirmed", "processing"].includes(statusKey);
+  const hasPaidAmount = isPaid || Number(order?.paidAmount || 0) > 0;
+  const canCancel =
+    ["pending", "confirmed", "processing"].includes(statusKey) && !hasPaidAmount;
   const refundStatus = String(order?.refund?.status || "").trim().toLowerCase();
   const hasClosedRefund = ["completed", "rejected"].includes(refundStatus);
   const hasActiveRefund = Boolean(order?.refund && !hasClosedRefund);
@@ -412,7 +447,7 @@ export default function OrderDetailScreen({ navigation, route }) {
   const canRequestRefund =
     Boolean(order?._id || order?.id || orderId) &&
     !hasActiveRefund &&
-    ["pending", "cancelled", "delivered", "returned"].includes(statusKey) &&
+    ["pending", "confirmed", "processing", "cancelled", "delivered", "returned"].includes(statusKey) &&
     paidAmount > 0;
   const canSubmitRefundInfo = refundStatus === "waiting_customer_info";
 
@@ -420,19 +455,28 @@ export default function OrderDetailScreen({ navigation, route }) {
     !isPaid &&
     !["cancelled", "canceled", "delivered", "returned"].includes(statusKey);
 
+  const orderItems = useMemo(() => {
+    return Array.isArray(order?.items) ? order.items : [];
+  }, [order]);
+
+  const orderTypeKey = useMemo(() => {
+    return normalizeOrderTypeKey(order?.orderType, orderItems);
+  }, [order?.orderType, orderItems]);
+
+  const progressSteps = useMemo(() => {
+    return orderTypeKey === "preorder" ? PREORDER_STEPS : READY_ORDER_STEPS;
+  }, [orderTypeKey]);
+
   const normalizedProgressStatus = normalizeOrderProgressStatus(
     order?.status,
-    order?.opsStage
+    order?.opsStage,
+    orderTypeKey
   );
 
   const activeStepIndex = Math.max(
     0,
-    ORDER_STEPS.findIndex((s) => s.key === normalizedProgressStatus)
+    progressSteps.findIndex((s) => s.key === normalizedProgressStatus)
   );
-
-  const orderItems = useMemo(() => {
-    return Array.isArray(order?.items) ? order.items : [];
-  }, [order]);
 
   const totalItems = useMemo(() => {
     return orderItems.reduce(
@@ -758,9 +802,9 @@ export default function OrderDetailScreen({ navigation, route }) {
 
         <SectionCard title="Tiến trình đơn hàng" icon="git-branch-outline">
           <View style={styles.timeline}>
-            {ORDER_STEPS.map((step, idx) => {
+            {progressSteps.map((step, idx) => {
               const active = idx <= activeStepIndex;
-              const isLast = idx === ORDER_STEPS.length - 1;
+              const isLast = idx === progressSteps.length - 1;
 
               return (
                 <View key={step.key} style={styles.stepRow}>

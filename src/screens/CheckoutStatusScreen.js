@@ -918,9 +918,13 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     .trim()
     .toUpperCase();
   const isCancelledOrder = rawOrderStatusKey === "CANCELLED";
+  const hasPaidAmount =
+    Number(order.paidAmount || 0) > 0 ||
+    ["PAID", "SUCCESS", "SUCCEEDED"].includes(String(paymentStatus || "").toUpperCase());
 
   const canCancelOrder =
-    ["PENDING", "CONFIRMED", "PROCESSING"].includes(rawOrderStatusKey);
+    ["PENDING", "CONFIRMED", "PROCESSING"].includes(rawOrderStatusKey) &&
+    !hasPaidAmount;
   const refundStatus = String(order.refund?.status || "")
     .trim()
     .toLowerCase();
@@ -937,7 +941,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const canRequestRefund =
     Boolean(pollOrderId) &&
     !hasActiveRefund &&
-    ["PENDING", "CANCELLED", "DELIVERED", "RETURNED"].includes(
+    ["PENDING", "CONFIRMED", "PROCESSING", "CANCELLED", "DELIVERED", "RETURNED"].includes(
       rawOrderStatusKey,
     ) &&
     rawPaidAmount > 0;

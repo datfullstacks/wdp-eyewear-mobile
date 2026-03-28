@@ -3,10 +3,12 @@ package com.wdp.eyewear.tryon
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.SurfaceView
+import android.util.TypedValue
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -158,14 +160,14 @@ class WdpTryOnActivity : AppCompatActivity() {
 
     val overlay = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
-      setPadding(24, 20, 24, 0)
+      setPadding(dp(16), dp(16), dp(16), 0)
     }
 
     statusLabel = TextView(this).apply {
       setTextColor(0xFFFFFFFF.toInt())
-      textSize = 12f
-      setPadding(24, 20, 24, 20)
-      setBackgroundColor(0x66000000)
+      textSize = 13f
+      setPadding(dp(16), dp(12), dp(16), dp(12))
+      setBackgroundColor(0x8F111827.toInt())
       text = buildStatusText("Preparing native AR session...")
     }
     overlay.addView(
@@ -179,9 +181,10 @@ class WdpTryOnActivity : AppCompatActivity() {
     if (availableModels.size > 1) {
       val selectorLabel = TextView(this).apply {
         setTextColor(0xFFFFFFFF.toInt())
-        textSize = 12f
+        textSize = 14f
         text = "Switch model"
-        setPadding(4, 18, 4, 8)
+        setTypeface(typeface, android.graphics.Typeface.BOLD)
+        setPadding(dp(4), dp(18), dp(4), dp(10))
       }
       overlay.addView(selectorLabel)
 
@@ -272,6 +275,13 @@ class WdpTryOnActivity : AppCompatActivity() {
     if (!::modelButtonsContainer.isInitialized) return
     modelButtonsContainer.removeAllViews()
 
+    // Định nghĩa các mã màu
+    val colorNavy = 0xFF0C2C5C.toInt()      // Màu Navy
+    val colorNavySoft = 0x8F0C2C5C.toInt()  // Màu Navy trong suốt (cho nút chưa chọn)
+    val colorGold = 0xFFDDAD32.toInt()      // Màu Gold
+    val colorWhite = 0xFFFFFFFF.toInt()     // Màu Trắng
+    val colorDisabled = 0x665B6472.toInt()  // Màu xám khi not ready
+
     availableModels.forEach { model ->
       val isActive = activeModel?.id == model.id
       val button = TextView(this).apply {
@@ -280,17 +290,43 @@ class WdpTryOnActivity : AppCompatActivity() {
           append("\n")
           append(if (model.ready) "Ready" else "Not ready")
         }
-        textSize = 11f
-        setTextColor(if (isActive) 0xFFDBEAFE.toInt() else 0xFFFFFFFF.toInt())
-        setPadding(28, 18, 28, 18)
-        setBackgroundColor(
-          when {
-            isActive -> 0xFF1D4ED8.toInt()
-            model.ready -> 0x66000000
-            else -> 0x44FFFFFF
+        textSize = 12f
+        setLineSpacing(0f, 1.05f)
+        setTypeface(typeface, android.graphics.Typeface.BOLD)
+        minWidth = dp(116)
+        minHeight = dp(64)
+        gravity = Gravity.CENTER
+        
+        // --- Set màu Text: Active là màu Gold, bình thường là màu Trắng ---
+        setTextColor(if (isActive) colorGold else colorWhite)
+        setPadding(dp(16), dp(12), dp(16), dp(12))
+
+        // --- Tạo UI Bo góc (Background) ---
+        val bgDrawable = GradientDrawable().apply {
+          shape = GradientDrawable.RECTANGLE
+          cornerRadius = dp(16).toFloat() // Bo góc 16dp
+          
+          // Set màu nền
+          setColor(
+            when {
+              isActive -> colorNavy       // Nền Navy đậm khi được chọn
+              model.ready -> colorNavySoft // Nền Navy nhạt khi sẵn sàng nhưng chưa chọn
+              else -> colorDisabled       // Nền xám khi không ready
+            }
+          )
+          
+          // Thêm viền màu Gold mỏng khi được chọn cho nổi bật
+          if (isActive) {
+            setStroke(dp(1), colorGold)
           }
-        )
+        }
+        
+        // Gán background đã bo góc cho TextView
+        background = bgDrawable
+
         alpha = if (model.ready) 1f else 0.55f
+        elevation = if (isActive) dp(4).toFloat() else 0f
+        
         setOnClickListener {
           if (model.ready) switchToModel(model)
         }
@@ -302,7 +338,7 @@ class WdpTryOnActivity : AppCompatActivity() {
           LinearLayout.LayoutParams.WRAP_CONTENT,
           LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-          rightMargin = 12
+          rightMargin = dp(10)
         }
       )
     }
@@ -360,7 +396,7 @@ class WdpTryOnActivity : AppCompatActivity() {
     renderModelButtons()
 
     if (!sessionStarted) {
-      updateStatus("Selected model: ${model.label}")
+      updateStatus("Đã chọn ${model.label}")
       return
     }
 
@@ -379,12 +415,12 @@ class WdpTryOnActivity : AppCompatActivity() {
       val managerClass = sdkManagerClass ?: managerInstance.javaClass
       managerClass.getMethod("loadEffect", String::class.java, Boolean::class.javaPrimitiveType!!)
         .invoke(managerInstance, normalizeBanubaPath(effectToLoad), false)
-      updateStatus("Model: ${model.label}\nEffect: $effectToLoad")
+      updateStatus("Đang thử với ${model.label}")
     } catch (error: Throwable) {
       if (model.fallbackUrl.isNotEmpty()) {
         openFallbackAndFinish("Failed to switch model natively. Opening fallback URL instead.")
       } else {
-        updateStatus("Failed to switch model: ${error.message ?: "Unknown error"}")
+        updateStatus("Không đổi được model. Vui lòng thử lại.")
       }
     }
   }
@@ -476,14 +512,7 @@ class WdpTryOnActivity : AppCompatActivity() {
       sessionStarted = true
       currentEffectPath = effectToLoad
       updateStatus(
-        buildString {
-          append("Effect: ")
-          append(effectToLoad)
-          activeModel?.let {
-            append("\nModel: ")
-            append(it.label)
-          }
-        }
+        activeModel?.let { "Đang thử với ${it.label}" } ?: "Camera đã sẵn sàng"
       )
     } catch (error: Throwable) {
       stopSession()
@@ -521,33 +550,7 @@ class WdpTryOnActivity : AppCompatActivity() {
   }
 
   private fun buildStatusText(extraLine: String): String {
-    return buildString {
-      append("Banuba AR session")
-      append("\nProduct: ")
-      append(if (productName.isNotEmpty()) productName else "N/A")
-      append("\nProduct ID: ")
-      append(if (productId.isNotEmpty()) productId else "N/A")
-      activeModel?.let {
-        append("\nModel: ")
-        append(it.label)
-        if (it.scene.isNotEmpty()) {
-          append("\nScene: ")
-          append(it.scene)
-        }
-        if (it.prefabJson.isNotEmpty()) {
-          append("\nPrefab: yes")
-        }
-      }
-      if (activeModel == null && initialScene.isNotEmpty()) {
-        append("\nScene: ")
-        append(initialScene)
-      }
-      if (activeModel == null && initialPrefabJson.isNotEmpty()) {
-        append("\nPrefab: yes")
-      }
-      append("\n")
-      append(extraLine)
-    }
+    return extraLine.trim()
   }
 
   private fun updateStatus(extraLine: String) {
@@ -626,5 +629,13 @@ class WdpTryOnActivity : AppCompatActivity() {
     val trimmed = value.trim()
     if (!trimmed.startsWith("file://", ignoreCase = true)) return trimmed
     return Uri.parse(trimmed).path?.trim().orEmpty()
+  }
+
+  private fun dp(value: Int): Int {
+    return TypedValue.applyDimension(
+      TypedValue.COMPLEX_UNIT_DIP,
+      value.toFloat(),
+      resources.displayMetrics
+    ).toInt()
   }
 }

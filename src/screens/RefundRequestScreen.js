@@ -99,7 +99,7 @@ function normalizeOrderStatusKey(order) {
 function canCustomerCreateRefundRequest(order) {
   return (
     getRefundPaidAmount(order) > 0 &&
-    ["pending", "cancelled", "delivered", "returned"].includes(
+    ["pending", "confirmed", "processing", "cancelled", "delivered", "returned"].includes(
       normalizeOrderStatusKey(order),
     )
   );
