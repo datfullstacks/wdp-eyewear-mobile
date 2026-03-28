@@ -403,16 +403,21 @@ export default function OrderDetailScreen({ navigation, route }) {
   const paymentKey = String(order?.paymentStatus || order?.payment?.status || "").toLowerCase();
   const isPaid = ["paid", "success", "succeeded"].includes(paymentKey);
   const hasPaidAmount = isPaid || Number(order?.paidAmount || 0) > 0;
+  const paidAmount = Math.max(0, Number(order?.paidAmount || 0));
   const canCancel =
     ["pending", "confirmed", "processing"].includes(statusKey) && !hasPaidAmount;
   const refundStatus = String(order?.refund?.status || "").trim().toLowerCase();
   const hasClosedRefund = ["completed", "rejected"].includes(refundStatus);
   const hasActiveRefund = Boolean(order?.refund && !hasClosedRefund);
-  const paidAmount = Math.max(0, Number(order?.paidAmount || 0));
+  const canCancelWithRefund =
+    Boolean(order?._id || order?.id || orderId) &&
+    !hasActiveRefund &&
+    statusKey === "pending" &&
+    paidAmount > 0;
   const canRequestRefund =
     Boolean(order?._id || order?.id || orderId) &&
     !hasActiveRefund &&
-    ["pending", "confirmed", "processing", "cancelled", "delivered", "returned"].includes(statusKey) &&
+    ["confirmed", "processing", "cancelled", "delivered", "returned"].includes(statusKey) &&
     paidAmount > 0;
   const canSubmitRefundInfo = refundStatus === "waiting_customer_info";
 
@@ -450,40 +455,16 @@ export default function OrderDetailScreen({ navigation, route }) {
 
   const handleCancelOrder = useCallback(() => {
     if (!order?._id || isCancelling) return;
-    const cancelConfirmMessage =
-      paidAmount > 0
-        ? "Bạn chắc chắn muốn hủy đơn này? Hệ thống sẽ tạo luồng hoàn tiền cho khoản đã thanh toán."
-        : "Bạn chắc chắn muốn hủy đơn này? Thao tác không thể hoàn tác.";
-    const cancelSuccessMessage =
-      paidAmount > 0
-        ? "Đã hủy đơn hàng. Yêu cầu hoàn tiền đã được khởi tạo cho khoản đã thanh toán."
-        : "Đã hủy đơn hàng.";
-
-    if (paidAmount > 0) {
-      Alert.alert("Hủy đơn hàng?", cancelConfirmMessage, [
-        { text: "Không", style: "cancel" },
-        {
-          text: "Hủy đơn",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setIsCancelling(true);
-              await cancelOrderApi(order._id);
-              await loadOrder({ silent: true });
-              Alert.alert("Thành công", cancelSuccessMessage);
-            } catch (err) {
-              const message =
-                err?.response?.data?.message ||
-                err?.response?.data?.error ||
-                err?.message ||
-                "Không thể hủy đơn hàng";
-              Alert.alert("Hủy thất bại", message);
-            } finally {
-              setIsCancelling(false);
-            }
-          },
+    if (canCancelWithRefund) {
+      navigation.navigate("CartFlow", {
+        screen: "RefundRequest",
+        params: {
+          orderId: order?._id || order?.id || orderId,
+          order,
+          refundAction: "cancel_order",
+          source: "order_detail",
         },
-      ]);
+      });
       return;
     }
 
@@ -515,7 +496,7 @@ export default function OrderDetailScreen({ navigation, route }) {
         },
       ]
     );
-  }, [order, isCancelling, loadOrder, paidAmount]);
+  }, [canCancelWithRefund, isCancelling, loadOrder, navigation, order, orderId]);
 
   const handlePayNow = useCallback(() => {
     if (!order) return;
@@ -733,7 +714,7 @@ export default function OrderDetailScreen({ navigation, route }) {
             </TouchableOpacity>
           )}
 
-          {canCancel && (
+          {(canCancel || canCancelWithRefund) && (
             <TouchableOpacity
               style={styles.cancelOrderBtn}
               onPress={handleCancelOrder}
@@ -749,7 +730,9 @@ export default function OrderDetailScreen({ navigation, route }) {
                     size={16}
                     color="#991B1B"
                   />
-                  <Text style={styles.cancelOrderBtnText}>Hủy đơn hàng</Text>
+                  <Text style={styles.cancelOrderBtnText}>
+                    {canCancelWithRefund ? "Hủy đơn và hoàn tiền" : "Hủy đơn hàng"}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
