@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 
 import {
+  cancelOrderApi,
   getOrderByIdApi,
   requestRefundApi,
   updateRefundApi,
@@ -105,12 +106,27 @@ function canCustomerCreateRefundRequest(order) {
   );
 }
 
+function canCustomerCancelPaidOrder(order) {
+  return (
+    getRefundPaidAmount(order) > 0 &&
+    ["pending", "confirmed", "processing"].includes(normalizeOrderStatusKey(order))
+  );
+}
+
 function getRefundEligibilityMessage(order) {
   if (getRefundPaidAmount(order) <= 0) {
     return "Đơn hàng này chưa có khoản thanh toán có thể hoàn.";
   }
 
   return "Yêu cầu refund chỉ áp dụng cho đơn đã thanh toán đang chờ xác nhận, đã hủy, đã giao hoặc đã trả.";
+}
+
+function getCancelOrderEligibilityMessage(order) {
+  if (getRefundPaidAmount(order) <= 0) {
+    return "Đơn hàng này chưa có khoản thanh toán có thể hoàn.";
+  }
+
+  return "Chỉ có thể hủy đơn đã thanh toán khi đơn còn ở trạng thái chờ xác nhận.";
 }
 
 function getRefundShippingFeeLimit(order) {
@@ -237,13 +253,38 @@ function buildRequestedBreakdown(
   };
 }
 
+function hasRefundAccountConfig(bankAccount) {
+  return Boolean(
+    bankAccount &&
+      (
+        String(bankAccount.bankCode || "").trim() ||
+        String(bankAccount.bankName || "").trim()
+      ) &&
+      String(bankAccount.accountNumber || "").trim() &&
+      String(bankAccount.accountHolder || "").trim(),
+  );
+}
+
+function toBankFormState(bankAccount = null) {
+  const resolvedBank =
+    findRefundBankByCode(bankAccount?.bankCode) ||
+    findRefundBankByName(bankAccount?.bankName);
+
+  return {
+    bankCode: resolvedBank?.code || "",
+    bankName: resolvedBank?.name || String(bankAccount?.bankName || "").trim(),
+    accountNumber: normalizeRefundAccountNumber(bankAccount?.accountNumber || ""),
+    accountHolder: String(bankAccount?.accountHolder || "").trim(),
+    bankNote: String(bankAccount?.note || "").trim(),
+  };
+}
+
 function buildInitialFormState(order, savedRefundAccount = null) {
   const summary = buildOrderSummary(order);
   const currentBreakdown = summary.requestedBreakdown;
-  const bankAccount = summary.refundBankAccount || savedRefundAccount || {};
-  const resolvedBank =
-    findRefundBankByCode(bankAccount.bankCode) ||
-    findRefundBankByName(bankAccount.bankName);
+  const bankState = toBankFormState(
+    summary.refundBankAccount || savedRefundAccount || null,
+  );
 
   return {
     reasonCode: inferReasonCode(summary.refundReason),
@@ -258,11 +299,11 @@ function buildInitialFormState(order, savedRefundAccount = null) {
       currentBreakdown.itemAmount > 0
         ? Number(currentBreakdown.itemAmount)
         : getDefaultRefundableItemAmount(order),
-    bankCode: resolvedBank?.code || "",
-    bankName: resolvedBank?.name || String(bankAccount.bankName || "").trim(),
-    accountNumber: normalizeRefundAccountNumber(bankAccount.accountNumber || ""),
-    accountHolder: String(bankAccount.accountHolder || "").trim(),
-    bankNote: String(bankAccount.note || "").trim(),
+    bankCode: bankState.bankCode,
+    bankName: bankState.bankName,
+    accountNumber: bankState.accountNumber,
+    accountHolder: bankState.accountHolder,
+    bankNote: bankState.bankNote,
     evidence:
       Array.isArray(order?.refund?.evidence) &&
       order.refund.evidence.length > 0
@@ -310,12 +351,16 @@ export default function RefundRequestScreen({ navigation, route }) {
   const initialOrder = route?.params?.order || null;
   const explicitOrderId = route?.params?.orderId || null;
   const requestedAction = normalizeRefundStatus(route?.params?.refundAction);
+  const isCancelOrderMode = requestedAction === "cancel_order";
 
   const [order, setOrder] = useState(initialOrder);
   const [loading, setLoading] = useState(!initialOrder);
   const [submitting, setSubmitting] = useState(false);
   const [formSeedKey, setFormSeedKey] = useState("");
+  const [bankModePrompted, setBankModePrompted] = useState(false);
   const [savedRefundAccount, setSavedRefundAccount] = useState(null);
+  const [useSavedRefundAccount, setUseSavedRefundAccount] = useState(false);
+  const [customBankDraft, setCustomBankDraft] = useState(null);
   const [saveAsDefaultRefundAccount, setSaveAsDefaultRefundAccount] =
     useState(false);
 
@@ -403,13 +448,23 @@ export default function RefundRequestScreen({ navigation, route }) {
   const isWaitingCustomerInfo = summary.refundStatus === "waiting_customer_info";
   const isCustomerUpdateMode =
     requestedAction === "customer_submit_info" || isWaitingCustomerInfo;
+  const canCancelPaidOrder = useMemo(
+    () => canCustomerCancelPaidOrder(order),
+    [order],
+  );
   const canCreateRefund = useMemo(
     () => canCustomerCreateRefundRequest(order),
     [order],
   );
+  const canSubmitRefundForm = isCancelOrderMode
+    ? canCancelPaidOrder
+    : canCreateRefund;
   const refundEligibilityMessage = useMemo(
-    () => getRefundEligibilityMessage(order),
-    [order],
+    () =>
+      isCancelOrderMode
+        ? getCancelOrderEligibilityMessage(order)
+        : getRefundEligibilityMessage(order),
+    [isCancelOrderMode, order],
   );
   const returnShippingFee = useMemo(
     () => toNumber(returnShippingFeeText),
@@ -437,6 +492,10 @@ export default function RefundRequestScreen({ navigation, route }) {
     summary.refundStatus &&
     !["none", "completed", "rejected"].includes(summary.refundStatus);
   const hasBlockingActiveRefund = hasExistingRefund && !isCustomerUpdateMode;
+  const hasSavedRefundAccount = useMemo(
+    () => hasRefundAccountConfig(savedRefundAccount),
+    [savedRefundAccount],
+  );
   const shippingFeeHelper =
     refundableShippingFee > 0
       ? "Bật khi lỗi đến từ hệ thống, giao sai hàng hoặc giao hỏng."
@@ -466,7 +525,16 @@ export default function RefundRequestScreen({ navigation, route }) {
     }
 
     const nextState = buildInitialFormState(order, savedRefundAccount);
-    setReasonCode(nextState.reasonCode);
+    const shouldUseSavedRefundAccount =
+      !summary.refundBankAccount && hasRefundAccountConfig(savedRefundAccount);
+
+    setReasonCode(
+      isCancelOrderMode &&
+        !summary.refundReason &&
+        !isCustomerUpdateMode
+        ? "order_cancelled"
+        : nextState.reasonCode,
+    );
     setReasonDetail(nextState.reasonDetail);
     setRequestShippingFee(nextState.requestShippingFee);
     setRequiresReturn(nextState.requiresReturn);
@@ -479,16 +547,93 @@ export default function RefundRequestScreen({ navigation, route }) {
     setBankNote(nextState.bankNote);
     setEvidence(nextState.evidence);
     setNote(nextState.note);
+    setUseSavedRefundAccount(shouldUseSavedRefundAccount);
+    setCustomBankDraft(null);
     setSaveAsDefaultRefundAccount(false);
     setFormSeedKey(nextSeedKey);
   }, [
     formSeedKey,
+    isCancelOrderMode,
+    isCustomerUpdateMode,
     order,
     orderId,
     savedRefundAccount,
+    summary.refundBankAccount,
+    summary.refundReason,
     summary.paidAmount,
     summary.refundStatus,
     summary.total,
+  ]);
+
+  const applyBankFormState = (bankAccount) => {
+    const nextBankState = toBankFormState(bankAccount);
+    setBankCode(nextBankState.bankCode);
+    setBankName(nextBankState.bankName);
+    setAccountNumber(nextBankState.accountNumber);
+    setAccountHolder(nextBankState.accountHolder);
+    setBankNote(nextBankState.bankNote);
+  };
+
+  const handleSelectSavedRefundAccount = (nextUseSavedAccount) => {
+    if (!hasSavedRefundAccount) return;
+
+    if (nextUseSavedAccount) {
+      setCustomBankDraft({
+        bankCode,
+        bankName,
+        accountNumber,
+        accountHolder,
+        bankNote,
+      });
+      applyBankFormState(savedRefundAccount);
+      setUseSavedRefundAccount(true);
+      setSaveAsDefaultRefundAccount(false);
+      return;
+    }
+
+    applyBankFormState(
+      customBankDraft || {
+        bankCode: "",
+        bankName: "",
+        accountNumber: "",
+        accountHolder: "",
+        note: "",
+      },
+    );
+    setUseSavedRefundAccount(false);
+  };
+
+  useEffect(() => {
+    if (
+      !isCancelOrderMode ||
+      !hasSavedRefundAccount ||
+      bankModePrompted ||
+      loading
+    ) {
+      return;
+    }
+
+    setBankModePrompted(true);
+    Alert.alert(
+      "Tài khoản hoàn tiền",
+      "Bạn muốn dùng tài khoản mặc định đã lưu hay nhập thông tin khác cho lần hủy đơn này?",
+      [
+        {
+          text: "Thông tin khác",
+          onPress: () => handleSelectSavedRefundAccount(false),
+        },
+        {
+          text: "Dùng mặc định",
+          onPress: () => handleSelectSavedRefundAccount(true),
+        },
+      ],
+      { cancelable: false },
+    );
+  }, [
+    bankModePrompted,
+    hasSavedRefundAccount,
+    isCancelOrderMode,
+    loading,
   ]);
 
   const handleSubmit = async () => {
@@ -506,20 +651,20 @@ export default function RefundRequestScreen({ navigation, route }) {
 
     if (isCustomerUpdateMode && !isWaitingCustomerInfo) {
       Alert.alert(
-        "Refund",
+        isCancelOrderMode ? "Hủy đơn" : "Refund",
         "Case refund hiện không ở trạng thái chờ bổ sung thông tin.",
       );
       return;
     }
 
-    if (!isCustomerUpdateMode && !canCreateRefund) {
+    if (!isCustomerUpdateMode && !canSubmitRefundForm) {
       Alert.alert("Refund", refundEligibilityMessage);
       return;
     }
 
     if (!bankCode.trim() || !accountNumber.trim() || !accountHolder.trim()) {
       Alert.alert(
-        "Refund",
+        isCancelOrderMode ? "Hủy đơn" : "Refund",
         "Vui lòng chọn ngân hàng, nhập số tài khoản và chủ tài khoản.",
       );
       return;
@@ -559,6 +704,8 @@ export default function RefundRequestScreen({ navigation, route }) {
           action: "customer_submit_info",
           ...payload,
         });
+      } else if (isCancelOrderMode) {
+        await cancelOrderApi(orderId, payload);
       } else {
         await requestRefundApi(orderId, payload);
       }
@@ -727,7 +874,7 @@ export default function RefundRequestScreen({ navigation, route }) {
             </View>
           ) : null}
 
-          {!isCustomerUpdateMode && !canCreateRefund ? (
+          {!isCustomerUpdateMode && !canSubmitRefundForm ? (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Chưa thể tạo refund</Text>
               <Text style={styles.helperText}>{refundEligibilityMessage}</Text>
