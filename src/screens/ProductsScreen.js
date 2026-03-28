@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import ProductCard from "../components/ProductCard";
 import { useProducts } from "../hooks/useProducts";
@@ -27,12 +27,14 @@ const GAP = 12;
 const CARD_W = (width - PAGE_PADDING * 2 - GAP) / 2;
 
 const SORT_OPTIONS = [
-  { key: "default", label: "Mặc định" },
-  { key: "best", label: "Bán chạy" },
-  { key: "price_asc", label: "Giá tăng dần" },
-  { key: "price_desc", label: "Giá giảm dần" },
-  { key: "discount_desc", label: "Giảm giá nhiều" },
-  { key: "rating_desc", label: "Đánh giá cao" },
+  { key: "default", label: "Mặc định", icon: "sparkles-outline" },
+  { key: "best", label: "Bán chạy", icon: "trending-up-outline" },
+  { key: "name_asc", label: "Tên A-Z", icon: "text-outline" },
+  { key: "name_desc", label: "Tên Z-A", icon: "text-outline" },
+  { key: "price_asc", label: "Giá tăng dần", icon: "arrow-up-outline" },
+  { key: "price_desc", label: "Giá giảm dần", icon: "arrow-down-outline" },
+  { key: "discount_desc", label: "Giảm giá nhiều", icon: "pricetag-outline" },
+  { key: "rating_desc", label: "Đánh giá cao", icon: "star-outline" },
 ];
 
 const PRICE_RANGES = [
@@ -58,6 +60,8 @@ function Chip({ label, onRemove }) {
 }
 
 function BottomSheet({ visible, title, onClose, children }) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal
       visible={visible}
@@ -66,7 +70,10 @@ function BottomSheet({ visible, title, onClose, children }) {
       onRequestClose={onClose}
     >
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable
+          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}
+          onPress={() => {}}
+        >
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={10}>
@@ -80,8 +87,15 @@ function BottomSheet({ visible, title, onClose, children }) {
   );
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("vi-VN");
+}
+
 export default function ProductsScreen({ navigation }) {
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => s.token);
   const [query, setQuery] = useState("");
   const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
@@ -355,6 +369,12 @@ export default function ProductsScreen({ navigation }) {
       case "best":
         sorted.sort((a, b) => (b.soldCount ?? 0) - (a.soldCount ?? 0));
         break;
+      case "name_asc":
+        sorted.sort((a, b) => normalizeText(a.name).localeCompare(normalizeText(b.name), "vi"));
+        break;
+      case "name_desc":
+        sorted.sort((a, b) => normalizeText(b.name).localeCompare(normalizeText(a.name), "vi"));
+        break;
       case "price_asc":
         sorted.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
         break;
@@ -434,7 +454,10 @@ export default function ProductsScreen({ navigation }) {
         showsVerticalScrollIndicator
         columnWrapperStyle={{ gap: GAP }}
         ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: Math.max(insets.bottom, 8) },
+        ]}
         ListHeaderComponent={
           <>
             <View style={styles.headerMeta}>
@@ -463,7 +486,7 @@ export default function ProductsScreen({ navigation }) {
                 activeOpacity={0.85}
                 onPress={() => setSortOpen(true)}
               >
-                <Ionicons name="swap-vertical" size={16} color="#111827" />
+                <Ionicons name="swap-vertical-outline" size={16} color="#111827" />
                 <Text style={styles.pillBtnText}>Sắp xếp</Text>
               </TouchableOpacity>
 
@@ -554,9 +577,16 @@ export default function ProductsScreen({ navigation }) {
                   setSortOpen(false);
                 }}
               >
-                <Text style={[styles.optionText, active && styles.optionTextActive]}>
-                  {opt.label}
-                </Text>
+                <View style={styles.optionRowMain}>
+                  <Ionicons
+                    name={opt.icon}
+                    size={18}
+                    color={active ? "#111827" : "#6B7280"}
+                  />
+                  <Text style={[styles.optionText, active && styles.optionTextActive]}>
+                    {opt.label}
+                  </Text>
+                </View>
                 {active && <Ionicons name="checkmark" size={18} color="#111827" />}
               </TouchableOpacity>
             );
@@ -595,14 +625,18 @@ export default function ProductsScreen({ navigation }) {
             return (
               <TouchableOpacity
                 key={store.id}
-                style={[styles.optionRow, active && styles.optionRowActive]}
+                style={[
+                  styles.optionRow,
+                  styles.optionRowMultiline,
+                  active && styles.optionRowActive,
+                ]}
                 activeOpacity={0.85}
                 onPress={() => {
                   void setSelectedStoreId(store.id);
                   setStoreOpen(false);
                 }}
               >
-                <View style={{ flex: 1 }}>
+                <View style={styles.optionContent}>
                   <Text style={[styles.optionText, active && styles.optionTextActive]}>
                     {store.name} ({store.code})
                   </Text>
@@ -969,10 +1003,27 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  optionRowMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
+  optionRowMultiline: {
+    alignItems: "flex-start",
+  },
+  optionContent: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
   },
   optionRowActive: {
     borderWidth: 1,
