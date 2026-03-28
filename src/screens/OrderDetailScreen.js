@@ -402,7 +402,9 @@ export default function OrderDetailScreen({ navigation, route }) {
   const statusKey = String(order?.status || "").toLowerCase();
   const paymentKey = String(order?.paymentStatus || order?.payment?.status || "").toLowerCase();
   const isPaid = ["paid", "success", "succeeded"].includes(paymentKey);
-  const canCancel = ["pending", "confirmed", "processing"].includes(statusKey);
+  const hasPaidAmount = isPaid || Number(order?.paidAmount || 0) > 0;
+  const canCancel =
+    ["pending", "confirmed", "processing"].includes(statusKey) && !hasPaidAmount;
   const refundStatus = String(order?.refund?.status || "").trim().toLowerCase();
   const hasClosedRefund = ["completed", "rejected"].includes(refundStatus);
   const hasActiveRefund = Boolean(order?.refund && !hasClosedRefund);
@@ -410,7 +412,7 @@ export default function OrderDetailScreen({ navigation, route }) {
   const canRequestRefund =
     Boolean(order?._id || order?.id || orderId) &&
     !hasActiveRefund &&
-    ["pending", "cancelled", "delivered", "returned"].includes(statusKey) &&
+    ["pending", "confirmed", "processing", "cancelled", "delivered", "returned"].includes(statusKey) &&
     paidAmount > 0;
   const canSubmitRefundInfo = refundStatus === "waiting_customer_info";
 
