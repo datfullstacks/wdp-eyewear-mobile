@@ -1,9 +1,10 @@
 ﻿import React, { useEffect, useState } from "react";
-import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { useAuthStore } from "../store/authStore";
 import { addMyFavoriteApi, removeMyFavoriteApi } from "../services/userService";
+import CustomAlert from "./CustomAlert";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v) + "đ";
 
@@ -31,13 +32,35 @@ export default function ProductCard({
   const navigation = useNavigation();
   const token = useAuthStore((s) => s.token);
   const [fav, setFav] = useState(Boolean(initialFav));
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: "",
+    message: "",
+    actions: [],
+  });
 
   useEffect(() => {
     setFav(Boolean(initialFav));
   }, [initialFav]);
 
+  const openAlert = (title, message, actions = []) => {
+    setAlertConfig({
+      visible: true,
+      title,
+      message,
+      actions,
+    });
+  };
+
+  const closeAlert = () => {
+    setAlertConfig((prev) => ({
+      ...prev,
+      visible: false,
+    }));
+  };
+
   const requireLogin = () => {
-    Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để thêm yêu thích.", [
+    openAlert("Cần đăng nhập", "Vui lòng đăng nhập để thêm yêu thích.", [
       { text: "Hủy", style: "cancel" },
       { text: "Đăng nhập", onPress: () => navigation.navigate("Login") },
     ]);
@@ -50,7 +73,7 @@ export default function ProductCard({
     const productId = String(item.id);
 
     if (fav) {
-      Alert.alert(
+      openAlert(
         "Bỏ yêu thích?",
         `Bạn muốn bỏ "${item?.name ?? "sản phẩm"}" khỏi danh sách yêu thích?`,
         [
@@ -80,7 +103,10 @@ export default function ProductCard({
 
       try {
         await addMyFavoriteApi(productId);
-        Alert.alert("Đã thêm yêu thích", `"${item?.name ?? "Sản phẩm"}" đã được thêm vào yêu thích.`);
+        openAlert(
+          "Đã thêm yêu thích",
+          `"${item?.name ?? "Sản phẩm"}" đã được thêm vào yêu thích.`
+        );
       } catch {
         setFav(prev);
         onFavoriteChanged?.(false, item);
@@ -93,74 +119,84 @@ export default function ProductCard({
   const isOutOfStock = checkOutOfStock(item);
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
-      <View style={styles.media}>
-        <Image source={{ uri: img }} style={[styles.image, isOutOfStock && styles.imageDisabled]} />
+    <>
+      <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.92}>
+        <View style={styles.media}>
+          <Image source={{ uri: img }} style={[styles.image, isOutOfStock && styles.imageDisabled]} />
 
-        {isOutOfStock ? (
-          <View style={styles.outOfStockOverlay} pointerEvents="none">
-            <Text style={styles.outOfStockText}>Hết hàng</Text>
-          </View>
-        ) : !!item?.discountPct ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>-{item.discountPct}%</Text>
-          </View>
-        ) : null}
+          {isOutOfStock ? (
+            <View style={styles.outOfStockOverlay} pointerEvents="none">
+              <Text style={styles.outOfStockText}>Hết hàng</Text>
+            </View>
+          ) : !!item?.discountPct ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>-{item.discountPct}%</Text>
+            </View>
+          ) : null}
 
-        <TouchableOpacity style={styles.favBtn} activeOpacity={0.85} onPress={handleFavPress}>
-          <Ionicons
-            name={fav ? "heart" : "heart-outline"}
-            size={18}
-            color={fav ? "#EF4444" : "#111827"}
-          />
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.favBtn} activeOpacity={0.85} onPress={handleFavPress}>
+            <Ionicons
+              name={fav ? "heart" : "heart-outline"}
+              size={18}
+              color={fav ? "#EF4444" : "#111827"}
+            />
+          </TouchableOpacity>
 
-        {!!item?.status && !isOutOfStock && (
-          <View style={styles.statusPill}>
-            <Text style={styles.statusText} numberOfLines={1}>
-              {item.status}
+          {!!item?.status && !isOutOfStock && (
+            <View style={styles.statusPill}>
+              <Text style={styles.statusText} numberOfLines={1}>
+                {item.status}
+              </Text>
+            </View>
+          )}
+
+          {!!item?.canTryOn && !isOutOfStock && (
+            <View style={styles.tryOnPill}>
+              <Ionicons name="camera-outline" size={12} color="#FFFFFF" />
+              <Text style={styles.tryOnPillText}>Thử kính</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.info, isOutOfStock && styles.infoDisabled]}>
+          {!!brand && (
+            <Text style={styles.brand} numberOfLines={1}>
+              {brand}
             </Text>
-          </View>
-        )}
+          )}
 
-        {!!item?.canTryOn && !isOutOfStock && (
-          <View style={styles.tryOnPill}>
-            <Ionicons name="camera-outline" size={12} color="#FFFFFF" />
-            <Text style={styles.tryOnPillText}>Thử kính</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={[styles.info, isOutOfStock && styles.infoDisabled]}>
-        {!!brand && (
-          <Text style={styles.brand} numberOfLines={1}>
-            {brand}
-          </Text>
-        )}
-
-        <Text numberOfLines={2} ellipsizeMode="tail" style={styles.name}>
-          {item?.name}
-        </Text>
-
-        <View style={styles.row}>
-          <Text style={[styles.price, isOutOfStock && styles.priceDisabled]} numberOfLines={1}>
-            {formatVND(item?.price || 0)}
+          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.name}>
+            {item?.name}
           </Text>
 
-          <View style={styles.dots}>
-            {(item?.color || []).slice(0, 3).map((c, idx) => (
-              <View
-                key={`${c}-${idx}`}
-                style={[
-                  styles.dot,
-                  { backgroundColor: String(c).toLowerCase(), opacity: isOutOfStock ? 0.4 : 1 },
-                ]}
-              />
-            ))}
+          <View style={styles.row}>
+            <Text style={[styles.price, isOutOfStock && styles.priceDisabled]} numberOfLines={1}>
+              {formatVND(item?.price || 0)}
+            </Text>
+
+            <View style={styles.dots}>
+              {(item?.color || []).slice(0, 3).map((c, idx) => (
+                <View
+                  key={`${c}-${idx}`}
+                  style={[
+                    styles.dot,
+                    { backgroundColor: String(c).toLowerCase(), opacity: isOutOfStock ? 0.4 : 1 },
+                  ]}
+                />
+              ))}
+            </View>
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+
+      <CustomAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        actions={alertConfig.actions}
+        onClose={closeAlert}
+      />
+    </>
   );
 }
 

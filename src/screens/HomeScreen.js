@@ -47,7 +47,7 @@ const PALETTE = {
   navy: "#0c2c5c",
   navySoft: "#17365D",
   navyTint: "#EEF3F8",
-  gold: "#fcd675",
+  gold: "#ddad32",
   goldSoft: "#F5E9C8",
   white: "#FFFFFF",
   bg: "#F7F8FA",

@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, AntDesign } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuthStore } from "../store/authStore";
 import {
@@ -29,6 +29,19 @@ function formatTime(value) {
   return d.toLocaleString("vi-VN", { hour12: false });
 }
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#fcd675",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 function formatStatus(value) {
   const raw = String(value || "")
     .trim()
@@ -44,6 +57,11 @@ function formatStatus(value) {
     cancelled: "Đã hủy",
     returned: "Hoàn hàng",
     picking: "Đang lấy hàng",
+    waiting_lab: "Chờ vào gia công tròng",
+    lens_processing: "Đang cắt mài tròng",
+    lens_fitting: "Đang lắp tròng vào gọng",
+    qc_check: "Đang QC sau gia công",
+    ready_to_pack: "Đã gia công xong, chờ đóng gói",
     packing: "Đang đóng gói",
     ready_to_ship: "Sẵn sàng tạo vận đơn",
     shipment_created: "Đã tạo vận đơn",
@@ -267,8 +285,8 @@ export default function NotificationsScreen({ navigation, onNotificationsChanged
           <Text style={styles.headerTitle}>Thông báo</Text>
         </View>
 
-        <TouchableOpacity activeOpacity={0.85} onPress={onMarkAll}>
-          <Text style={styles.markAll}>Đánh dấu đọc tất cả</Text>
+        <TouchableOpacity style={{backgroundColor: PALETTE.navy, paddingVertical: 5, paddingHorizontal: 15, borderRadius: 50 }} activeOpacity={0.85} onPress={onMarkAll}>
+          <Text style={styles.markAll}><AntDesign name="tag" size={15} color={PALETTE.gold} />  Đọc tất cả</Text>
         </TouchableOpacity>
       </View>
 
@@ -331,9 +349,9 @@ const styles = StyleSheet.create({
   },
 
   markAll: {
-    color: "#2563EB",
+    color: PALETTE.gold,
     fontWeight: "900",
-    fontSize: 12.5,
+    fontSize: 14,
   },
 
   loadingWrap: {

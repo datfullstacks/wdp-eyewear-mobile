@@ -20,6 +20,10 @@ import {
   requestRefundApi,
   updateRefundApi,
 } from "../services/orderService";
+import {
+  getMyRefundAccountApi,
+  upsertMyRefundAccountApi,
+} from "../services/userService";
 import { uploadFileApi } from "../services/uploadService";
 import {
   REFUND_BANK_OPTIONS,
@@ -233,10 +237,10 @@ function buildRequestedBreakdown(
   };
 }
 
-function buildInitialFormState(order) {
+function buildInitialFormState(order, savedRefundAccount = null) {
   const summary = buildOrderSummary(order);
   const currentBreakdown = summary.requestedBreakdown;
-  const bankAccount = summary.refundBankAccount || {};
+  const bankAccount = summary.refundBankAccount || savedRefundAccount || {};
   const resolvedBank =
     findRefundBankByCode(bankAccount.bankCode) ||
     findRefundBankByName(bankAccount.bankName);
@@ -311,6 +315,9 @@ export default function RefundRequestScreen({ navigation, route }) {
   const [loading, setLoading] = useState(!initialOrder);
   const [submitting, setSubmitting] = useState(false);
   const [formSeedKey, setFormSeedKey] = useState("");
+  const [savedRefundAccount, setSavedRefundAccount] = useState(null);
+  const [saveAsDefaultRefundAccount, setSaveAsDefaultRefundAccount] =
+    useState(false);
 
   const [reasonCode, setReasonCode] = useState(REFUND_REASON_OPTIONS[0].code);
   const [reasonDetail, setReasonDetail] = useState("");
@@ -369,6 +376,29 @@ export default function RefundRequestScreen({ navigation, route }) {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadRefundAccount = async () => {
+      try {
+        const account = await getMyRefundAccountApi();
+        if (mounted) {
+          setSavedRefundAccount(account || null);
+        }
+      } catch {
+        if (mounted) {
+          setSavedRefundAccount(null);
+        }
+      }
+    };
+
+    void loadRefundAccount();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const summary = useMemo(() => buildOrderSummary(order), [order]);
   const isWaitingCustomerInfo = summary.refundStatus === "waiting_customer_info";
   const isCustomerUpdateMode =
@@ -426,13 +456,16 @@ export default function RefundRequestScreen({ navigation, route }) {
       refundUpdatedAt,
       summary.paidAmount,
       summary.total,
+      savedRefundAccount?.bankCode || "",
+      savedRefundAccount?.accountNumber || "",
+      savedRefundAccount?.accountHolder || "",
     ].join("|");
 
     if (nextSeedKey === formSeedKey) {
       return;
     }
 
-    const nextState = buildInitialFormState(order);
+    const nextState = buildInitialFormState(order, savedRefundAccount);
     setReasonCode(nextState.reasonCode);
     setReasonDetail(nextState.reasonDetail);
     setRequestShippingFee(nextState.requestShippingFee);
@@ -446,11 +479,13 @@ export default function RefundRequestScreen({ navigation, route }) {
     setBankNote(nextState.bankNote);
     setEvidence(nextState.evidence);
     setNote(nextState.note);
+    setSaveAsDefaultRefundAccount(false);
     setFormSeedKey(nextSeedKey);
   }, [
     formSeedKey,
     order,
     orderId,
+    savedRefundAccount,
     summary.paidAmount,
     summary.refundStatus,
     summary.total,
@@ -502,23 +537,11 @@ export default function RefundRequestScreen({ navigation, route }) {
       return;
     }
 
-    if (requestedBreakdown.total <= 0) {
-      Alert.alert(
-        "Refund",
-        "Số tiền đề nghị refund phải lớn hơn 0 và không vượt quá số tiền đã thanh toán.",
-      );
-      return;
-    }
-
     const payload = {
       reason: reasonDetail.trim() || selectedReason.label,
       reasonCode,
-      requestShippingFee,
-      requiresReturn,
-      customerPaidReturnShippingFee: returnShippingFee,
       note: note.trim(),
       evidence,
-      requestedBreakdown,
       bankAccount: {
         bankCode: selectedBank.code,
         bankName: selectedBank.name,
@@ -540,11 +563,18 @@ export default function RefundRequestScreen({ navigation, route }) {
         await requestRefundApi(orderId, payload);
       }
 
+      if (saveAsDefaultRefundAccount) {
+        try {
+          await upsertMyRefundAccountApi(payload.bankAccount);
+          setSavedRefundAccount(payload.bankAccount);
+        } catch {}
+      }
+
       Alert.alert(
         "Refund",
         isCustomerUpdateMode
-          ? "Đã gửi bổ sung thông tin refund. Staff sẽ tiếp tục review."
-          : "Đã gửi yêu cầu hoàn tiền. Staff sẽ tiếp nhận và cập nhật trạng thái sớm.",
+          ? "Đã gửi bổ sung thông tin hoàn tiền. Sale sẽ tiếp tục xem xét hồ sơ."
+          : "Đã gửi yêu cầu hoàn tiền. Sale sẽ tiếp nhận và cập nhật trạng thái sớm.",
         [
           {
             text: "OK",
@@ -687,7 +717,7 @@ export default function RefundRequestScreen({ navigation, route }) {
           {isCustomerUpdateMode &&
           (summary.refundContactNote || summary.refundDecisionNote) ? (
             <View style={[styles.card, styles.noticeCard]}>
-              <Text style={styles.sectionTitle}>Staff cần bổ sung</Text>
+              <Text style={styles.sectionTitle}>Sale cần bổ sung</Text>
               {summary.refundDecisionNote ? (
                 <Text style={styles.noticeText}>{summary.refundDecisionNote}</Text>
               ) : null}
@@ -712,6 +742,16 @@ export default function RefundRequestScreen({ navigation, route }) {
             </View>
           ) : (
             <>
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Cách xử lý yêu cầu</Text>
+                <Text style={styles.helperText}>
+                  Sale sẽ tiếp nhận hồ sơ, xác minh thông tin và xác nhận số tiền hoàn phù hợp theo chính sách.
+                </Text>
+                <Text style={styles.helperText}>
+                  Nếu cần thêm chứng từ hoặc thông tin tài khoản, hệ thống sẽ gửi yêu cầu bổ sung ngay trên đơn hàng.
+                </Text>
+              </View>
+
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>
                   {isCustomerUpdateMode
@@ -753,32 +793,6 @@ export default function RefundRequestScreen({ navigation, route }) {
                   textAlignVertical="top"
                   value={reasonDetail}
                   onChangeText={setReasonDetail}
-                />
-              </View>
-
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Điều kiện refund</Text>
-                <ToggleRow
-                  label="Yêu cầu hoàn phí giao hàng"
-                  helper={shippingFeeHelper}
-                  value={requestShippingFee}
-                  disabled={refundableShippingFee <= 0}
-                  onToggle={() => setRequestShippingFee((value) => !value)}
-                />
-                <ToggleRow
-                  label="Cần trả hàng"
-                  helper="Bật nếu khách cần gửi hàng về để đối soát trước khi hoàn tiền."
-                  value={requiresReturn}
-                  onToggle={() => setRequiresReturn((value) => !value)}
-                />
-
-                <Text style={styles.fieldLabel}>Phí gửi trả hàng đã trả</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={returnShippingFeeText}
-                  onChangeText={setReturnShippingFeeText}
                 />
               </View>
 
@@ -830,13 +844,21 @@ export default function RefundRequestScreen({ navigation, route }) {
                   value={bankNote}
                   onChangeText={setBankNote}
                 />
+                <ToggleRow
+                  label="Lưu làm tài khoản hoàn tiền mặc định"
+                  helper="Dùng lại cho các yêu cầu hoàn tiền sau."
+                  value={saveAsDefaultRefundAccount}
+                  onToggle={() =>
+                    setSaveAsDefaultRefundAccount((value) => !value)
+                  }
+                />
               </View>
 
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Ảnh chứng từ / bằng chứng</Text>
                 <Text style={styles.helperText}>
                   Thêm ảnh nếu cần chứng minh giao sai, sản phẩm lỗi, hàng hỏng
-                  hoặc nội dung staff đang yêu cầu.
+                  hoặc nội dung sale đang yêu cầu.
                 </Text>
 
                 <TouchableOpacity
@@ -881,35 +903,6 @@ export default function RefundRequestScreen({ navigation, route }) {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Tổng hợp số tiền đề nghị</Text>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.metaLabel}>Tiền hàng</Text>
-                  <Text style={styles.metaValue}>
-                    {formatVND(requestedBreakdown.itemAmount)}
-                  </Text>
-                </View>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.metaLabel}>Phí giao hàng</Text>
-                  <Text style={styles.metaValue}>
-                    {formatVND(requestedBreakdown.shippingFeeAmount)}
-                  </Text>
-                </View>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.metaLabel}>Phí gửi trả hàng</Text>
-                  <Text style={styles.metaValue}>
-                    {formatVND(requestedBreakdown.returnShippingFeeAmount)}
-                  </Text>
-                </View>
-                <View style={styles.divider} />
-                <View style={styles.rowBetween}>
-                  <Text style={styles.totalLabel}>Tổng đề nghị refund</Text>
-                  <Text style={styles.totalValue}>
-                    {formatVND(requestedBreakdown.total)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.card}>
                 <Text style={styles.sectionTitle}>
                   {isCustomerUpdateMode ? "Nội dung bổ sung" : "Ghi chú thêm"}
                 </Text>
@@ -917,8 +910,8 @@ export default function RefundRequestScreen({ navigation, route }) {
                   style={[styles.input, styles.textarea]}
                   placeholder={
                     isCustomerUpdateMode
-                      ? "Bổ sung thêm thông tin/chứng từ cho staff..."
-                      : "Thêm mô tả cho staff nếu cần..."
+                      ? "Bổ sung thêm thông tin/chứng từ cho sale..."
+                      : "Thêm mô tả cho sale nếu cần..."
                   }
                   multiline
                   textAlignVertical="top"

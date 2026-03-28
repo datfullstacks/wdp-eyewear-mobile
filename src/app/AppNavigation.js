@@ -34,6 +34,8 @@ import SupportScreen from "../screens/SupportScreen";
 import SupportTicketDetailScreen from "../screens/SupportTicketDetailScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import TryOnARScreen from "../screens/TryOnARScreen";
+import AppAlertHost from "../components/AppAlertHost";
+import { installAppAlert } from "../store/appAlertStore";
 
 import { getMyNotificationsApi } from "../services/userService";
 import {
@@ -385,6 +387,10 @@ export default function AppNavigation() {
   }, [hydrateSystemConfig]);
 
   useEffect(() => {
+    installAppAlert();
+  }, []);
+
+  useEffect(() => {
     if (!isHydratingAuth) {
       setCartUser(userKey);
     }
@@ -397,23 +403,26 @@ export default function AppNavigation() {
 
   return (
     <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {maintenanceMode && !isAdmin ? (
-          <>
-            <RootStack.Screen name="Maintenance" component={MaintenanceScreen} />
-            <RootStack.Screen name="Login" component={LoginScreen} />
-            <RootStack.Screen name="Register" component={RegisterScreen} />
-          </>
-        ) : (
-          <>
-            <RootStack.Screen name="Tabs" component={MainTabs} />
-            <RootStack.Screen name="TryOnAR" component={TryOnARScreen} />
-            <RootStack.Screen name="Login" component={LoginScreen} />
-            <RootStack.Screen name="Register" component={RegisterScreen} />
-            <RootStack.Screen name="CartFlow" component={CartStackScreen} />
-          </>
-        )}
-      </RootStack.Navigator>
+      <>
+        <RootStack.Navigator screenOptions={{ headerShown: false }}>
+          {maintenanceMode && !isAdmin ? (
+            <>
+              <RootStack.Screen name="Maintenance" component={MaintenanceScreen} />
+              <RootStack.Screen name="Login" component={LoginScreen} />
+              <RootStack.Screen name="Register" component={RegisterScreen} />
+            </>
+          ) : (
+            <>
+              <RootStack.Screen name="Tabs" component={MainTabs} />
+              <RootStack.Screen name="TryOnAR" component={TryOnARScreen} />
+              <RootStack.Screen name="Login" component={LoginScreen} />
+              <RootStack.Screen name="Register" component={RegisterScreen} />
+              <RootStack.Screen name="CartFlow" component={CartStackScreen} />
+            </>
+          )}
+        </RootStack.Navigator>
+        <AppAlertHost />
+      </>
     </NavigationContainer>
   );
 }
