@@ -2,7 +2,21 @@
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#fcd675",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 export default function HomeFooter({ onChatPress, onCallPress }) {
+
   return (
     <View style={styles.wrap}>
       {/* Top feature bar */}
@@ -16,12 +30,12 @@ export default function HomeFooter({ onChatPress, onCallPress }) {
       {/* Action buttons */}
       <View style={styles.actionsRow}>
         <TouchableOpacity style={styles.actionBtn} activeOpacity={0.85} onPress={onChatPress}>
-          <Ionicons name="chatbubble-ellipses-outline" size={18} color="#111827" />
+          <Ionicons name="chatbubble-ellipses-outline" size={18} color={PALETTE.gold} />
           <Text style={styles.actionText}>Chat tư vấn</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionBtn} activeOpacity={0.85} onPress={onCallPress}>
-          <Ionicons name="call-outline" size={18} color="#111827" />
+          <Ionicons name="call-outline" size={18} color={PALETTE.gold} />
           <Text style={styles.actionText}>Gọi hỗ trợ</Text>
         </TouchableOpacity>
       </View>
@@ -32,7 +46,7 @@ export default function HomeFooter({ onChatPress, onCallPress }) {
 function FeatureItem({ icon, label }) {
   return (
     <View style={styles.featureItem}>
-      <Ionicons name={icon} size={22} color="#111827" />
+      <Ionicons name={icon} size={22} color={PALETTE.navy} />
       <Text style={styles.featureText} numberOfLines={2}>
         {label}
       </Text>
@@ -50,14 +64,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingVertical: 14,
     paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: PALETTE.navy,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
   },
 
   featureItem: {
@@ -69,7 +80,7 @@ const styles = StyleSheet.create({
   featureText: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#111827",
+    color: PALETTE.navy,
     textAlign: "center",
     paddingHorizontal: 4,
   },
@@ -84,7 +95,7 @@ const styles = StyleSheet.create({
   actionBtn: {
     flex: 1,
     maxWidth: 200,
-    backgroundColor: "white",
+    backgroundColor: PALETTE.navy,
     borderRadius: 999,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -92,16 +103,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
   },
 
   actionText: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#111827",
+    color: PALETTE.gold,
   },
 });

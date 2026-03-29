@@ -109,7 +109,7 @@ function canCustomerCreateRefundRequest(order) {
 function canCustomerCancelPaidOrder(order) {
   return (
     getRefundPaidAmount(order) > 0 &&
-    normalizeOrderStatusKey(order) === "pending"
+    ["pending", "confirmed", "processing"].includes(normalizeOrderStatusKey(order))
   );
 }
 
@@ -123,10 +123,10 @@ function getRefundEligibilityMessage(order) {
 
 function getCancelOrderEligibilityMessage(order) {
   if (getRefundPaidAmount(order) <= 0) {
-    return "ÄÆ¡n hÃ ng nÃ y chÆ°a cÃ³ khoáº£n thanh toÃ¡n cÃ³ thá»ƒ hoÃ n.";
+    return "Đơn hàng này chưa có khoản thanh toán có thể hoàn.";
   }
 
-  return "Chá»‰ cÃ³ thá»ƒ há»§y Ä‘Æ¡n Ä‘Ã£ thanh toÃ¡n khi Ä‘Æ¡n cÃ²n á»Ÿ tráº¡ng thÃ¡i chá» xÃ¡c nháº­n.";
+  return "Chỉ có thể hủy đơn đã thanh toán khi đơn còn ở trạng thái chờ xác nhận.";
 }
 
 function getRefundShippingFeeLimit(order) {

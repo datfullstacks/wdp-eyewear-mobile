@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import ProductCard from "../components/ProductCard";
 import { useProducts } from "../hooks/useProducts";
@@ -21,18 +21,33 @@ import { getMyFavoriteIdsApi } from "../services/userService";
 import { useAuthStore } from "../store/authStore";
 import { useStoreNetworkStore } from "../store/storeNetworkStore";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const { width } = Dimensions.get("window");
 const PAGE_PADDING = 16;
 const GAP = 12;
 const CARD_W = (width - PAGE_PADDING * 2 - GAP) / 2;
 
 const SORT_OPTIONS = [
-  { key: "default", label: "Mặc định" },
-  { key: "best", label: "Bán chạy" },
-  { key: "price_asc", label: "Giá tăng dần" },
-  { key: "price_desc", label: "Giá giảm dần" },
-  { key: "discount_desc", label: "Giảm giá nhiều" },
-  { key: "rating_desc", label: "Đánh giá cao" },
+  { key: "default", label: "Mặc định", icon: "sparkles-outline" },
+  { key: "best", label: "Bán chạy", icon: "trending-up-outline" },
+  { key: "name_asc", label: "Tên A-Z", icon: "text-outline" },
+  { key: "name_desc", label: "Tên Z-A", icon: "text-outline" },
+  { key: "price_asc", label: "Giá tăng dần", icon: "arrow-up-outline" },
+  { key: "price_desc", label: "Giá giảm dần", icon: "arrow-down-outline" },
+  { key: "discount_desc", label: "Giảm giá nhiều", icon: "pricetag-outline" },
+  { key: "rating_desc", label: "Đánh giá cao", icon: "star-outline" },
 ];
 
 const PRICE_RANGES = [
@@ -50,7 +65,10 @@ function Chip({ label, onRemove }) {
       </Text>
       {!!onRemove && (
         <TouchableOpacity onPress={onRemove} style={styles.chipX} hitSlop={10}>
-          <Ionicons name="close" size={14} color="#6B7280" />
+          <View style={{borderWidth: 1, borderColor: "#ffc0c0", borderRadius: 50, padding: 2, backgroundColor: "#ffe5e5"}}>
+            <Ionicons name="close" size={14} color="red" />
+          </View>
+
         </TouchableOpacity>
       )}
     </View>
@@ -58,6 +76,8 @@ function Chip({ label, onRemove }) {
 }
 
 function BottomSheet({ visible, title, onClose, children }) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal
       visible={visible}
@@ -66,22 +86,32 @@ function BottomSheet({ visible, title, onClose, children }) {
       onRequestClose={onClose}
     >
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+        <Pressable
+          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}
+          onPress={() => { }}
+        >
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={10}>
-              <Ionicons name="close" size={20} color="#111827" />
+              <Ionicons name="close" size={20} color={PALETTE.text} />
             </TouchableOpacity>
           </View>
-          {children}
+          <View style={styles.sheetBody}>{children}</View>
         </Pressable>
       </Pressable>
     </Modal>
   );
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("vi-VN");
+}
+
 export default function ProductsScreen({ navigation }) {
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => s.token);
   const [query, setQuery] = useState("");
   const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
@@ -355,6 +385,12 @@ export default function ProductsScreen({ navigation }) {
       case "best":
         sorted.sort((a, b) => (b.soldCount ?? 0) - (a.soldCount ?? 0));
         break;
+      case "name_asc":
+        sorted.sort((a, b) => normalizeText(a.name).localeCompare(normalizeText(b.name), "vi"));
+        break;
+      case "name_desc":
+        sorted.sort((a, b) => normalizeText(b.name).localeCompare(normalizeText(a.name), "vi"));
+        break;
       case "price_asc":
         sorted.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
         break;
@@ -434,14 +470,32 @@ export default function ProductsScreen({ navigation }) {
         showsVerticalScrollIndicator
         columnWrapperStyle={{ gap: GAP }}
         ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: Math.max(insets.bottom, 8) },
+        ]}
         ListHeaderComponent={
           <>
             <View style={styles.headerMeta}>
-              <Text style={styles.countText}>{data.length} sản phẩm</Text>
-              <Text style={styles.subText}>
-                {sortKey === "default" ? "Theo bộ lọc hiện tại" : `Đang: ${sortLabel}`}
-              </Text>
+              <View style={styles.headerMetaMain}>
+                <View style={styles.headerMetaText}>
+                  <Text style={styles.countText}>{data.length} sản phẩm</Text>
+                  <Text style={styles.subText}>
+                    {sortKey === "default" ? "Theo bộ lọc hiện tại" : `Đang: ${sortLabel}`}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.pillBtn, styles.storePillBtn]}
+                  activeOpacity={0.85}
+                  onPress={() => setStoreOpen(true)}
+                >
+                  <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
+                  <Text style={styles.pillBtnText} numberOfLines={1}>
+                    {selectedStoreLabel}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <ScrollView
@@ -452,18 +506,9 @@ export default function ProductsScreen({ navigation }) {
               <TouchableOpacity
                 style={styles.pillBtn}
                 activeOpacity={0.85}
-                onPress={() => setStoreOpen(true)}
-              >
-                <Ionicons name="business-outline" size={16} color="#111827" />
-                <Text style={styles.pillBtnText}>{selectedStoreLabel}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.pillBtn}
-                activeOpacity={0.85}
                 onPress={() => setSortOpen(true)}
               >
-                <Ionicons name="swap-vertical" size={16} color="#111827" />
+                <Ionicons name="swap-vertical-outline" size={16} color={PALETTE.navy} />
                 <Text style={styles.pillBtnText}>Sắp xếp</Text>
               </TouchableOpacity>
 
@@ -472,7 +517,7 @@ export default function ProductsScreen({ navigation }) {
                 activeOpacity={0.85}
                 onPress={() => setFilterOpen(true)}
               >
-                <Ionicons name="options-outline" size={16} color="#111827" />
+                <Ionicons name="options-outline" size={16} color={PALETTE.navy} />
                 <Text style={styles.pillBtnText}>Bộ lọc</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -554,10 +599,17 @@ export default function ProductsScreen({ navigation }) {
                   setSortOpen(false);
                 }}
               >
-                <Text style={[styles.optionText, active && styles.optionTextActive]}>
-                  {opt.label}
-                </Text>
-                {active && <Ionicons name="checkmark" size={18} color="#111827" />}
+                <View style={styles.optionRowMain}>
+                  <Ionicons
+                    name={opt.icon}
+                    size={18}
+                    color={active ? PALETTE.navy : PALETTE.muted}
+                  />
+                  <Text style={[styles.optionText, active && styles.optionTextActive]}>
+                    {opt.label}
+                  </Text>
+                </View>
+                {active && <Ionicons name="checkmark" size={18} color={PALETTE.gold} />}
               </TouchableOpacity>
             );
           })}
@@ -570,6 +622,9 @@ export default function ProductsScreen({ navigation }) {
         onClose={() => setStoreOpen(false)}
       >
         <ScrollView
+          style={styles.sheetScroll}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator
           contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}
         >
@@ -587,7 +642,7 @@ export default function ProductsScreen({ navigation }) {
             <Text style={[styles.optionText, !selectedStoreId && styles.optionTextActive]}>
               Tất cả cửa hàng
             </Text>
-            {!selectedStoreId ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
+            {!selectedStoreId ? <Ionicons name="checkmark" size={18} color={PALETTE.gold} /> : null}
           </TouchableOpacity>
 
           {stores.map((store) => {
@@ -595,14 +650,18 @@ export default function ProductsScreen({ navigation }) {
             return (
               <TouchableOpacity
                 key={store.id}
-                style={[styles.optionRow, active && styles.optionRowActive]}
+                style={[
+                  styles.optionRow,
+                  styles.optionRowMultiline,
+                  active && styles.optionRowActive,
+                ]}
                 activeOpacity={0.85}
                 onPress={() => {
                   void setSelectedStoreId(store.id);
                   setStoreOpen(false);
                 }}
               >
-                <View style={{ flex: 1 }}>
+                <View style={styles.optionContent}>
                   <Text style={[styles.optionText, active && styles.optionTextActive]}>
                     {store.name} ({store.code})
                   </Text>
@@ -610,7 +669,7 @@ export default function ProductsScreen({ navigation }) {
                     {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
                   </Text>
                 </View>
-                {active ? <Ionicons name="checkmark" size={18} color="#111827" /> : null}
+                {active ? <Ionicons name="checkmark" size={18} color={PALETTE.gold} /> : null}
               </TouchableOpacity>
             );
           })}
@@ -623,6 +682,9 @@ export default function ProductsScreen({ navigation }) {
         onClose={() => setFilterOpen(false)}
       >
         <ScrollView
+          style={styles.sheetScroll}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator
           contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24, gap: 14 }}
         >
@@ -716,7 +778,7 @@ export default function ProductsScreen({ navigation }) {
                     <Text style={[styles.optionText, active && styles.optionTextActive]}>
                       {r.label}
                     </Text>
-                    {active && <Ionicons name="checkmark" size={18} color="#111827" />}
+                    {active && <Ionicons name="checkmark" size={18} color={PALETTE.gold} />}
                   </TouchableOpacity>
                 );
               })}
@@ -738,7 +800,7 @@ export default function ProductsScreen({ navigation }) {
                     <Text style={[styles.optionText, active && styles.optionTextActive]}>
                       {brand}
                     </Text>
-                    {active && <Ionicons name="checkmark" size={18} color="#111827" />}
+                    {active && <Ionicons name="checkmark" size={18} color={PALETTE.gold} />}
                   </TouchableOpacity>
                 );
               })}
@@ -780,7 +842,7 @@ export default function ProductsScreen({ navigation }) {
                       <Ionicons
                         name="checkmark"
                         size={12}
-                        color="#111827"
+                        color={PALETTE.navy}
                         style={styles.colorFilterCheck}
                       />
                     )}
@@ -817,21 +879,21 @@ export default function ProductsScreen({ navigation }) {
 
           <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
             <TouchableOpacity
-              style={[styles.actionBtn, { flex: 1, backgroundColor: "#FFFFFF" }]}
+              style={[styles.actionBtn, { flex: 1, backgroundColor: PALETTE.white }]}
               activeOpacity={0.85}
               onPress={clearAll}
             >
-              <Text style={[styles.actionBtnText, { color: "#EF4444" }]}>
+              <Text style={[styles.actionBtnText, { color: PALETTE.navy }]}>
                 Xóa tất cả
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionBtn, { flex: 1, backgroundColor: "#111827" }]}
+              style={[styles.actionBtn, { flex: 1, backgroundColor: PALETTE.navy }]}
               activeOpacity={0.85}
               onPress={() => setFilterOpen(false)}
             >
-              <Text style={[styles.actionBtnText, { color: "#FFFFFF" }]}>
+              <Text style={[styles.actionBtnText, { color: PALETTE.white }]}>
                 Áp dụng
               </Text>
             </TouchableOpacity>
@@ -843,7 +905,7 @@ export default function ProductsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
   header: {
     paddingHorizontal: 12,
     paddingTop: 6,
@@ -871,8 +933,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 10,
   },
-  countText: { fontSize: 13, fontWeight: "800", color: "#111827" },
-  subText: { fontSize: 12, fontWeight: "600", color: "#6B7280", marginTop: 2 },
+  headerMetaMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  headerMetaText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  countText: { fontSize: 13, fontWeight: "800", color: PALETTE.navy },
+  subText: { fontSize: 12, fontWeight: "600", color: PALETTE.muted, marginTop: 2 },
 
   actionRow: {
     paddingBottom: 10,
@@ -885,12 +957,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 38,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
-  pillBtnText: { fontSize: 12.5, fontWeight: "800", color: "#111827" },
+  storePillBtn: { maxWidth: "52%" },
+  pillBtnText: { fontSize: 12.5, fontWeight: "800", color: PALETTE.navy },
 
   appliedRow: {
     paddingBottom: 10,
@@ -902,14 +977,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 999,
     paddingLeft: 12,
     paddingRight: 8,
     height: 34,
     maxWidth: 220,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
-  appliedChipText: { fontSize: 12, fontWeight: "800", color: "#111827" },
+  appliedChipText: { fontSize: 12, fontWeight: "800", color: PALETTE.text },
   chipX: {
     width: 22,
     height: 22,
@@ -919,7 +996,7 @@ const styles = StyleSheet.create({
   },
 
   clearAllBtn: { paddingHorizontal: 6, height: 34, justifyContent: "center" },
-  clearAllText: { fontSize: 12, fontWeight: "800", color: "#EF4444" },
+  clearAllText: { fontSize: 12, fontWeight: "800", color: "red" },
 
   listContent: {
     paddingHorizontal: PAGE_PADDING,
@@ -934,25 +1011,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  emptyTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
+  emptyTitle: { fontSize: 14, fontWeight: "900", color: PALETTE.navy },
   emptySub: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
     textAlign: "center",
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: "rgba(12,44,92,0.32)",
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#F6F7FB",
+    backgroundColor: PALETTE.bg,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingTop: 10,
     maxHeight: "78%",
+  },
+  sheetBody: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  sheetScroll: {
+    flexGrow: 0,
   },
   sheetHeader: {
     paddingHorizontal: 14,
@@ -961,30 +1045,50 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  sheetTitle: { fontSize: 15, fontWeight: "900", color: "#111827" },
+  sheetTitle: { fontSize: 15, fontWeight: "900", color: PALETTE.navy },
 
-  groupTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  groupTitle: { fontSize: 13, fontWeight: "900", color: PALETTE.navy },
 
   optionRow: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
+  optionRowMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
+  optionRowMultiline: {
+    alignItems: "flex-start",
+  },
+  optionContent: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
   },
   optionRowActive: {
     borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.15)",
+    borderColor: PALETTE.gold,
+    backgroundColor: PALETTE.goldSoft,
   },
-  optionText: { fontSize: 13, fontWeight: "800", color: "#111827" },
-  optionTextActive: { color: "#111827" },
+  optionText: { fontSize: 13, fontWeight: "800", color: PALETTE.text },
+  optionTextActive: { color: PALETTE.navy },
   optionSubText: {
     marginTop: 4,
     fontSize: 11.5,
     fontWeight: "600",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   rowWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
@@ -999,16 +1103,16 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
   },
   colorFilterDotActive: {
     borderWidth: 2,
-    borderColor: "#111827",
+    borderColor: PALETTE.gold,
   },
   colorFilterInner: {
     width: 32,
@@ -1019,31 +1123,36 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 2,
     right: 2,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 8,
     padding: 2,
   },
 
   togglePill: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 999,
     paddingHorizontal: 12,
     height: 34,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
   togglePillActive: {
     borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.18)",
+    borderColor: PALETTE.gold,
+    backgroundColor: PALETTE.goldSoft,
   },
-  toggleText: { fontSize: 12, fontWeight: "800", color: "#111827" },
-  toggleTextActive: { color: "#111827" },
+  toggleText: { fontSize: 12, fontWeight: "800", color: PALETTE.text },
+  toggleTextActive: { color: PALETTE.navy },
 
   actionBtn: {
     height: 42,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
   actionBtnText: { fontSize: 13, fontWeight: "900" },
 });

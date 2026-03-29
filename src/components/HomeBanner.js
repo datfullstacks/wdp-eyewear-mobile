@@ -88,14 +88,6 @@ export default function HomeBanner({
 
                 <View style={styles.content}>
                   <Text style={styles.title}>{b.title}</Text>
-
-                  <TouchableOpacity
-                    style={styles.btn}
-                    activeOpacity={0.85}
-                    onPress={() => onPressBanner?.(b, idx)}
-                  >
-                    <Text style={styles.btnText}>Mua ngay</Text>
-                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.dots}>
@@ -128,7 +120,7 @@ const styles = StyleSheet.create({
 
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.20)",
+    // backgroundColor: "rgba(0,0,0,0.20)",
   },
 
   content: { padding: 16, gap: 10 },

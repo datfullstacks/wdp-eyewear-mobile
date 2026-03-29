@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons, AntDesign } from "@expo/vector-icons";
 import {
   Platform,
   Pressable,
@@ -16,22 +16,40 @@ import { useAuthStore } from "../store/authStore";
 import {
   getMyAddressesApi,
   getMyFavoriteIdsApi,
+  getMyNotificationsApi,
   getMyPrescriptionsApi,
 } from "../services/userService";
 import { getMyOrdersApi } from "../services/orderService";
+import {
+  connectRealtime,
+  isNotificationRealtimeEvent,
+} from "../services/realtimeService";
+
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
 
 const STAT_ACCENTS = {
-  orders: { bg: "#EEF2FF", fg: "#4F46E5" },
-  favorites: { bg: "#FCE7F3", fg: "#DB2777" },
-  addresses: { bg: "#ECFDF5", fg: "#059669" },
-  rx: { bg: "#EFF6FF", fg: "#2563EB" },
+  orders: { bg: PALETTE.navyTint, fg: PALETTE.navy },
+  favorites: { bg: "#ffe5e5", fg: "red" },
+  addresses: { bg: PALETTE.navyTint, fg: PALETTE.navySoft },
+  rx: { bg: PALETTE.goldSoft, fg: PALETTE.navy },
 };
 
 const SETTING_ACCENTS = {
-  payments: { bg: "#FFFBEB", fg: "#D97706" },
-  refund: { bg: "#FEE2E2", fg: "#DC2626" },
-  support: { bg: "#F3E8FF", fg: "#7C3AED" },
-  noti: { bg: "#ECFEFF", fg: "#0891B2" },
+  payments: { bg: PALETTE.navy, fg: PALETTE.gold },
+  refund: { bg: PALETTE.navy, fg: PALETTE.gold },
+  support: { bg: PALETTE.navy, fg: PALETTE.gold },
+  noti: { bg: PALETTE.navy, fg: PALETTE.gold },
 };
 
 const AVATAR_COLORS = [
@@ -48,33 +66,46 @@ function Divider() {
   return <View style={styles.divider} />;
 }
 
-function RowItem({ icon, title, subtitle, rightText, onPress, danger, accent }) {
-  const a = accent || { bg: "#F3F4F6", fg: "#111827" };
-  const bg = danger ? "#FFE8E8" : a.bg;
-  const fg = danger ? "#D92D20" : a.fg;
+function RowItem({
+  icon,
+  title,
+  subtitle,
+  rightText,
+  onPress,
+  danger,
+  accent,
+  showBadge = false,
+}) {
+  const a = accent || { bg: PALETTE.navyTint, fg: PALETTE.navy };
+  const bg = danger ? "#ffe5e5" : a.bg;
+  const fg = danger ? PALETTE.navy : a.fg;
+  const tileColor = danger ? "red" : a.fg;
+  const iconName = danger ? "log-out-outline" : icon;
+  const iconColor = danger ? "#D92D20" : fg;
 
   return (
     <Pressable
       onPress={onPress}
-      android_ripple={{ color: "rgba(0,0,0,0.06)" }}
+      android_ripple={{ color: PALETTE.navyTint }}
       style={({ pressed }) => [
         styles.rowItem,
         pressed && Platform.OS === "ios" ? { opacity: 0.7 } : null,
       ]}
     >
       <View style={[styles.rowIconWrap, { backgroundColor: bg }]}>
-        <Ionicons name={icon} size={20} color={fg} />
+        <Ionicons name={iconName} size={20} color={iconColor} />
+        {showBadge ? <View style={styles.rowIconBadge} /> : null}
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={[styles.rowTitle, danger && { color: "#D92D20" }]}>
+        <Text style={[styles.rowTitle, danger && { color: PALETTE.navy , color: tileColor}]}>
           {title}
         </Text>
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
 
       {rightText ? <Text style={styles.rowRightText}>{rightText}</Text> : null}
-      <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+      <Ionicons name="chevron-forward" size={18} color={PALETTE.muted} />
     </Pressable>
   );
 }
@@ -84,7 +115,7 @@ function LoginRequired({ navigation }) {
     <View style={styles.lockScreen}>
       <View style={styles.lockCard}>
         <View style={styles.lockIcon}>
-          <Ionicons name="lock-closed-outline" size={22} color="#111827" />
+          <AntDesign name="lock" size={24} color={PALETTE.navy} />
         </View>
 
         <Text style={styles.lockTitle}>Bạn cần đăng nhập</Text>
@@ -96,7 +127,7 @@ function LoginRequired({ navigation }) {
           onPress={() => navigation.navigate("Login")}
           style={({ pressed }) => [styles.lockBtn, pressed && styles.pressedSoft]}
         >
-          <Ionicons name="log-in-outline" size={18} color="#fff" />
+          <Ionicons name="log-in-outline" size={18} color={PALETTE.white} />
           <Text style={styles.lockBtnText}>Đăng nhập</Text>
         </Pressable>
 
@@ -119,7 +150,7 @@ function ProfileHeader({ navigation, right }) {
           style={styles.iconBtn}
           onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
         >
-          <Ionicons name="chevron-back" size={22} color="#111827" />
+          <Ionicons name="chevron-back" size={22} color={PALETTE.navy} />
         </Pressable>
         <Text style={styles.headerTitle}>Tài khoản</Text>
       </View>
@@ -145,7 +176,7 @@ function TextAvatar({ name, style }) {
   const backgroundColor = getColorFromName(name);
 
   return (
-    <View style={[styles.avatarRing, { backgroundColor: "#FFFFFF" }, style]}>
+    <View style={[styles.avatarRing, { backgroundColor: PALETTE.white }, style]}>
       <View
         style={[
           styles.textAvatar,
@@ -158,7 +189,7 @@ function TextAvatar({ name, style }) {
   );
 }
 
-function OrderShortcut({ icon, label, count, onPress, iconSet = "Ionicons", iconSize = 26, iconColor = "#111827",
+function OrderShortcut({ icon, label, count, onPress, iconSet = "Ionicons", iconSize = 26, iconColor = PALETTE.navy,
 }) {
   const IconComponent =
     iconSet === "MaterialCommunityIcons" ? MaterialCommunityIcons : Ionicons;
@@ -202,6 +233,8 @@ export default function ProfileScreen({ navigation }) {
   const isHydrating = useAuthStore((s) => s.isHydrating);
   const fetchMe = useAuthStore((s) => s.fetchMe);
   const logout = useAuthStore((s) => s.logout);
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
 
   const [stats, setStats] = useState({
     tier: "Member",
@@ -271,23 +304,75 @@ export default function ProfileScreen({ navigation }) {
     }
   }, [token]);
 
+  const loadUnreadNotifications = useCallback(async () => {
+    if (!token) {
+      setHasUnreadNotifications(false);
+      return;
+    }
+
+    try {
+      const data = await getMyNotificationsApi();
+      const list = Array.isArray(data) ? data : [];
+      setHasUnreadNotifications(list.some((item) => !item?.readAt));
+    } catch {
+      setHasUnreadNotifications(false);
+    }
+  }, [token]);
+
   useFocusEffect(
     useCallback(() => {
       loadStats();
-    }, [loadStats])
+      loadUnreadNotifications();
+    }, [loadStats, loadUnreadNotifications])
   );
+
+  useEffect(() => {
+    if (!token) {
+      setHasUnreadNotifications(false);
+      return undefined;
+    }
+
+    let socket = null;
+    let reconnectTimer = null;
+    let isDisposed = false;
+
+    const connect = () => {
+      if (isDisposed) return;
+
+      socket = connectRealtime(token, {
+        onMessage: (payload) => {
+          if (!isNotificationRealtimeEvent(payload)) return;
+          void loadUnreadNotifications();
+        },
+        onClose: () => {
+          if (isDisposed) return;
+          reconnectTimer = setTimeout(() => {
+            connect();
+          }, 2000);
+        },
+      });
+    };
+
+    connect();
+
+    return () => {
+      isDisposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (socket) socket.close();
+    };
+  }, [token, loadUnreadNotifications]);
 
   if (!token) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
+        <StatusBar barStyle="dark-content" backgroundColor={PALETTE.bg} />
         <View style={styles.header}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
             <Pressable
               style={styles.iconBtn}
               onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
             >
-              <Ionicons name="chevron-back" size={22} color="#111827" />
+              <Ionicons name="chevron-back" size={22} color="black" />
             </Pressable>
             <Text style={styles.headerTitle}>Tài khoản</Text>
           </View>
@@ -300,17 +385,17 @@ export default function ProfileScreen({ navigation }) {
   if (isHydrating || !user) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
+        <StatusBar barStyle="dark-content" backgroundColor={PALETTE.bg} />
         <ProfileHeader
           navigation={navigation}
           right={
             <Pressable onPress={logout} style={styles.iconBtn}>
-              <Ionicons name="log-out-outline" size={20} color="#111827" />
+              <Ionicons name="log-out-outline" size={20} color={PALETTE.navy} />
             </Pressable>
           }
         />
         <View style={{ paddingHorizontal: 16, paddingTop: 24 }}>
-          <Text style={{ fontWeight: "800", color: "#111827" }}>
+          <Text style={{ fontWeight: "800", color: PALETTE.navy }}>
             Đang tải hồ sơ...
           </Text>
         </View>
@@ -323,7 +408,7 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F6F8FB" />
+      <StatusBar barStyle="dark-content" backgroundColor={PALETTE.bg} />
 
       <ProfileHeader
         navigation={navigation}
@@ -332,7 +417,7 @@ export default function ProfileScreen({ navigation }) {
             onPress={() => console.log("Edit profile")}
             style={styles.iconBtn}
           >
-            <Ionicons name="create-outline" size={20} color="#111827" />
+            <Ionicons name="create-outline" size={20} color={PALETTE.navy} />
           </Pressable>
         }
       />
@@ -360,7 +445,7 @@ export default function ProfileScreen({ navigation }) {
               style={({ pressed }) => [styles.orderHistoryBtn, pressed && styles.pressed]}
             >
               <Text style={styles.orderHistoryText}>Lịch sử mua hàng</Text>
-              <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+              <Ionicons name="chevron-forward" size={16} color={PALETTE.muted} />
             </Pressable>
           </View>
 
@@ -404,7 +489,7 @@ export default function ProfileScreen({ navigation }) {
                 styles.statItem,
                 {
                   backgroundColor: STAT_ACCENTS.orders.bg,
-                  borderColor: "rgba(79,70,229,0.18)",
+                  borderColor: PALETTE.border,
                 },
                 pressed && styles.pressedSoft,
               ]}
@@ -426,7 +511,7 @@ export default function ProfileScreen({ navigation }) {
                 styles.statItem,
                 {
                   backgroundColor: STAT_ACCENTS.favorites.bg,
-                  borderColor: "rgba(219,39,119,0.18)",
+                  borderColor: PALETTE.border,
                 },
                 pressed && styles.pressedSoft,
               ]}
@@ -450,7 +535,7 @@ export default function ProfileScreen({ navigation }) {
                 styles.statItem,
                 {
                   backgroundColor: STAT_ACCENTS.addresses.bg,
-                  borderColor: "rgba(5,150,105,0.18)",
+                  borderColor: PALETTE.border,
                 },
                 pressed && styles.pressedSoft,
               ]}
@@ -474,7 +559,7 @@ export default function ProfileScreen({ navigation }) {
                 styles.statItem,
                 {
                   backgroundColor: STAT_ACCENTS.rx.bg,
-                  borderColor: "rgba(37,99,235,0.18)",
+                  borderColor: PALETTE.border,
                 },
                 pressed && styles.pressedSoft,
               ]}
@@ -499,7 +584,7 @@ export default function ProfileScreen({ navigation }) {
             subtitle="Theo dõi đơn hàng và hoàn trả"
             rightText={`${stats.pendingOrders} đơn`}
             onPress={() => navigation.navigate("Orders", { initialFilter: "all" })}
-            accent={{ bg: "#EEF2FF", fg: "#4F46E5" }}
+            accent={STAT_ACCENTS.orders}
           />
           <Divider />
           <RowItem
@@ -508,7 +593,7 @@ export default function ProfileScreen({ navigation }) {
             subtitle="Sản phẩm bạn đã yêu thích"
             rightText={`${stats.favorites} sản phẩm`}
             onPress={() => navigation.navigate("FavTab")}
-            accent={{ bg: "#FCE7F3", fg: "#DB2777" }}
+            accent={STAT_ACCENTS.favorites}
           />
           <Divider />
           <RowItem
@@ -517,7 +602,7 @@ export default function ProfileScreen({ navigation }) {
             subtitle="PD, Rx, lens preferences"
             rightText="Xem chi tiết"
             onPress={() => navigation.navigate("Prescription")}
-            accent={{ bg: "#EFF6FF", fg: "#2563EB" }}
+            accent={STAT_ACCENTS.rx}
           />
           <Divider />
           <RowItem
@@ -526,64 +611,80 @@ export default function ProfileScreen({ navigation }) {
             subtitle="Địa chỉ giao hàng mặc định"
             rightText={`${stats.addresses}`}
             onPress={() => navigation.navigate("AddressBook")}
-            accent={{ bg: "#ECFDF5", fg: "#059669" }}
+            accent={STAT_ACCENTS.addresses}
           />
         </Card>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Cài đặt</Text>
-        </View>
+        <Pressable
+          onPress={() => setSettingsExpanded((prev) => !prev)}
+          style={({ pressed }) => [styles.sectionHeader, pressed && styles.pressed]}
+        >
+          <View style={styles.sectionHeaderLeft}>
+            <Ionicons name="settings-outline" size={24} color={PALETTE.navy} />
+            <Text style={styles.sectionTitle}>Cài đặt</Text>
+          </View>
+          <Ionicons
+            name={settingsExpanded ? "chevron-up" : "chevron-down"}
+            size={20}
+            color={PALETTE.muted}
+          />
+        </Pressable>
 
-        <Card style={{ paddingVertical: 6, marginBottom: 18 }}>
-          <RowItem
-            icon="card-outline"
-            title="Thanh toán"
-            subtitle="Thẻ và thanh toán"
-            onPress={() => navigation.navigate("Payments")}
-            accent={SETTING_ACCENTS.payments}
-          />
-          <Divider />
-          <RowItem
-            icon="chatbubble-ellipses-outline"
-            title="Hỗ trợ"
-            subtitle="Nhắn tin với chúng tôi"
-            onPress={() =>
-              navigation.navigate("Support", {
-                prefillCategory: "general",
-                lockCategory: false,
-                orderId: "",
-                orderCode: "",
-                orderItemId: "",
-                orderItemName: "",
-                draftSubject: "",
-              })
-            }
-            accent={SETTING_ACCENTS.support}
-          />
-          <Divider />
-          <RowItem
-            icon="notifications-outline"
-            title="Thông báo"
-            subtitle="Cập nhật và ưu đãi mới nhất"
-            onPress={() => navigation.navigate("Notifications")}
-            accent={SETTING_ACCENTS.noti}
-          />
-          <Divider />
-          <RowItem
-            icon="log-out-outline"
-            title="Đăng xuất"
-            subtitle="Đăng xuất khỏi thiết bị này"
-            onPress={logout}
-            danger
-          />
-        </Card>
+        {settingsExpanded ? (
+          <Card style={{ paddingVertical: 6, marginBottom: 18 }}>
+            <RowItem
+              icon="card-outline"
+              title="Thanh toán"
+              subtitle="Thẻ và thanh toán"
+              onPress={() => navigation.navigate("Payments")}
+              accent={SETTING_ACCENTS.payments}
+            />
+            <Divider />
+            <RowItem
+              icon="chatbubble-ellipses-outline"
+              title="Hỗ trợ"
+              subtitle="Nhắn tin với chúng tôi"
+              onPress={() =>
+                navigation.navigate("Support", {
+                  prefillCategory: "general",
+                  lockCategory: false,
+                  orderId: "",
+                  orderCode: "",
+                  orderItemId: "",
+                  orderItemName: "",
+                  draftSubject: "",
+                })
+              }
+              accent={SETTING_ACCENTS.support}
+            />
+            <Divider />
+            <RowItem
+              icon="notifications-outline"
+              title="Thông báo"
+              subtitle="Cập nhật và ưu đãi mới nhất"
+              onPress={() => navigation.navigate("Notifications")}
+              accent={SETTING_ACCENTS.noti}
+              showBadge={hasUnreadNotifications}
+            />
+            <Divider />
+            <RowItem
+              icon="log-out-outline"
+              title="Đăng xuất"
+              subtitle="Đăng xuất khỏi thiết bị này"
+              onPress={logout}
+              danger
+            />
+          </Card>
+        ) : (
+          <View style={styles.sectionSpacer} />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F8FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
 
   header: {
     paddingHorizontal: 12,
@@ -594,7 +695,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: "black" },
   iconBtn: {
     width: 36,
     height: 36,
@@ -606,11 +707,11 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingBottom: 24 },
 
   card: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.07)",
-    shadowColor: "#000",
+    borderColor: PALETTE.border,
+    shadowColor: PALETTE.navy,
     shadowOpacity: 0.06,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
@@ -624,9 +725,9 @@ const styles = StyleSheet.create({
     height: 74,
     borderRadius: 999,
     padding: 3,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderWidth: 1,
-    borderColor: "rgba(37,99,235,0.18)",
+    borderColor: PALETTE.border,
   },
   textAvatar: {
     borderRadius: 999,
@@ -634,14 +735,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   textAvatarLetter: {
-    color: "#FFFFFF",
+    color: PALETTE.white,
     fontSize: 32,
     fontWeight: "900",
     textTransform: "uppercase",
   },
 
-  name: { fontSize: 18, fontWeight: "800", color: "#111827" },
-  email: { marginTop: 2, color: "#6B7280", fontWeight: "600" },
+  name: { fontSize: 18, fontWeight: "800", color: PALETTE.navy },
+  email: { marginTop: 2, color: PALETTE.muted, fontWeight: "600" },
 
   orderSectionHeader: {
     flexDirection: "row",
@@ -652,7 +753,7 @@ const styles = StyleSheet.create({
   orderSectionTitle: {
     fontSize: 17,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.navy,
   },
   orderHistoryBtn: {
     flexDirection: "row",
@@ -662,7 +763,7 @@ const styles = StyleSheet.create({
   orderHistoryText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   orderShortcutRow: {
@@ -681,13 +782,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
-    backgroundColor: "#F9FAFB",
+    backgroundColor: PALETTE.navyTint,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
   orderShortcutLabel: {
     marginTop: 8,
     fontSize: 12,
     fontWeight: "700",
-    color: "#374151",
+    color: PALETTE.navySoft,
+    width: "100%",
+    lineHeight: 16,
     textAlign: "center",
   },
   orderBadge: {
@@ -697,15 +802,15 @@ const styles = StyleSheet.create({
     minWidth: 20,
     height: 20,
     borderRadius: 999,
-    backgroundColor: "#EF4444",
+    backgroundColor: PALETTE.gold,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 5,
     borderWidth: 1.5,
-    borderColor: "#FFFFFF",
+    borderColor: PALETTE.white,
   },
   orderBadgeText: {
-    color: "#FFFFFF",
+    color: PALETTE.white,
     fontSize: 10,
     fontWeight: "900",
   },
@@ -725,8 +830,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  statValue: { fontSize: 16, fontWeight: "900" },
-  statLabel: { fontSize: 12, color: "#6B7280", fontWeight: "700" },
+  statValue: { fontSize: 16, fontWeight: "900", width: "100%", textAlign: "center" },
+  statLabel: {
+    fontSize: 12,
+    color: PALETTE.navy,
+    fontWeight: "700",
+    width: "100%",
+    lineHeight: 16,
+    textAlign: "center",
+  },
 
   rowItem: {
     flexDirection: "row",
@@ -741,21 +853,33 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
   },
-  rowTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
+  rowIconBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5,
+    borderColor: PALETTE.white,
+  },
+  rowTitle: { fontSize: 15, fontWeight: "800", color: PALETTE.text },
   rowSubtitle: {
     marginTop: 2,
     fontSize: 12,
     fontWeight: "600",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   rowRightText: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#6B7280",
+    color: PALETTE.muted,
     marginRight: 6,
   },
-  divider: { height: 1, backgroundColor: "rgba(17,24,39,0.06)", marginLeft: 62 },
+  divider: { height: 1, backgroundColor: PALETTE.border, marginLeft: 62 },
 
   sectionHeader: {
     marginTop: 10,
@@ -765,19 +889,25 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 2,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  sectionHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.navy },
+  sectionSpacer: { height: 18 },
 
   pressed: { opacity: 0.75 },
   pressedSoft: { opacity: 0.85, transform: [{ scale: 0.99 }] },
 
   lockScreen: { flex: 1, paddingHorizontal: 16, paddingTop: 30 },
   lockCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.07)",
+    borderColor: PALETTE.border,
     padding: 16,
-    shadowColor: "#000",
+    shadowColor: PALETTE.navy,
     shadowOpacity: 0.06,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
@@ -788,17 +918,17 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 16,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.navyTint,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
   },
-  lockTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  lockTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.navy },
   lockDesc: {
     marginTop: 6,
     fontSize: 13,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
     textAlign: "center",
     lineHeight: 18,
   },
@@ -807,18 +937,21 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 46,
     borderRadius: 14,
-    backgroundColor: "#4F46E5",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
   },
-  lockBtnText: { color: "#fff", fontWeight: "900" },
+  lockBtnText: { color: PALETTE.white, fontWeight: "900" },
   lockLink: {
     marginTop: 10,
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 12,
+    width: "100%",
+    borderWidth: 1,
+    borderColor: PALETTE.navySoft,
   },
-  lockLinkText: { color: "#2563EB", fontWeight: "900" },
+  lockLinkText: { textAlign: "center", color: PALETTE.navySoft, fontWeight: "900", borderRadius: 12 },
 });

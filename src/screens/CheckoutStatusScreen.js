@@ -888,6 +888,8 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
   const isPaymentSettled =
     paymentStatus === "PAID" || paymentStatus === "REFUNDED";
+  const shouldClearCartAfterCheckout =
+    paymentStatus === "PAID" || paymentStatus === "PENDING_COD";
 
   const shouldShowQr =
     Boolean(order.payment.qrUrl) &&
@@ -958,7 +960,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   };
 
   useEffect(() => {
-    if (paymentStatus === "PAID" && !clearedRef.current) {
+    if (shouldClearCartAfterCheckout && !clearedRef.current) {
       clearedRef.current = true;
       const apiCartType =
         UI_TO_API_CART_TYPE[cartType] || API_CART_TYPES.READY_STOCK;
@@ -969,7 +971,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         } catch (error) {
           if (typeof __DEV__ !== "undefined" && __DEV__) {
             console.log(
-              "clear cart after paid failed",
+              "clear cart after checkout success failed",
               error?.response?.data || error?.message || error,
             );
           }
@@ -979,7 +981,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         }
       })();
     }
-  }, [paymentStatus, clearCart, cartType]);
+  }, [shouldClearCartAfterCheckout, clearCart, cartType]);
 
   const handleContinueShopping = () => navigateToTab("ProductsTab", "Products");
 
@@ -989,8 +991,12 @@ export default function CheckoutStatusScreen({ navigation, route }) {
       navigation.navigate("Tabs", {
         screen: "ProfileTab",
         params: {
-          screen: "OrderDetail",
-          params: { orderId: pollOrderId },
+          screen: "Orders",
+          params: {
+            initialFilter: "all",
+            autoOpenOrderId: pollOrderId,
+            source: "checkout_status",
+          },
         },
       });
       return;

@@ -34,12 +34,27 @@ import SupportScreen from "../screens/SupportScreen";
 import SupportTicketDetailScreen from "../screens/SupportTicketDetailScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import TryOnARScreen from "../screens/TryOnARScreen";
+import AppAlertHost from "../components/AppAlertHost";
+import { installAppAlert } from "../store/appAlertStore";
 
 import { getMyNotificationsApi } from "../services/userService";
 import {
   connectRealtime,
   isNotificationRealtimeEvent,
 } from "../services/realtimeService";
+
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#fcd675",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
 
 const RootStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -211,8 +226,8 @@ function MainTabs({ navigation }) {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: "#EF4444",
-        tabBarInactiveTintColor: "#6B7280",
+        tabBarActiveTintColor: PALETTE.navy,
+        tabBarInactiveTintColor: "black",
         tabBarLabelStyle: { fontSize: 12, paddingBottom: 2 },
         tabBarStyle: {
           height: 56 + insets.bottom,
@@ -330,14 +345,22 @@ function MainTabs({ navigation }) {
         name="ProfileTab"
         component={ProfileStackScreen}
         options={{ tabBarLabel: "Tài khoản" }}
-        listeners={{
+        listeners={({ navigation }) => ({
           tabPress: (e) => {
             if (!token) {
               e.preventDefault();
               navigation.navigate("Login");
+              return;
             }
+            e.preventDefault();
+            navigation.dispatch(
+              CommonActions.navigate({
+                name: "ProfileTab",
+                params: { screen: "Profile" },
+              })
+            );
           },
-        }}
+        })}
       />
     </Tab.Navigator>
   );
@@ -364,6 +387,10 @@ export default function AppNavigation() {
   }, [hydrateSystemConfig]);
 
   useEffect(() => {
+    installAppAlert();
+  }, []);
+
+  useEffect(() => {
     if (!isHydratingAuth) {
       setCartUser(userKey);
     }
@@ -376,23 +403,26 @@ export default function AppNavigation() {
 
   return (
     <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {maintenanceMode && !isAdmin ? (
-          <>
-            <RootStack.Screen name="Maintenance" component={MaintenanceScreen} />
-            <RootStack.Screen name="Login" component={LoginScreen} />
-            <RootStack.Screen name="Register" component={RegisterScreen} />
-          </>
-        ) : (
-          <>
-            <RootStack.Screen name="Tabs" component={MainTabs} />
-            <RootStack.Screen name="TryOnAR" component={TryOnARScreen} />
-            <RootStack.Screen name="Login" component={LoginScreen} />
-            <RootStack.Screen name="Register" component={RegisterScreen} />
-            <RootStack.Screen name="CartFlow" component={CartStackScreen} />
-          </>
-        )}
-      </RootStack.Navigator>
+      <>
+        <RootStack.Navigator screenOptions={{ headerShown: false }}>
+          {maintenanceMode && !isAdmin ? (
+            <>
+              <RootStack.Screen name="Maintenance" component={MaintenanceScreen} />
+              <RootStack.Screen name="Login" component={LoginScreen} />
+              <RootStack.Screen name="Register" component={RegisterScreen} />
+            </>
+          ) : (
+            <>
+              <RootStack.Screen name="Tabs" component={MainTabs} />
+              <RootStack.Screen name="TryOnAR" component={TryOnARScreen} />
+              <RootStack.Screen name="Login" component={LoginScreen} />
+              <RootStack.Screen name="Register" component={RegisterScreen} />
+              <RootStack.Screen name="CartFlow" component={CartStackScreen} />
+            </>
+          )}
+        </RootStack.Navigator>
+        <AppAlertHost />
+      </>
     </NavigationContainer>
   );
 }
