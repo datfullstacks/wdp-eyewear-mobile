@@ -8,6 +8,19 @@ import CustomAlert from "./CustomAlert";
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v) + "đ";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80";
 
@@ -152,7 +165,7 @@ export default function ProductCard({
 
           {!!item?.canTryOn && !isOutOfStock && (
             <View style={styles.tryOnPill}>
-              <Ionicons name="camera-outline" size={12} color="#FFFFFF" />
+              <Ionicons name="camera-outline" size={15} color={PALETTE.gold} />
               <Text style={styles.tryOnPillText}>Thử kính</Text>
             </View>
           )}
@@ -280,13 +293,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(17,24,39,0.88)",
+    backgroundColor: PALETTE.navy,
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 999,
   },
   tryOnPillText: {
-    color: "#FFFFFF",
+    color: PALETTE.gold,
     fontSize: 11,
     fontWeight: "800",
   },

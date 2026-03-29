@@ -1,7 +1,7 @@
 ﻿// src/screens/FavoritesScreen.js
 import React, { useCallback, useMemo, useState } from "react";
-import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Dimensions, FlatList, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 
@@ -13,14 +13,71 @@ import {
   removeMyFavoriteApi,
 } from "../services/userService";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const { width } = Dimensions.get("window");
 const PAGE_PADDING = 16;
 const GAP = 12;
 const CARD_W = (width - PAGE_PADDING * 2 - GAP) / 2;
 
+const SORT_OPTIONS = [
+  { key: "default", label: "Mặc định", icon: "sparkles-outline" },
+  { key: "name_asc", label: "Tên A-Z", icon: "text-outline" },
+  { key: "name_desc", label: "Tên Z-A", icon: "text-outline" },
+  { key: "price_asc", label: "Giá tăng dần", icon: "arrow-up-outline" },
+  { key: "price_desc", label: "Giá giảm dần", icon: "arrow-down-outline" },
+];
+
+function BottomSheet({ visible, title, onClose, children }) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable
+          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}
+          onPress={() => {}}
+        >
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={10}>
+              <Ionicons name="close" size={20} color={PALETTE.text} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.sheetBody}>{children}</View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("vi-VN");
+}
+
 export default function FavoritesScreen({ navigation }) {
   const [favoriteIds, setFavoriteIds] = useState([]);
   const [loadingFavs, setLoadingFavs] = useState(true);
+  const [sortBy, setSortBy] = useState("default");
+  const [showSortModal, setShowSortModal] = useState(false);
   const { products, isLoading } = useProducts();
 
   const normalizeFavoriteIds = (payload) => {
@@ -82,8 +139,28 @@ export default function FavoritesScreen({ navigation }) {
 
   const data = useMemo(() => {
     const setIds = new Set(favoriteIds.map(String));
-    return products.filter((p) => setIds.has(String(p.id)));
-  }, [favoriteIds, products]);
+    let arr = products.filter((p) => setIds.has(String(p.id)));
+
+    const sorted = [...arr];
+    switch (sortBy) {
+      case "name_asc":
+        sorted.sort((a, b) => normalizeText(a.name).localeCompare(normalizeText(b.name), "vi"));
+        break;
+      case "name_desc":
+        sorted.sort((a, b) => normalizeText(b.name).localeCompare(normalizeText(a.name), "vi"));
+        break;
+      case "price_asc":
+        sorted.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+        break;
+      case "price_desc":
+        sorted.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+        break;
+      default:
+        break;
+    }
+
+    return sorted;
+  }, [favoriteIds, products, sortBy]);
 
   const isPageLoading = isLoading || loadingFavs;
 
@@ -96,20 +173,32 @@ export default function FavoritesScreen({ navigation }) {
             activeOpacity={0.85}
             style={styles.iconBtn}
           >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+            <Ionicons name="chevron-back" size={22} color="black" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Yêu thích</Text>
         </View>
 
-        {data.length > 0 && (
-          <TouchableOpacity
-            onPress={handleClearFavorites}
-            activeOpacity={0.85}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="trash-outline" size={20} color="#111827" />
-          </TouchableOpacity>
-        )}
+        <View style={styles.headerRight}>
+          {data.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setShowSortModal(true)}
+              activeOpacity={0.85}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="funnel-outline" size={20} color={PALETTE.navy} />
+            </TouchableOpacity>
+          )}
+
+          {data.length > 0 && (
+            <TouchableOpacity
+              onPress={handleClearFavorites}
+              activeOpacity={0.85}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="trash-outline" size={20} color={PALETTE.navy} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -136,7 +225,7 @@ export default function FavoritesScreen({ navigation }) {
         )}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Ionicons name="heart-outline" size={44} color="#9CA3AF" />
+            <Ionicons name="heart-outline" size={44} color="red" />
             <Text style={styles.emptyTitle}>
               {isPageLoading ? "Đang tải danh sách..." : "Chưa có sản phẩm yêu thích"}
             </Text>
@@ -158,12 +247,49 @@ export default function FavoritesScreen({ navigation }) {
         }
         ListFooterComponent={<View style={{ height: 16 }} />}
       />
+
+      <BottomSheet
+        visible={showSortModal}
+        title="Sắp xếp"
+        onClose={() => setShowSortModal(false)}
+      >
+        {SORT_OPTIONS.map((option) => (
+          <TouchableOpacity
+            key={option.key}
+            style={[
+              styles.sortOption,
+              sortBy === option.key && styles.sortOptionActive,
+            ]}
+            onPress={() => {
+              setSortBy(option.key);
+              setShowSortModal(false);
+            }}
+          >
+            <Ionicons
+              name={option.icon}
+              size={20}
+              color={sortBy === option.key ? PALETTE.navy : PALETTE.muted}
+            />
+            <Text
+              style={[
+                styles.sortOptionText,
+                sortBy === option.key && styles.sortOptionTextActive,
+              ]}
+            >
+              {option.label}
+            </Text>
+            {sortBy === option.key && (
+              <Ionicons name="checkmark" size={20} color={PALETTE.gold} />
+            )}
+          </TouchableOpacity>
+        ))}
+      </BottomSheet>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
 
   header: {
     paddingHorizontal: 12,
@@ -174,8 +300,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: "black" },
+  headerRight: { flexDirection: "row", gap: 8 },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   listContent: { paddingHorizontal: PAGE_PADDING, paddingBottom: 8 },
 
@@ -185,15 +318,53 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  emptyTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  emptySub: { fontSize: 12, fontWeight: "700", color: "#6B7280", textAlign: "center" },
+  emptyTitle: { fontSize: 14, fontWeight: "900", color: PALETTE.navy },
+  emptySub: { fontSize: 12, fontWeight: "700", color: PALETTE.muted, textAlign: "center" },
 
   goBtn: {
     marginTop: 8,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
   },
-  goBtnText: { color: "#fff", fontWeight: "900" },
+  goBtnText: { color: PALETTE.white, fontWeight: "900" },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(12,44,92,0.32)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: PALETTE.white,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingTop: 12,
+    maxHeight: "50%",
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: PALETTE.border,
+  },
+  sheetTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.navy },
+  sheetBody: { paddingHorizontal: 16, paddingTop: 8 },
+
+  sortOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  sortOptionActive: {
+    backgroundColor: PALETTE.navyTint,
+    borderRadius: 12,
+  },
+  sortOptionText: { flex: 1, fontSize: 14, fontWeight: "700", color: PALETTE.muted },
+  sortOptionTextActive: { color: PALETTE.navy },
 });
