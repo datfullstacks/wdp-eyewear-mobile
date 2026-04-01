@@ -250,7 +250,7 @@ export default function ProductModelViewer({
   const [localUri, setLocalUri] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const fallbackMessage = err || "Không mở được model 3D";
+  const fallbackMessage = err || "Không mở được mẫu 3D";
 
   useEffect(() => {
     let mounted = true;
@@ -262,7 +262,7 @@ export default function ProductModelViewer({
         setLocalUri(null);
 
         if (!glbUrl) {
-          throw new Error("Không có file model 3D");
+          throw new Error("Không có file mẫu 3D");
         }
 
         const fileName = `model-${Date.now()}.glb`;
@@ -274,7 +274,7 @@ export default function ProductModelViewer({
         }
       } catch (error) {
         if (mounted) {
-          setErr(error?.message || "Không tải được model 3D");
+          setErr(error?.message || "Không tải được mẫu 3D");
         }
       } finally {
         if (mounted) {
@@ -294,7 +294,7 @@ export default function ProductModelViewer({
     return (
       <View style={[styles.center, style]}>
         <ActivityIndicator size="large" />
-        <Text style={styles.msg}>Đang tải model 3D...</Text>
+        <Text style={styles.msg}>Đang tải mẫu 3D...</Text>
       </View>
     );
   }
@@ -303,7 +303,7 @@ export default function ProductModelViewer({
     return (
       <View style={[styles.center, style]}>
         <Text style={styles.errText}>{fallbackMessage}</Text>
-        <Text style={styles.helpText}>Model không đúng định dạng hoặc file đã bị lỗi.</Text>
+        <Text style={styles.helpText}>Mẫu không đúng định dạng hoặc file đã bị lỗi.</Text>
       </View>
     );
   }
@@ -323,7 +323,7 @@ export default function ProductModelViewer({
           resetKey={localUri}
           fallback={null}
           onError={(error) => {
-            setErr(error?.message || "Không mở được model 3D");
+            setErr(error?.message || "Không mở được mẫu 3D");
           }}
         >
           <Suspense fallback={null}>
@@ -340,7 +340,7 @@ export default function ProductModelViewer({
       {!!err && (
         <View style={styles.overlayError}>
           <Text style={styles.errText}>{fallbackMessage}</Text>
-          <Text style={styles.helpText}>Không mở được model này. Vui lòng thử file khác.</Text>
+          <Text style={styles.helpText}>Không mở được mẫu này. Vui lòng thử file khác.</Text>
         </View>
       )}
     </View>

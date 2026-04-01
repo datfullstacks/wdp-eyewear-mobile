@@ -48,9 +48,9 @@ const shouldLogTryOnDebug = () =>
 function logTryOnDebug(label, value) {
   if (!shouldLogTryOnDebug()) return;
   try {
-    console.log(label, JSON.stringify(value, null, 2));
+    // console.log(label, JSON.stringify(value, null, 2));
   } catch {
-    console.log(label, value);
+    // console.log(label, value);
   }
 }
 
@@ -84,7 +84,7 @@ const pickExternalFallbackUrl = (tryOn = {}) =>
   Platform.OS === "ios"
     ? toText(tryOn.usdzUrl) || toText(tryOn.launchUrl) || toText(tryOn.glbUrl)
     : (isWebFallbackUrl(tryOn.arUrl) ? toText(tryOn.arUrl) : "") ||
-      (isWebFallbackUrl(tryOn.launchUrl) ? toText(tryOn.launchUrl) : "");
+    (isWebFallbackUrl(tryOn.launchUrl) ? toText(tryOn.launchUrl) : "");
 
 function resolvePreparedFallbackUrl({
   fallbackUrl = "",
@@ -251,31 +251,31 @@ export function buildNativeTryOnPayload({ product = {}, tryOn = {}, fallbackUrl 
   const resourcePaths = toStringArray(tryOn.resourcePaths);
   const models = Array.isArray(tryOn.models)
     ? tryOn.models
-        .slice(0, MAX_TRY_ON_MODELS)
-        .map((model, index) => ({
-          id: toText(model?.id) || `model-${index + 1}`,
-          label: toText(model?.label) || `Model ${index + 1}`,
-          ready: Boolean(model?.ready),
-          glbUrl: toText(model?.glbUrl),
-          usdzUrl: toText(model?.usdzUrl),
-          arUrl: toText(model?.arUrl),
-          launchUrl: toText(model?.launchUrl),
-          effectPath: toText(model?.effectPath),
-          scene: toText(model?.scene),
-          fallbackUrl: toText(model?.fallbackUrl),
-          resourcePaths: toStringArray(model?.resourcePaths),
-          prefab: normalizePrefab(model?.prefab),
-        }))
-        .filter(
-          (model) =>
-            model.ready ||
-            model.glbUrl ||
-            model.usdzUrl ||
-            model.arUrl ||
-            model.launchUrl ||
-            model.effectPath ||
-            model.fallbackUrl
-        )
+      .slice(0, MAX_TRY_ON_MODELS)
+      .map((model, index) => ({
+        id: toText(model?.id) || `model-${index + 1}`,
+        label: toText(model?.label) || `Model ${index + 1}`,
+        ready: Boolean(model?.ready),
+        glbUrl: toText(model?.glbUrl),
+        usdzUrl: toText(model?.usdzUrl),
+        arUrl: toText(model?.arUrl),
+        launchUrl: toText(model?.launchUrl),
+        effectPath: toText(model?.effectPath),
+        scene: toText(model?.scene),
+        fallbackUrl: toText(model?.fallbackUrl),
+        resourcePaths: toStringArray(model?.resourcePaths),
+        prefab: normalizePrefab(model?.prefab),
+      }))
+      .filter(
+        (model) =>
+          model.ready ||
+          model.glbUrl ||
+          model.usdzUrl ||
+          model.arUrl ||
+          model.launchUrl ||
+          model.effectPath ||
+          model.fallbackUrl
+      )
     : [];
 
   const modelUrl =
@@ -327,16 +327,16 @@ export async function startNativeTryOnSession({ product = {}, tryOn = {}, fallba
     : [];
   const preparedModels = originalModels.length
     ? await Promise.all(
-        originalModels.map((model, index) =>
-          prepareTryOnModelForNative({
-            product,
-            baseTryOn: originalTryOn,
-            model,
-            index,
-            fallbackUrl,
-          })
-        )
+      originalModels.map((model, index) =>
+        prepareTryOnModelForNative({
+          product,
+          baseTryOn: originalTryOn,
+          model,
+          index,
+          fallbackUrl,
+        })
       )
+    )
     : [];
   const selectedModelId = toText(originalTryOn.selectedModelId);
   const selectedPreparedModel =
@@ -419,14 +419,14 @@ export async function startNativeTryOnSession({ product = {}, tryOn = {}, fallba
   }
 
   const result = await module[startMethod](payload);
-  console.log("[TryOn Native] Session result", {
-    moduleName,
-    startMethod,
-    result,
-    cacheMeta: primaryCacheMeta,
-    runtimeEffectMeta: primaryRuntimeEffectMeta,
-    preparedModelCount: preparedModels.length,
-  });
+  // console.log("[TryOn Native] Session result", {
+  //   moduleName,
+  //   startMethod,
+  //   result,
+  //   cacheMeta: primaryCacheMeta,
+  //   runtimeEffectMeta: primaryRuntimeEffectMeta,
+  //   preparedModelCount: preparedModels.length,
+  // });
   return {
     moduleName,
     startMethod,

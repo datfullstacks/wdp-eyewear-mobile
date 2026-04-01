@@ -529,12 +529,22 @@ export default function HomeScreen({ navigation }) {
     }
   }, [addresses, selectedAddressId]);
 
-  const navigateToProductsTab = useCallback((params = undefined) => {
-    navigation.getParent()?.navigate("ProductsTab", {
-      screen: "Products",
-      params,
-    });
-  }, [navigation]);
+  const navigateToProductsTab = useCallback(
+    (params = undefined) => {
+      const nextParams = params
+        ? {
+            ...params,
+            requestKey: Date.now(),
+          }
+        : undefined;
+
+      navigation.getParent()?.navigate("ProductsTab", {
+        screen: "Products",
+        params: nextParams,
+      });
+    },
+    [navigation]
+  );
 
   const submitSearch = () => {
     const q = query.trim();

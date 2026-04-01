@@ -7,6 +7,8 @@ import {
   Image,
   ScrollView,
   Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
@@ -40,6 +42,19 @@ import {
   validateLensPrescriptionDraft,
 } from "../services/lensPrescriptionService";
 import { useSystemConfigStore } from "../store/systemConfigStore";
+
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
 
 const formatVND = (v) => new Intl.NumberFormat("vi-VN").format(v || 0) + "đ";
 
@@ -352,6 +367,7 @@ export default function CartScreen({ navigation, route }) {
   const [readyCart, setReadyCart] = useState(null);
   const [preorderCart, setPreorderCart] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState("");
 
   const [activeCartType, setActiveCartType] = useState(
     route?.params?.cartType === CART_TYPES.PREORDER ? CART_TYPES.PREORDER : CART_TYPES.ORDER
@@ -371,7 +387,7 @@ export default function CartScreen({ navigation, route }) {
         preorderItems: Array.isArray(preorder?.items) ? preorder.items : [],
       });
     } catch (err) {
-      console.log("loadCarts error:", err);
+      // console.log("loadCarts error:", err);
       setReadyCart(null);
       setPreorderCart(null);
       setCartBadgeQty(0);
@@ -392,7 +408,7 @@ export default function CartScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
-      void refreshSystemConfig().catch(() => {});
+      void refreshSystemConfig().catch(() => { });
       loadCarts();
     }, [loadCarts, refreshSystemConfig])
   );
@@ -583,7 +599,7 @@ export default function CartScreen({ navigation, route }) {
               "Đã kết hợp",
               `${ci?.product?.name || "Sản phẩm"} ↔ ${candidate?.product?.name || "Sản phẩm"}`,
             );
-            console.log(`${ci?.product?.name || "Sản phẩm"} ↔ ${candidate?.product?.name || "Sản phẩm"}`);
+            //console.log(`${ci?.product?.name || "Sản phẩm"} ↔ ${candidate?.product?.name || "Sản phẩm"}`);
           } catch (err) {
             const data = err?.response?.data || {};
             Alert.alert(
@@ -685,14 +701,15 @@ export default function CartScreen({ navigation, route }) {
             activeOpacity={0.85}
             onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
           >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+            <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Giỏ hàng</Text>
         </View>
 
+        {/* Nút Clear Cart đã được update giao diện */}
         <TouchableOpacity
-          style={styles.iconBtn}
-          activeOpacity={0.85}
+          style={styles.clearCartBtn}
+          activeOpacity={0.7}
           onPress={() => {
             if (cartItems.length === 0) return;
             Alert.alert("Xóa tất cả", "Bạn muốn xóa toàn bộ giỏ hàng đang chọn?", [
@@ -718,7 +735,7 @@ export default function CartScreen({ navigation, route }) {
             ]);
           }}
         >
-          <Ionicons name="trash-outline" size={20} color="#111827" />
+          <Ionicons name="trash-outline" size={16} color={PALETTE.navy} />
         </TouchableOpacity>
       </View>
 
@@ -758,7 +775,7 @@ export default function CartScreen({ navigation, route }) {
         {!preorderRuntimeEnabled && preorderItems.length > 0 ? (
           <View style={styles.warnBar}>
             <View style={styles.warnIconWrap}>
-              <Ionicons name="information-circle" size={16} color="#B45309" />
+              <Ionicons name="information-circle" size={16} color={PALETTE.gold} />
             </View>
             <Text style={styles.warnText}>
               Pre-order đang tắt trong system config. Các sản phẩm đặt trước hiện không thể tiếp tục checkout.
@@ -768,12 +785,12 @@ export default function CartScreen({ navigation, route }) {
 
         {loadingCart ? (
           <View style={styles.emptyBox}>
-            <Ionicons name="time-outline" size={44} color="#9CA3AF" />
+            <Ionicons name="time-outline" size={44} color={PALETTE.muted} />
             <Text style={styles.emptyTitle}>Đang tải giỏ hàng...</Text>
           </View>
         ) : cartItems.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Ionicons name="cart-outline" size={44} color="#9CA3AF" />
+            <Ionicons name="cart-outline" size={44} color={PALETTE.muted} />
             <Text style={styles.emptyTitle}>Giỏ hàng trống</Text>
             <TouchableOpacity
               activeOpacity={0.9}
@@ -797,6 +814,7 @@ export default function CartScreen({ navigation, route }) {
               onInc={() => setQty(ci, (ci.qty || 1) + 1)}
               onRemove={() => removeItem(ci)}
               onEdit={() => openEdit(ci)}
+              onPreviewImage={(imageUrl) => setPreviewImageUrl(imageUrl)}
               onCombine={
                 isCombinableType(ci?.product) ? () => openCombine(ci) : null
               }
@@ -810,7 +828,7 @@ export default function CartScreen({ navigation, route }) {
               {!canCheckout ? (
                 <View style={styles.warnBar}>
                   <View style={styles.warnIconWrap}>
-                    <Ionicons name="warning" size={16} color="#B45309" />
+                    <Ionicons name="warning" size={16} color={PALETTE.gold} />
                   </View>
                   <Text style={styles.warnText}>
                     Vui lòng hoàn thành thông tin tròng (nhập Rx hoặc tải ảnh đơn kính) trước khi thanh toán
@@ -887,11 +905,36 @@ export default function CartScreen({ navigation, route }) {
           saveEdit(editingItem, patch);
         }}
       />
+
+      <Modal
+        visible={Boolean(previewImageUrl)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImageUrl("")}
+      >
+        <View style={styles.previewOverlay}>
+          <Pressable style={styles.previewBackdrop} onPress={() => setPreviewImageUrl("")} />
+          <View style={styles.previewContentWrap} pointerEvents="box-none">
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setPreviewImageUrl("")}
+              style={styles.previewCloseBtn}
+            >
+              <Ionicons name="close" size={22} color={PALETTE.text} />
+            </TouchableOpacity>
+            <View style={styles.previewCard}>
+              {previewImageUrl ? (
+                <Image source={{ uri: previewImageUrl }} style={styles.previewImage} resizeMode="contain" />
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
+function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine, onPreviewImage }) {
   const p = ci.product || {};
   const unitPrice =
     p?.price ?? p?.pricing?.salePrice ?? p?.pricing?.basePrice ?? ci.unitPrice ?? 0;
@@ -916,6 +959,9 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
   const depositPercent = getDepositPercent(ci);
 
   const pairedLabel = ci.combineWithName ? `Đã kết hợp: ${ci.combineWithName}` : null;
+  const uploadedPrescriptionUrl = Array.isArray(ci?.customization?.prescription?.attachmentUrls)
+    ? ci.customization.prescription.attachmentUrls.find(Boolean) || ""
+    : "";
 
   return (
     <View style={styles.itemCard}>
@@ -924,7 +970,7 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
           <Image source={{ uri: p.image }} style={styles.itemImage} />
         ) : (
           <View style={[styles.itemImage, { alignItems: "center", justifyContent: "center" }]}>
-            <Ionicons name="image-outline" size={24} color="#9CA3AF" />
+            <Ionicons name="image-outline" size={24} color={PALETTE.muted} />
           </View>
         )}
 
@@ -940,7 +986,7 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
                 activeOpacity={0.85}
                 onPress={onCombine}
               >
-                <Ionicons name="link-outline" size={15} color="#2563EB" />
+                <Ionicons name="link-outline" size={15} color={PALETTE.navy} />
               </TouchableOpacity>
             ) : null}
 
@@ -949,7 +995,7 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
               activeOpacity={0.85}
               onPress={onEdit}
             >
-              <Ionicons name="pencil" size={13} color="#2563EB" />
+              <Ionicons name="pencil" size={13} color={PALETTE.navy} />
             </TouchableOpacity>
           </View>
 
@@ -957,8 +1003,8 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
           {pairedLabel ? <Text style={[styles.variantText, { marginTop: 6 }]}>{pairedLabel}</Text> : null}
 
           <View style={styles.pillRow}>
-            <View style={[styles.pill, { backgroundColor: "#F3F4F6" }]}>
-              <Text style={[styles.pillText, { color: "#374151" }]}>
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>
                 {p.displayLabel || "Sản phẩm"}
               </Text>
             </View>
@@ -968,8 +1014,8 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
 
             {ci.isPreorder ? (
               <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                <View style={[styles.pill, { backgroundColor: "#FFF7ED" }]}>
-                  <Text style={[styles.pillText, { color: "#B45309" }]}>
+                <View style={[styles.pill, { backgroundColor: PALETTE.goldSoft }]}>
+                  <Text style={[styles.pillText, { color: PALETTE.navy }]}>
                     Cọc {formatPercent(depositPercent)}
                   </Text>
                 </View>
@@ -986,7 +1032,7 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
           </View>
 
           {ci.isPreorder ? (
-            <Text style={[styles.variantText, { marginTop: 6, color: "#B45309" }]}>
+            <Text style={[styles.variantText, { marginTop: 6, color: PALETTE.navy }]}>
               Trả trước: {formatVND(payNow)} • COD: {formatVND(payLater)} • Tổng: {formatVND(full)}
             </Text>
           ) : null}
@@ -1005,6 +1051,21 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
                 </Text>
               ))}
             </View>
+          ) : null}
+
+          {uploadedPrescriptionUrl ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.uploadPreviewCard}
+              onPress={() => onPreviewImage?.(uploadedPrescriptionUrl)}
+            >
+              <Image source={{ uri: uploadedPrescriptionUrl }} style={styles.uploadPreviewImage} />
+              <View style={styles.uploadPreviewMeta}>
+                <Text style={styles.uploadPreviewTitle}>Ảnh đơn kính đã tải</Text>
+                <Text style={styles.uploadPreviewHint}>Nhấn để xem ảnh lớn</Text>
+              </View>
+              <Ionicons name="expand-outline" size={18} color={PALETTE.navy} />
+            </TouchableOpacity>
           ) : null}
 
           {ci.readyNote ? (
@@ -1035,7 +1096,7 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
 
   header: {
     paddingHorizontal: 12,
@@ -1045,7 +1106,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
   iconBtn: {
     width: 36,
     height: 36,
@@ -1054,11 +1115,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  /* Thêm style mới cho nút Xoá Tất Cả ở Header để đồng bộ UI */
+  clearCartBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
+
   content: { paddingHorizontal: 16, paddingTop: 8 },
 
   cartTypeSwitch: {
     flexDirection: "row",
-    backgroundColor: "#E5E7EB",
+    backgroundColor: PALETTE.border,
     borderRadius: 12,
     padding: 4,
     gap: 6,
@@ -1072,9 +1145,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
-  cartTypeBtnActive: { backgroundColor: "#FFFFFF" },
-  cartTypeText: { fontSize: 13, fontWeight: "800", color: "#6B7280" },
-  cartTypeTextActive: { color: "#111827" },
+  cartTypeBtnActive: { backgroundColor: PALETTE.white },
+  cartTypeText: { fontSize: 13, fontWeight: "800", color: PALETTE.muted },
+  cartTypeTextActive: { color: PALETTE.navy },
 
   tabBadge: {
     position: "absolute",
@@ -1088,30 +1161,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 4,
     borderWidth: 1.5,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
   },
-  tabBadgeText: { fontSize: 10, fontWeight: "900", color: "#FFFFFF", lineHeight: 13 },
+  tabBadgeText: { fontSize: 10, fontWeight: "900", color: PALETTE.white, lineHeight: 13 },
 
   emptyBox: {
     marginTop: 40,
     alignItems: "center",
     justifyContent: "center",
     padding: 18,
-    backgroundColor: "#fff",
+    backgroundColor: PALETTE.white,
     borderRadius: 18,
   },
-  emptyTitle: { marginTop: 10, fontSize: 14, fontWeight: "900", color: "#111827" },
+  emptyTitle: { marginTop: 10, fontSize: 14, fontWeight: "900", color: PALETTE.text },
   goShopBtn: {
     marginTop: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
   },
-  goShopText: { color: "#fff", fontWeight: "900" },
+  goShopText: { color: PALETTE.white, fontWeight: "900" },
 
   itemCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 18,
     padding: 12,
     marginBottom: 12,
@@ -1122,14 +1195,14 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   itemTopRow: { flexDirection: "row", alignItems: "flex-start" },
-  itemImage: { width: 74, height: 58, borderRadius: 12, backgroundColor: "#F3F4F6" },
+  itemImage: { width: 74, height: 58, borderRadius: 12, backgroundColor: PALETTE.navyTint },
 
   nameRow: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   editBtn: {
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -1138,27 +1211,27 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: "#E9F1FF",
+    backgroundColor: PALETTE.navyTint,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
-  itemName: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  variantText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  itemName: { fontSize: 14, fontWeight: "900", color: PALETTE.text },
+  variantText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: PALETTE.muted },
 
   pillRow: { marginTop: 8, flexDirection: "row", gap: 8, flexWrap: "wrap" },
   pill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: "#E9F1FF",
+    backgroundColor: PALETTE.navyTint,
     borderRadius: 999,
   },
-  pillText: { color: "#2563EB", fontSize: 12, fontWeight: "900" },
+  pillText: { color: PALETTE.navy, fontSize: 12, fontWeight: "900" },
 
   priceRow: { marginTop: 8, flexDirection: "row", alignItems: "center", gap: 10 },
   priceRed: { color: "#EF4444", fontWeight: "900", fontSize: 14 },
   priceOld: {
-    color: "#9CA3AF",
+    color: PALETTE.muted,
     fontWeight: "800",
     fontSize: 12,
     textDecorationLine: "line-through",
@@ -1175,23 +1248,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
   },
   qtyBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.navyTint,
     alignItems: "center",
     justifyContent: "center",
   },
-  qtyBtnText: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  qtyValue: { width: 18, textAlign: "center", fontWeight: "900", color: "#111827" },
+  qtyBtnText: { fontSize: 16, fontWeight: "900", color: PALETTE.navy },
+  qtyValue: { width: 18, textAlign: "center", fontWeight: "900", color: PALETTE.text },
 
   rightBtns: { flexDirection: "row", alignItems: "center", gap: 10 },
   removeBtn: {
@@ -1201,9 +1274,40 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEE2E2",
   },
   removeText: { fontSize: 12.5, fontWeight: "900", color: "#EF4444" },
+  uploadPreviewCard: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  uploadPreviewImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: PALETTE.border,
+  },
+  uploadPreviewMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  uploadPreviewTitle: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: PALETTE.text,
+  },
+  uploadPreviewHint: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: PALETTE.muted,
+  },
 
   summaryCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 18,
     padding: 12,
     shadowColor: "#000",
@@ -1216,47 +1320,86 @@ const styles = StyleSheet.create({
   warnBar: {
     flexDirection: "row",
     gap: 10,
-    backgroundColor: "#FFF7ED",
+    backgroundColor: PALETTE.goldSoft,
     borderRadius: 12,
     padding: 10,
     alignItems: "center",
     marginBottom: 10,
   },
   warnIconWrap: { width: 22, alignItems: "center" },
-  warnText: { flex: 1, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
+  warnText: { flex: 1, fontSize: 12.5, fontWeight: "700", color: PALETTE.navy },
 
   sumRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
-  sumLabel: { fontSize: 13, fontWeight: "800", color: "#6B7280" },
-  sumValue: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  sumDivider: { height: 1, backgroundColor: "#EEF2F7", marginVertical: 6 },
-  sumTotalLabel: { fontSize: 13.5, fontWeight: "900", color: "#111827" },
+  sumLabel: { fontSize: 13, fontWeight: "800", color: PALETTE.muted },
+  sumValue: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
+  sumDivider: { height: 1, backgroundColor: PALETTE.border, marginVertical: 6 },
+  sumTotalLabel: { fontSize: 13.5, fontWeight: "900", color: PALETTE.text },
   sumTotalValue: { fontSize: 14, fontWeight: "900", color: "#EF4444" },
 
   checkoutBtn: {
     marginTop: 12,
     height: 48,
     borderRadius: 14,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
   },
-  checkoutBtnDisabled: { backgroundColor: "#E5E7EB" },
-  checkoutText: { color: "#FFFFFF", fontWeight: "900" },
-  checkoutTextDisabled: { color: "#9CA3AF" },
+  checkoutBtnDisabled: { backgroundColor: PALETTE.border },
+  checkoutText: { color: PALETTE.white, fontWeight: "900" },
+  checkoutTextDisabled: { color: PALETTE.muted },
 
   continueBtn: {
     marginTop: 8,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
-    borderColor: "#2563EB",
+    borderColor: PALETTE.navy,
     borderWidth: 2,
   },
   continueText: {
     textAlign: "center",
-    color: "#2563EB",
+    color: PALETTE.navy,
     fontWeight: "900",
+  },
+
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+  },
+  previewBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  previewContentWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 24,
+    zIndex: 2,
+  },
+  previewCard: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  previewCloseBtn: {
+    position: "absolute",
+    top: 50,
+    right: 18,
+    zIndex: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: PALETTE.white,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

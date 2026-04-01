@@ -4,6 +4,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -18,49 +20,27 @@ import { useFocusEffect } from "@react-navigation/native";
 import { CART_TYPES } from "../store/cartStore";
 import { getOrderByIdApi, cancelOrderApi } from "../services/orderService";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const STATUS_META = {
-  pending: {
-    label: "Chờ xác nhận",
-    color: "#B45309",
-    bg: "#FFF7ED",
-    icon: "time-outline",
-  },
-  confirmed: {
-    label: "Đã xác nhận",
-    color: "#1D4ED8",
-    bg: "#EFF6FF",
-    icon: "checkmark-circle-outline",
-  },
-  processing: {
-    label: "Đang xử lý",
-    color: "#1D4ED8",
-    bg: "#EFF6FF",
-    icon: "sync-outline",
-  },
-  shipped: {
-    label: "Đang giao",
-    color: "#0F766E",
-    bg: "#ECFEFF",
-    icon: "bicycle-outline",
-  },
-  delivered: {
-    label: "Đã giao",
-    color: "#15803D",
-    bg: "#ECFDF5",
-    icon: "checkmark-done-outline",
-  },
-  cancelled: {
-    label: "Đã hủy",
-    color: "#991B1B",
-    bg: "#FEE2E2",
-    icon: "close-circle-outline",
-  },
-  returned: {
-    label: "Đã trả",
-    color: "#6B7280",
-    bg: "#F3F4F6",
-    icon: "return-down-back-outline",
-  },
+  pending: { label: "Chờ xác nhận", color: "#B45309", bg: "#FFF7ED", icon: "time-outline" },
+  confirmed: { label: "Đã xác nhận", color: "#1D4ED8", bg: "#EFF6FF", icon: "checkmark-circle-outline" },
+  processing: { label: "Đang xử lý", color: "#1D4ED8", bg: "#EFF6FF", icon: "sync-outline" },
+  shipped: { label: "Đang giao", color: "#0F766E", bg: "#ECFEFF", icon: "bicycle-outline" },
+  delivered: { label: "Đã giao", color: "#15803D", bg: "#ECFDF5", icon: "checkmark-done-outline" },
+  cancelled: { label: "Đã hủy", color: "#991B1B", bg: "#FEE2E2", icon: "close-circle-outline" },
+  returned: { label: "Đã trả", color: "#6B7280", bg: "#F3F4F6", icon: "return-down-back-outline" },
 };
 
 const PREORDER_STEPS = [
@@ -69,13 +49,15 @@ const PREORDER_STEPS = [
   { key: "PACKING", label: "Đóng gói", desc: "Đơn hàng đang được đóng gói" },
   { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
   { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
+  { key: "CANCELLED", label: "Đã hủy", desc: "Đơn hàng đã bị hủy" },
 ];
 
 const READY_ORDER_STEPS = [
   { key: "CONFIRMED", label: "Xác nhận", desc: "Đơn hàng đang được xác nhận" },
-  { key: "PACKING", label: "Đóng gói", desc: "Sản phẩm có sẵn đang được chuẩn bị và đóng gói" },
+  { key: "PACKING", label: "Đóng gói", desc: "Sản phẩm có sẵn đang chuẩn bị" },
   { key: "SHIPPING", label: "Giao hàng", desc: "Đơn hàng đang được giao" },
   { key: "DELIVERED", label: "Hoàn tất", desc: "Đơn hàng đã được giao" },
+  { key: "CANCELLED", label: "Đã hủy", desc: "Đơn hàng đã bị hủy" },
 ];
 
 function formatVND(v) {
@@ -258,7 +240,7 @@ function SectionCard({ title, icon, children, right }) {
     <View style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderLeft}>
-          <Ionicons name={icon} size={18} color="#111827" />
+          <Ionicons name={icon} size={18} color={PALETTE.text} />
           <Text style={styles.sectionTitle}>{title}</Text>
         </View>
         {right}
@@ -287,13 +269,14 @@ function hasManualRx(item) {
   return Boolean(item?.rxOD?.CYL && item?.rxOD?.AXIS && item?.rxOS?.CYL && item?.rxOS?.AXIS);
 }
 
-function ProductRow({ item }) {
+function ProductRow({ item, onPreviewRxPhoto }) {
   const qty = item?.qty ?? item?.quantity ?? 1;
   const price = item?.price ?? item?.unitPrice ?? 0;
   const lineTotal = item?.lineTotal ?? price * qty;
   const showLensSpecs = isLensItem(item);
   const showManualRx = hasManualRx(item);
-  const hasRxPhoto = Boolean(item?.rxPhoto?.uri);
+  const rxPhotoUrl = String(item?.rxPhoto?.uri || "").trim();
+  const hasRxPhoto = Boolean(rxPhotoUrl);
 
   return (
     <View style={styles.productRow}>
@@ -301,7 +284,7 @@ function ProductRow({ item }) {
         <Image source={{ uri: item.image }} style={styles.productImage} />
       ) : (
         <View style={styles.productFallback}>
-          <Ionicons name="cube-outline" size={22} color="#6B7280" />
+          <Ionicons name="cube-outline" size={22} color={PALETTE.muted} />
         </View>
       )}
 
@@ -325,8 +308,8 @@ function ProductRow({ item }) {
         )}
 
         {showLensSpecs &&
-        Array.isArray(item?.prescriptionSummary?.lines) &&
-        item.prescriptionSummary.lines.length ? (
+          Array.isArray(item?.prescriptionSummary?.lines) &&
+          item.prescriptionSummary.lines.length ? (
           <View style={{ marginTop: 6, gap: 4 }}>
             {item.prescriptionSummary.lines.map((line) => (
               <Text key={`${item?.itemId || item?.name}-${line}`} style={styles.productVariant}>
@@ -334,6 +317,21 @@ function ProductRow({ item }) {
               </Text>
             ))}
           </View>
+        ) : null}
+
+        {showLensSpecs && hasRxPhoto ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={styles.uploadPreviewCard}
+            onPress={() => onPreviewRxPhoto?.(rxPhotoUrl)}
+          >
+            <Image source={{ uri: rxPhotoUrl }} style={styles.uploadPreviewImage} />
+            <View style={styles.uploadPreviewMeta}>
+              <Text style={styles.uploadPreviewTitle}>Ảnh đơn kính đã tải</Text>
+              <Text style={styles.uploadPreviewHint}>Nhấn để xem ảnh lớn</Text>
+            </View>
+            <Ionicons name="expand-outline" size={18} color={PALETTE.navy} />
+          </TouchableOpacity>
         ) : null}
 
         <View style={styles.productMetaRow}>
@@ -394,30 +392,28 @@ export default function OrderDetailScreen({ navigation, route }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState("");
+
+  // 1. Lấy status trước
+  const statusKey = String(order?.status || "").toLowerCase();
+  const isCancelled = statusKey === "cancelled" || statusKey === "canceled";
 
   const loadOrder = useCallback(async ({ silent = false } = {}) => {
     if (!orderId) {
       setError("Thiếu mã đơn hàng.");
       setLoading(false);
-      setRefreshing(false);
       return;
     }
-
     if (!silent) setLoading(true);
     setError("");
-
     try {
       const data = await getOrderByIdApi(orderId, true);
       setOrder(data || null);
     } catch (err) {
-      const message =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Không tải được chi tiết đơn hàng";
-      setError(message);
+      setOrder(null);
+      setError(err?.message || "Không tải được chi tiết đơn hàng");
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
       setRefreshing(false);
     }
   }, [orderId]);
@@ -428,13 +424,11 @@ export default function OrderDetailScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
-      if (order) {
-        loadOrder({ silent: true });
-      }
-    }, [loadOrder, order])
+      if (order) loadOrder({ silent: true });
+    }, [loadOrder, !!order])
   );
 
-  const statusKey = String(order?.status || "").toLowerCase();
+  // Logic tính toán cho UI
   const paymentKey = String(order?.paymentStatus || order?.payment?.status || "").toLowerCase();
   const isPaid = ["paid", "success", "succeeded"].includes(paymentKey);
   const paidAmount = Math.max(0, Number(order?.paidAmount || 0));
@@ -462,8 +456,10 @@ export default function OrderDetailScreen({ navigation, route }) {
   }, [order?.orderType, orderItems]);
 
   const progressSteps = useMemo(() => {
-    return orderTypeKey === "preorder" ? PREORDER_STEPS : READY_ORDER_STEPS;
-  }, [orderTypeKey]);
+    const steps = orderTypeKey === "preorder" ? PREORDER_STEPS : READY_ORDER_STEPS;
+    // Nếu KHÔNG phải đơn hủy, ẩn bước CANCELLED
+    return isCancelled ? steps : steps.filter(s => s.key !== "CANCELLED");
+  }, [orderTypeKey, isCancelled]);
 
   const normalizedProgressStatus = normalizeOrderProgressStatus(
     order?.status,
@@ -471,10 +467,7 @@ export default function OrderDetailScreen({ navigation, route }) {
     orderTypeKey
   );
 
-  const activeStepIndex = Math.max(
-    0,
-    progressSteps.findIndex((s) => s.key === normalizedProgressStatus)
-  );
+  const activeStepIndex = progressSteps.findIndex((s) => s.key === normalizedProgressStatus);
 
   const totalItems = useMemo(() => {
     return orderItems.reduce(
@@ -629,28 +622,8 @@ export default function OrderDetailScreen({ navigation, route }) {
     }
   }, [order]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity
-              onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
-              activeOpacity={0.85}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="chevron-back" size={22} color="#111827" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Chi tiết đơn hàng</Text>
-          </View>
-        </View>
-
-        <View style={styles.centerWrap}>
-          <ActivityIndicator size="small" color="#2563EB" />
-          <Text style={styles.loadingText}>Đang tải chi tiết đơn hàng...</Text>
-        </View>
-      </SafeAreaView>
-    );
+  if (loading && !refreshing) {
+    return <View style={styles.centerWrap}><ActivityIndicator color={PALETTE.navy} /></View>;
   }
 
   if (error || !order) {
@@ -670,7 +643,7 @@ export default function OrderDetailScreen({ navigation, route }) {
         </View>
 
         <View style={styles.centerWrap}>
-          <Ionicons name="alert-circle-outline" size={42} color="#9CA3AF" />
+          <Ionicons name="alert-circle-outline" size={42} color={PALETTE.muted} />
           <Text style={styles.errorBigText}>{error || "Không tìm thấy đơn hàng"}</Text>
           <TouchableOpacity style={styles.retryBtn} onPress={() => loadOrder()}>
             <Text style={styles.retryBtnText}>Thử lại</Text>
@@ -695,469 +668,510 @@ export default function OrderDetailScreen({ navigation, route }) {
         </View>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              loadOrder({ silent: true });
-            }}
-          />
-        }
-      >
-        <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.orderCode}>{order?.paymentCode || "--"}</Text>
-              <Text style={styles.orderDate}>
-                Tạo lúc: {formatDateTime(order?.createdAt)}
-              </Text>
-            </View>
-            <StatusBadge status={order?.status} />
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.scrollContent}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            loadOrder({ silent: true });
+          }}
+        />
+      }
+    >
+      <View style={styles.heroCard}>
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.orderCode}>{order?.paymentCode || "--"}</Text>
+            <Text style={styles.orderDate}>
+              Tạo lúc: {formatDateTime(order?.createdAt)}
+            </Text>
           </View>
-
-          <View style={styles.heroMetaRow}>
-            <View style={styles.heroMetaBox}>
-              <Text style={styles.heroMetaLabel}>Thanh toán</Text>
-              <Text style={[styles.heroMetaValue, isPaid && { color: "#15803D" }]}>
-                {isPaid ? "Đã thanh toán" : "Chưa thanh toán"}
-              </Text>
-            </View>
-
-            <View style={styles.heroMetaBox}>
-              <Text style={styles.heroMetaLabel}>Tổng sản phẩm</Text>
-              <Text style={styles.heroMetaValue}>{totalItems}</Text>
-            </View>
-
-            <View style={styles.heroMetaBox}>
-              <Text style={styles.heroMetaLabel}>Tổng tiền</Text>
-              <Text style={[styles.heroMetaValue, { color: "#EF4444" }]}>
-                {formatVND(order?.total)}
-              </Text>
-            </View>
-          </View>
-
-          {canPayNow && (
-            <TouchableOpacity
-              style={styles.payNowBtn}
-              onPress={handlePayNow}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="card-outline" size={16} color="#FFFFFF" />
-              <Text style={styles.payNowBtnText}>Thanh toán ngay</Text>
-            </TouchableOpacity>
-          )}
-
-          {canCancel && (
-            <TouchableOpacity
-              style={styles.cancelOrderBtn}
-              onPress={handleCancelOrder}
-              activeOpacity={0.85}
-              disabled={isCancelling}
-            >
-              {isCancelling ? (
-                <ActivityIndicator size="small" color="#991B1B" />
-              ) : (
-                <>
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={16}
-                    color="#991B1B"
-                  />
-                  <Text style={styles.cancelOrderBtnText}>
-                    {paidAmount > 0 ? "Hủy đơn và hoàn tiền" : "Hủy đơn hàng"}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
+          <StatusBadge status={order?.status} />
         </View>
 
-        <SectionCard title="Tiến trình đơn hàng" icon="git-branch-outline">
-          <View style={styles.timeline}>
-            {progressSteps.map((step, idx) => {
-              const active = idx <= activeStepIndex;
-              const isLast = idx === progressSteps.length - 1;
+        <View style={styles.heroMetaRow}>
+          <View style={styles.heroMetaBox}>
+            <Text style={styles.heroMetaLabel}>Thanh toán</Text>
+            <Text style={[styles.heroMetaValue, isPaid && { color: "#15803D" }]}>
+              {isPaid ? "Đã thanh toán" : "Chưa thanh toán"}
+            </Text>
+          </View>
 
-              return (
-                <View key={step.key} style={styles.stepRow}>
-                  <View style={styles.stepLeft}>
-                    <View style={[styles.stepDot, active && styles.stepDotActive]} />
-                    {!isLast ? (
-                      <View
-                        style={[styles.stepLine, active && styles.stepLineActive]}
-                      />
-                    ) : null}
-                  </View>
+          <View style={styles.heroMetaBox}>
+            <Text style={styles.heroMetaLabel}>Tổng sản phẩm</Text>
+            <Text style={styles.heroMetaValue}>{totalItems}</Text>
+          </View>
 
-                  <View style={styles.stepContent}>
-                    <Text style={[styles.stepTitle, active && styles.stepTitleActive]}>
-                      {step.label}
-                    </Text>
-                    <Text style={styles.stepDesc}>{step.desc}</Text>
-                  </View>
+          <View style={styles.heroMetaBox}>
+            <Text style={styles.heroMetaLabel}>Tổng tiền</Text>
+            <Text style={[styles.heroMetaValue, { color: "#EF4444" }]}>
+              {formatVND(order?.total)}
+            </Text>
+          </View>
+        </View>
+
+        {canPayNow && (
+          <TouchableOpacity
+            style={styles.payNowBtn}
+            onPress={handlePayNow}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="card-outline" size={16} color={PALETTE.white} />
+            <Text style={styles.payNowBtnText}>Thanh toán ngay</Text>
+          </TouchableOpacity>
+        )}
+
+        {canCancel && (
+          <TouchableOpacity
+            style={styles.cancelOrderBtn}
+            onPress={handleCancelOrder}
+            activeOpacity={0.85}
+            disabled={isCancelling}
+          >
+            {isCancelling ? (
+              <ActivityIndicator size="small" color="#991B1B" />
+            ) : (
+              <>
+                <Ionicons
+                  name="close-circle-outline"
+                  size={16}
+                  color="#991B1B"
+                />
+                <Text style={styles.cancelOrderBtnText}>
+                  {paidAmount > 0 ? "Hủy đơn và hoàn tiền" : "Hủy đơn hàng"}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <SectionCard title="Tiến trình đơn hàng" icon="git-branch-outline">
+        <View style={styles.timeline}>
+          {progressSteps.map((step, idx) => {
+            const isCurrentStep = idx === activeStepIndex;
+            const isPassed = idx < activeStepIndex;
+            const isLast = idx === progressSteps.length - 1;
+            const stepIsCancelledType = step.key === "CANCELLED";
+
+            // Màu sắc chủ đạo: Đỏ nếu là bước hủy đang active, Xanh nếu hoàn tất, Xám nếu chưa tới
+            let tintColor = PALETTE.border;
+            if (isCancelled && stepIsCancelledType) {
+              tintColor = "#EF4444"; // Màu đỏ cho bước hủy
+            } else if (!isCancelled && (isCurrentStep || isPassed)) {
+              tintColor = "#15803D"; // Màu xanh cho đơn bình thường
+            } else if (isCancelled && isPassed) {
+              tintColor = "#9CA3AF"; // Màu xám cho các bước trước đó của đơn đã hủy
+            } else if (isCurrentStep) {
+              tintColor = "#15803D";
+            }
+
+            return (
+              <View key={step.key} style={styles.stepRow}>
+                <View style={styles.stepLeft}>
+                  <View style={[styles.stepDot, { backgroundColor: tintColor }]} />
+                  {!isLast && (
+                    <View style={[styles.stepLine, { backgroundColor: isPassed ? tintColor : PALETTE.border }]} />
+                  )}
                 </View>
-              );
-            })}
-          </View>
-        </SectionCard>
 
-        <SectionCard title="Thông tin đơn hàng" icon="receipt-outline">
-          <InfoRow label="Mã đơn" value={order?.paymentCode} />
-          <InfoRow label="Loại đơn" value={order?.orderType || "--"} />
-          <InfoRow label="Trạng thái đơn" value={normalizeStatusText(order?.status)} />
-          <InfoRow label="Tiến độ xử lý" value={normalizeStatusText(order?.opsStage)} />
+                <View style={styles.stepContent}>
+                  <Text style={[styles.stepTitle, (isCurrentStep || (isCancelled && stepIsCancelledType)) && { color: tintColor }]}>
+                    {step.label}
+                  </Text>
+                  <Text style={styles.stepDesc}>{step.desc}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Thông tin đơn hàng" icon="receipt-outline">
+        <InfoRow label="Mã đơn" value={order?.paymentCode} />
+        <InfoRow label="Loại đơn" value={order?.orderType || "--"} />
+        <InfoRow label="Trạng thái đơn" value={normalizeStatusText(order?.status)} />
+        <InfoRow label="Tiến độ xử lý" value={normalizeStatusText(order?.opsStage)} />
+        <InfoRow
+          label="Cập nhật xử lý"
+          value={formatDateTime(order?.opsStageUpdatedAt)}
+        />
+        <InfoRow label="Ngày tạo" value={formatDateTime(order?.createdAt)} />
+        <InfoRow label="Ngày cập nhật" value={formatDateTime(order?.updatedAt)} />
+        <InfoRow label="Đã thanh toán lúc" value={formatDateTime(order?.paidAt)} />
+        <InfoRow
+          label="Đã xác nhận lúc"
+          value={formatDateTime(order?.confirmedAt)}
+        />
+      </SectionCard>
+
+      <SectionCard title="Sản phẩm" icon="cube-outline">
+        <View style={styles.productCountRow}>
+          <Text style={styles.productCountText}>{totalItems} sản phẩm</Text>
+        </View>
+
+        <View style={styles.productsWrap}>
+          {orderItems.map((item, index) => (
+            <ProductRow
+              key={String(item?.itemId || item?._id || index)}
+              item={item}
+              onPreviewRxPhoto={(imageUrl) => setPreviewImageUrl(imageUrl)}
+            />
+          ))}
+        </View>
+      </SectionCard>
+
+      <SectionCard title="Thanh toán" icon="card-outline">
+        <InfoRow
+          label="Phương thức"
+          value={String(
+            Number(order?.payNowTotal || 0) > 0
+              ? order?.paymentMethod || order?.payment?.method || "--"
+              : order?.payLaterMethod || order?.paymentMethod || order?.payment?.method || "--",
+          ).toUpperCase()}
+        />
+        <InfoRow
+          label="Trạng thái"
+          value={normalizeStatusText(order?.paymentStatus || order?.payment?.status)}
+        />
+        <InfoRow label="Tạm tính" value={formatVND(order?.subtotal)} />
+        <InfoRow label="Giảm giá" value={formatVND(order?.discountAmount)} />
+        <InfoRow
+          label={`Phí vận chuyển (${getShippingFeeModeLabel(order?.shippingFeeMode)})`}
+          value={formatVND(order?.shippingFee)}
+        />
+        <InfoRow
+          label="Thu phí ship"
+          value={getShippingCollectionTimingLabel(order?.shippingCollectionTiming)}
+        />
+        <InfoRow label="Thanh toán ngay" value={formatVND(order?.payNowTotal)} />
+        <InfoRow label="Thanh toán sau" value={formatVND(order?.payLaterTotal)} />
+        <InfoRow
+          label="Phương thức thu sau"
+          value={order?.payLaterMethod ? String(order.payLaterMethod).toUpperCase() : "--"}
+        />
+        <InfoRow
+          label="Tổng thanh toán"
+          value={formatVND(order?.total)}
+          valueStyle={styles.highlightValue}
+        />
+      </SectionCard>
+
+      <SectionCard title="Địa chỉ nhận hàng" icon="location-outline">
+        <InfoRow label="Người nhận" value={order?.shippingAddress?.fullName} />
+        <InfoRow label="Số điện thoại" value={order?.shippingAddress?.phone} />
+        <InfoRow label="Email" value={order?.shippingAddress?.email} />
+        <InfoRow
+          label="Địa chỉ"
+          value={[
+            order?.shippingAddress?.line1,
+            order?.shippingAddress?.line2,
+            order?.shippingAddress?.ward,
+            order?.shippingAddress?.district,
+            order?.shippingAddress?.province,
+            order?.shippingAddress?.country,
+          ]
+            .filter(Boolean)
+            .join(", ")}
+        />
+        <InfoRow label="Ghi chú" value={order?.shippingAddress?.note || "--"} />
+      </SectionCard>
+
+      <SectionCard
+        title="Vận chuyển"
+        icon="bicycle-outline"
+        right={
+          !!order?.shipment?.trackingUrl ? (
+            <TouchableOpacity onPress={openTrackingUrl} activeOpacity={0.8}>
+              <Text style={styles.linkText}>Theo dõi</Text>
+            </TouchableOpacity>
+          ) : null
+        }
+      >
+        <InfoRow
+          label="Đơn vị vận chuyển"
+          value={String(order?.shipment?.provider || "--").toUpperCase()}
+        />
+        <InfoRow
+          label="Mã vận đơn"
+          value={order?.shipment?.trackingCode || order?.opsExecution?.trackingCode || "--"}
+        />
+        <InfoRow
+          label="Trạng thái GHN"
+          value={normalizeStatusText(order?.shipment?.latestStatus)}
+        />
+        <InfoRow label="Mã client" value={order?.shipment?.clientOrderCode || "--"} />
+        <InfoRow label="Ngày dự kiến giao" value={formatDate(order?.shipment?.leadtime)} />
+        <InfoRow
+          label="Lần đồng bộ cuối"
+          value={formatDateTime(order?.shipment?.lastSyncedAt)}
+        />
+      </SectionCard>
+
+      {!!order?.invoiceId && (
+        <SectionCard title="Hoá đơn" icon="document-text-outline">
+          <InfoRow label="Mã hoá đơn" value={order?.invoiceId?.invoiceCode} />
+          <InfoRow label="Tổng tiền" value={formatVND(order?.invoiceId?.total)} />
           <InfoRow
-            label="Cập nhật xử lý"
-            value={formatDateTime(order?.opsStageUpdatedAt)}
+            label="Đã thanh toán"
+            value={formatVND(order?.invoiceId?.paidAmount)}
           />
-          <InfoRow label="Ngày tạo" value={formatDateTime(order?.createdAt)} />
-          <InfoRow label="Ngày cập nhật" value={formatDateTime(order?.updatedAt)} />
-          <InfoRow label="Đã thanh toán lúc" value={formatDateTime(order?.paidAt)} />
-          <InfoRow
-            label="Đã xác nhận lúc"
-            value={formatDateTime(order?.confirmedAt)}
-          />
-        </SectionCard>
-
-        <SectionCard title="Sản phẩm" icon="cube-outline">
-          <View style={styles.productCountRow}>
-            <Text style={styles.productCountText}>{totalItems} sản phẩm</Text>
-          </View>
-
-          <View style={styles.productsWrap}>
-            {orderItems.map((item, index) => (
-              <ProductRow key={String(item?.itemId || item?._id || index)} item={item} />
-            ))}
-          </View>
-        </SectionCard>
-
-        <SectionCard title="Thanh toán" icon="card-outline">
-          <InfoRow
-            label="Phương thức"
-            value={String(
-              Number(order?.payNowTotal || 0) > 0
-                ? order?.paymentMethod || order?.payment?.method || "--"
-                : order?.payLaterMethod || order?.paymentMethod || order?.payment?.method || "--",
-            ).toUpperCase()}
-          />
+          <InfoRow label="Còn thiếu" value={formatVND(order?.invoiceId?.amountDue)} />
           <InfoRow
             label="Trạng thái"
-            value={normalizeStatusText(order?.paymentStatus || order?.payment?.status)}
+            value={normalizeStatusText(order?.invoiceId?.status)}
           />
-          <InfoRow label="Tạm tính" value={formatVND(order?.subtotal)} />
-          <InfoRow label="Giảm giá" value={formatVND(order?.discountAmount)} />
+          <InfoRow label="Ngày xuất" value={formatDateTime(order?.invoiceId?.issuedAt)} />
           <InfoRow
-            label={`Phí vận chuyển (${getShippingFeeModeLabel(order?.shippingFeeMode)})`}
-            value={formatVND(order?.shippingFee)}
-          />
-          <InfoRow
-            label="Thu phí ship"
-            value={getShippingCollectionTimingLabel(order?.shippingCollectionTiming)}
-          />
-          <InfoRow label="Thanh toán ngay" value={formatVND(order?.payNowTotal)} />
-          <InfoRow label="Thanh toán sau" value={formatVND(order?.payLaterTotal)} />
-          <InfoRow
-            label="Phương thức thu sau"
-            value={order?.payLaterMethod ? String(order.payLaterMethod).toUpperCase() : "--"}
-          />
-          <InfoRow
-            label="Tổng thanh toán"
-            value={formatVND(order?.total)}
-            valueStyle={styles.highlightValue}
+            label="Ngày thanh toán"
+            value={formatDateTime(order?.invoiceId?.paidAt)}
           />
         </SectionCard>
+      )}
 
-        <SectionCard title="Địa chỉ nhận hàng" icon="location-outline">
-          <InfoRow label="Người nhận" value={order?.shippingAddress?.fullName} />
-          <InfoRow label="Số điện thoại" value={order?.shippingAddress?.phone} />
-          <InfoRow label="Email" value={order?.shippingAddress?.email} />
+      {!!order?.refund && (
+        <SectionCard title="Hoàn tiền" icon="return-down-back-outline">
+          <InfoRow label="Trạng thái" value={normalizeStatusText(order?.refund?.status)} />
+          <InfoRow label="Số tiền" value={formatVND(order?.refund?.amount)} />
+          <InfoRow label="Đã thanh toán" value={formatVND(order?.paidAmount)} />
           <InfoRow
-            label="Địa chỉ"
-            value={[
-              order?.shippingAddress?.line1,
-              order?.shippingAddress?.line2,
-              order?.shippingAddress?.ward,
-              order?.shippingAddress?.district,
-              order?.shippingAddress?.province,
-              order?.shippingAddress?.country,
-            ]
-              .filter(Boolean)
-              .join(", ")}
+            label="Chưa thu"
+            value={formatVND(Math.max(0, Number(order?.total || 0) - Number(order?.paidAmount || 0)))}
           />
-          <InfoRow label="Ghi chú" value={order?.shippingAddress?.note || "--"} />
-        </SectionCard>
+          <InfoRow label="Lý do" value={order?.refund?.reason || "--"} />
+          <InfoRow label="Ghi chú" value={order?.refund?.contactNote || "--"} />
+          <InfoRow label="Từ chối" value={order?.refund?.rejectReason || "--"} />
+          <InfoRow
+            label="Bước tiếp theo"
+            value={getRefundNextStepLabel(order?.refund?.nextActionCode)}
+          />
 
-        <SectionCard
-          title="Vận chuyển"
-          icon="bicycle-outline"
-          right={
-            !!order?.shipment?.trackingUrl ? (
-              <TouchableOpacity onPress={openTrackingUrl} activeOpacity={0.8}>
-                <Text style={styles.linkText}>Theo dõi</Text>
-              </TouchableOpacity>
-            ) : null
-          }
-        >
-          <InfoRow
-            label="Đơn vị vận chuyển"
-            value={String(order?.shipment?.provider || "--").toUpperCase()}
-          />
-          <InfoRow
-            label="Mã vận đơn"
-            value={order?.shipment?.trackingCode || order?.opsExecution?.trackingCode || "--"}
-          />
-          <InfoRow
-            label="Trạng thái GHN"
-            value={normalizeStatusText(order?.shipment?.latestStatus)}
-          />
-          <InfoRow label="Mã client" value={order?.shipment?.clientOrderCode || "--"} />
-          <InfoRow label="Ngày dự kiến giao" value={formatDate(order?.shipment?.leadtime)} />
-          <InfoRow
-            label="Lần đồng bộ cuối"
-            value={formatDateTime(order?.shipment?.lastSyncedAt)}
-          />
-        </SectionCard>
-
-        {!!order?.invoiceId && (
-          <SectionCard title="Hoá đơn" icon="document-text-outline">
-            <InfoRow label="Mã hoá đơn" value={order?.invoiceId?.invoiceCode} />
-            <InfoRow label="Tổng tiền" value={formatVND(order?.invoiceId?.total)} />
-            <InfoRow
-              label="Đã thanh toán"
-              value={formatVND(order?.invoiceId?.paidAmount)}
-            />
-            <InfoRow label="Còn thiếu" value={formatVND(order?.invoiceId?.amountDue)} />
-            <InfoRow
-              label="Trạng thái"
-              value={normalizeStatusText(order?.invoiceId?.status)}
-            />
-            <InfoRow label="Ngày xuất" value={formatDateTime(order?.invoiceId?.issuedAt)} />
-            <InfoRow
-              label="Ngày thanh toán"
-              value={formatDateTime(order?.invoiceId?.paidAt)}
-            />
-          </SectionCard>
-        )}
-
-        {!!order?.refund && (
-          <SectionCard title="Hoàn tiền" icon="return-down-back-outline">
-            <InfoRow label="Trạng thái" value={normalizeStatusText(order?.refund?.status)} />
-            <InfoRow label="Số tiền" value={formatVND(order?.refund?.amount)} />
-            <InfoRow label="Đã thanh toán" value={formatVND(order?.paidAmount)} />
-            <InfoRow
-              label="Chưa thu"
-              value={formatVND(Math.max(0, Number(order?.total || 0) - Number(order?.paidAmount || 0)))}
-            />
-            <InfoRow label="Lý do" value={order?.refund?.reason || "--"} />
-            <InfoRow label="Ghi chú" value={order?.refund?.contactNote || "--"} />
-            <InfoRow label="Từ chối" value={order?.refund?.rejectReason || "--"} />
-            <InfoRow
-              label="Bước tiếp theo"
-              value={getRefundNextStepLabel(order?.refund?.nextActionCode)}
-            />
-
-            {(order?.refund?.inspectionStatus &&
-              order.refund.inspectionStatus !== "not_required") ||
+          {(order?.refund?.inspectionStatus &&
+            order.refund.inspectionStatus !== "not_required") ||
             order?.refund?.returnShipmentCode ||
             order?.refund?.returnCarrier ? (
-              <View style={styles.refundInfoBox}>
-                <Text style={styles.refundInfoTitle}>Return / QC</Text>
+            <View style={styles.refundInfoBox}>
+              <Text style={styles.refundInfoTitle}>Return / QC</Text>
+              <Text style={styles.refundInfoText}>
+                QC: {getRefundInspectionLabel(order?.refund?.inspectionStatus)}
+              </Text>
+              {order?.refund?.inspectionNote ? (
                 <Text style={styles.refundInfoText}>
-                  QC: {getRefundInspectionLabel(order?.refund?.inspectionStatus)}
+                  Ghi chú QC: {order.refund.inspectionNote}
                 </Text>
-                {order?.refund?.inspectionNote ? (
-                  <Text style={styles.refundInfoText}>
-                    Ghi chú QC: {order.refund.inspectionNote}
-                  </Text>
-                ) : null}
-                {order?.refund?.inspectionAt ? (
-                  <Text style={styles.refundInfoText}>
-                    Kiểm tra lúc: {formatDateTime(order.refund.inspectionAt)}
-                  </Text>
-                ) : null}
-                {order?.refund?.returnCarrier ? (
-                  <Text style={styles.refundInfoText}>
-                    Đơn vị hoàn: {String(order.refund.returnCarrier).toUpperCase()}
-                  </Text>
-                ) : null}
-                {order?.refund?.returnShipmentCode ? (
-                  <Text style={styles.refundInfoText}>
-                    Mã vận đơn trả: {order.refund.returnShipmentCode}
-                  </Text>
-                ) : null}
-                {order?.refund?.returnReceivedAt ? (
-                  <Text style={styles.refundInfoText}>
-                    Đã nhận hàng hoàn: {formatDateTime(order.refund.returnReceivedAt)}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-
-            {order?.refund?.transactionRef ? (
-              <InfoRow label="Mã payout" value={order.refund.transactionRef} />
-            ) : null}
-
-            {Array.isArray(order?.refund?.evidence) && order.refund.evidence.length > 0 ? (
-              <View style={styles.refundTimelineWrap}>
-                <Text style={styles.refundInfoTitle}>Bằng chứng đã gửi</Text>
-                <View style={styles.refundEvidenceRow}>
-                  {order.refund.evidence.slice(0, 4).map((url, index) => (
-                    <TouchableOpacity
-                      key={`${url}-${index}`}
-                      activeOpacity={0.85}
-                      onPress={() => Linking.openURL(url).catch(() => {})}
-                    >
-                      <Image source={{ uri: url }} style={styles.refundEvidenceImage} />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            {getRefundHistoryEntries(order?.refund).length > 0 ? (
-              <View style={styles.refundTimelineWrap}>
-                <Text style={styles.refundInfoTitle}>Tiến trình refund</Text>
-                {getRefundHistoryEntries(order?.refund)
-                  .slice()
-                  .reverse()
-                  .slice(0, 4)
-                  .map((entry, index) => (
-                    <View
-                      key={`${entry.createdAt || entry.action || "refund"}-${index}`}
-                      style={styles.refundTimelineItem}
-                    >
-                      <View style={styles.refundTimelineRow}>
-                        <Text style={styles.refundTimelineActor}>
-                          {entry.actorName ||
-                            (entry.actorRole
-                              ? getRefundOwnerLabel(entry.actorRole)
-                              : "System")}
-                        </Text>
-                        <Text style={styles.refundTimelineTime}>
-                          {formatDateTime(entry.createdAt)}
-                        </Text>
-                      </View>
-                      <Text style={styles.refundTimelineNote}>
-                        {(entry.fromStatus || "none").toUpperCase()} {"->"}{" "}
-                        {(entry.toStatus || "none").toUpperCase()}
-                      </Text>
-                      {entry.note ? (
-                        <Text style={styles.refundTimelineNote}>{entry.note}</Text>
-                      ) : null}
-                    </View>
-                  ))}
-              </View>
-            ) : null}
-          </SectionCard>
-        )}
-        {(canSubmitRefundInfo || canRequestRefund) && (
-          <SectionCard title="Yêu cầu hoàn tiền" icon="return-down-back-outline">
-            <Text style={styles.refundHelperText}>
-              {canSubmitRefundInfo
-                ? "Refund này đang chờ bạn bổ sung thông tin để sale tiếp tục xem xét."
-                : "Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để sale tiếp nhận và xử lý."}
-            </Text>
-            <TouchableOpacity
-              style={styles.refundActionBtn}
-              onPress={handleRefundRequest}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.refundActionText}>
-                {canSubmitRefundInfo
-                  ? "Bổ sung thông tin hoàn tiền"
-                  : order?.refund
-                    ? "Tạo yêu cầu hoàn tiền mới"
-                    : "Tạo yêu cầu hoàn tiền"}
-              </Text>
-            </TouchableOpacity>
-          </SectionCard>
-        )}
-
-        <SectionCard
-          title="Hỗ trợ sau mua"
-          icon="chatbubble-ellipses-outline"
-          right={
-            <TouchableOpacity onPress={openSupportCenter} activeOpacity={0.8}>
-              <Text style={styles.linkText}>Tất cả case</Text>
-            </TouchableOpacity>
-          }
-        >
-          <Text style={styles.refundHelperText}>
-            Theo dõi support, refund, và warranty của đơn này từ cùng một nơi.
-          </Text>
-
-          {!!orderStore && (
-            <View style={styles.afterSalesStoreBox}>
-              <Text style={styles.afterSalesStoreTitle}>
-                Cửa hàng xử lý:{" "}
-                {orderStore.name
-                  ? `${orderStore.name}${orderStore.code ? ` (${orderStore.code})` : ""}`
-                  : "--"}
-              </Text>
-              <Text style={styles.afterSalesStoreMeta}>
-                {[orderStore.district, orderStore.city].filter(Boolean).join(", ") || "--"}
-              </Text>
-              {orderStore.openingHours ? (
-                <Text style={styles.afterSalesStoreMeta}>
-                  Giờ mở cửa: {orderStore.openingHours}
+              ) : null}
+              {order?.refund?.inspectionAt ? (
+                <Text style={styles.refundInfoText}>
+                  Kiểm tra lúc: {formatDateTime(order.refund.inspectionAt)}
+                </Text>
+              ) : null}
+              {order?.refund?.returnCarrier ? (
+                <Text style={styles.refundInfoText}>
+                  Đơn vị hoàn: {String(order.refund.returnCarrier).toUpperCase()}
+                </Text>
+              ) : null}
+              {order?.refund?.returnShipmentCode ? (
+                <Text style={styles.refundInfoText}>
+                  Mã vận đơn trả: {order.refund.returnShipmentCode}
+                </Text>
+              ) : null}
+              {order?.refund?.returnReceivedAt ? (
+                <Text style={styles.refundInfoText}>
+                  Đã nhận hàng hoàn: {formatDateTime(order.refund.returnReceivedAt)}
                 </Text>
               ) : null}
             </View>
-          )}
+          ) : null}
 
-          <TouchableOpacity
-            style={styles.secondaryActionBtn}
-            onPress={openOrderSupport}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.secondaryActionText}>Tạo ticket cho đơn hàng</Text>
-          </TouchableOpacity>
+          {order?.refund?.transactionRef ? (
+            <InfoRow label="Mã payout" value={order.refund.transactionRef} />
+          ) : null}
 
-          {canRequestWarranty ? (
-            <View style={styles.afterSalesList}>
-              {warrantyItems.map((item, index) => (
-                <View
-                  key={String(item?.itemId || item?._id || index)}
-                  style={styles.afterSalesCard}
-                >
-                  <View style={styles.afterSalesHeader}>
-                    <Text style={styles.afterSalesTitle}>{item?.name || "Sản phẩm"}</Text>
-                    {!!item?.variantText ? (
-                      <Text style={styles.afterSalesMeta}>{item.variantText}</Text>
+          {Array.isArray(order?.refund?.evidence) && order.refund.evidence.length > 0 ? (
+            <View style={styles.refundTimelineWrap}>
+              <Text style={styles.refundInfoTitle}>Bằng chứng đã gửi</Text>
+              <View style={styles.refundEvidenceRow}>
+                {order.refund.evidence.slice(0, 4).map((url, index) => (
+                  <TouchableOpacity
+                    key={`${url}-${index}`}
+                    activeOpacity={0.85}
+                    onPress={() => Linking.openURL(url).catch(() => { })}
+                  >
+                    <Image source={{ uri: url }} style={styles.refundEvidenceImage} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {getRefundHistoryEntries(order?.refund).length > 0 ? (
+            <View style={styles.refundTimelineWrap}>
+              <Text style={styles.refundInfoTitle}>Tiến trình refund</Text>
+              {getRefundHistoryEntries(order?.refund)
+                .slice()
+                .reverse()
+                .slice(0, 4)
+                .map((entry, index) => (
+                  <View
+                    key={`${entry.createdAt || entry.action || "refund"}-${index}`}
+                    style={styles.refundTimelineItem}
+                  >
+                    <View style={styles.refundTimelineRow}>
+                      <Text style={styles.refundTimelineActor}>
+                        {entry.actorName ||
+                          (entry.actorRole
+                            ? getRefundOwnerLabel(entry.actorRole)
+                            : "System")}
+                      </Text>
+                      <Text style={styles.refundTimelineTime}>
+                        {formatDateTime(entry.createdAt)}
+                      </Text>
+                    </View>
+                    <Text style={styles.refundTimelineNote}>
+                      {(entry.fromStatus || "none").toUpperCase()} {"->"}{" "}
+                      {(entry.toStatus || "none").toUpperCase()}
+                    </Text>
+                    {entry.note ? (
+                      <Text style={styles.refundTimelineNote}>{entry.note}</Text>
                     ) : null}
                   </View>
-
-                  <TouchableOpacity
-                    style={styles.afterSalesActionBtn}
-                    onPress={() => openWarrantyRequest(item)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.afterSalesActionText}>Yêu cầu bảo hành</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
+                ))}
             </View>
-          ) : (
-            <View style={styles.afterSalesNoteBox}>
-              <Text style={styles.afterSalesNoteText}>
-                Bảo hành sẽ mở khi đơn đã giao thành công.
-              </Text>
-            </View>
-          )}
+          ) : null}
         </SectionCard>
-      </ScrollView>
-    </SafeAreaView>
-  );
+      )}
+      {(canSubmitRefundInfo || canRequestRefund) && (
+        <SectionCard title="Yêu cầu hoàn tiền" icon="return-down-back-outline">
+          <Text style={styles.refundHelperText}>
+            {canSubmitRefundInfo
+              ? "Refund này đang chờ bạn bổ sung thông tin để sale tiếp tục xem xét."
+              : "Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để sale tiếp nhận và xử lý."}
+          </Text>
+          <TouchableOpacity
+            style={styles.refundActionBtn}
+            onPress={handleRefundRequest}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.refundActionText}>
+              {canSubmitRefundInfo
+                ? "Bổ sung thông tin hoàn tiền"
+                : order?.refund
+                  ? "Tạo yêu cầu hoàn tiền mới"
+                  : "Tạo yêu cầu hoàn tiền"}
+            </Text>
+          </TouchableOpacity>
+        </SectionCard>
+      )}
+
+      <SectionCard
+        title="Hỗ trợ sau mua"
+        icon="chatbubble-ellipses-outline"
+        right={
+          <TouchableOpacity onPress={openSupportCenter} activeOpacity={0.8}>
+            <Text style={styles.linkText}>Tất cả case</Text>
+          </TouchableOpacity>
+        }
+      >
+        <Text style={styles.refundHelperText}>
+          Theo dõi support, refund, và warranty của đơn này từ cùng một nơi.
+        </Text>
+
+        {!!orderStore && (
+          <View style={styles.afterSalesStoreBox}>
+            <Text style={styles.afterSalesStoreTitle}>
+              Cửa hàng xử lý:{" "}
+              {orderStore.name
+                ? `${orderStore.name}${orderStore.code ? ` (${orderStore.code})` : ""}`
+                : "--"}
+            </Text>
+            <Text style={styles.afterSalesStoreMeta}>
+              {[orderStore.district, orderStore.city].filter(Boolean).join(", ") || "--"}
+            </Text>
+            {orderStore.openingHours ? (
+              <Text style={styles.afterSalesStoreMeta}>
+                Giờ mở cửa: {orderStore.openingHours}
+              </Text>
+            ) : null}
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={styles.secondaryActionBtn}
+          onPress={openOrderSupport}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.secondaryActionText}>Tạo ticket cho đơn hàng</Text>
+        </TouchableOpacity>
+
+        {canRequestWarranty ? (
+          <View style={styles.afterSalesList}>
+            {warrantyItems.map((item, index) => (
+              <View
+                key={String(item?.itemId || item?._id || index)}
+                style={styles.afterSalesCard}
+              >
+                <View style={styles.afterSalesHeader}>
+                  <Text style={styles.afterSalesTitle}>{item?.name || "Sản phẩm"}</Text>
+                  {!!item?.variantText ? (
+                    <Text style={styles.afterSalesMeta}>{item.variantText}</Text>
+                  ) : null}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.afterSalesActionBtn}
+                  onPress={() => openWarrantyRequest(item)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.afterSalesActionText}>Yêu cầu bảo hành</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.afterSalesNoteBox}>
+            <Text style={styles.afterSalesNoteText}>
+              Bảo hành sẽ mở khi đơn đã giao thành công.
+            </Text>
+          </View>
+        )}
+      </SectionCard>
+
+      <Modal
+        visible={Boolean(previewImageUrl)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImageUrl("")}
+      >
+        <View style={styles.previewOverlay}>
+          <Pressable style={styles.previewBackdrop} onPress={() => setPreviewImageUrl("")} />
+          <View style={styles.previewContentWrap} pointerEvents="box-none">
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setPreviewImageUrl("")}
+              style={styles.previewCloseBtn}
+            >
+              <Ionicons name="close" size={22} color={PALETTE.text} />
+            </TouchableOpacity>
+            <View style={styles.previewCard}>
+              {previewImageUrl ? (
+                <Image source={{ uri: previewImageUrl }} style={styles.previewImage} resizeMode="contain" />
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
+  </SafeAreaView>
+);
 }
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#F6F7FB",
+    backgroundColor: PALETTE.bg,
   },
 
   header: {
@@ -1200,13 +1214,13 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   errorBigText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
     textAlign: "center",
   },
 
@@ -1215,11 +1229,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 14,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
   },
 
   retryBtnText: {
-    color: "#2563EB",
+    color: PALETTE.navy,
     fontWeight: "800",
   },
 
@@ -1230,11 +1244,11 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#EEF2F7",
+    borderColor: PALETTE.border,
   },
 
   heroTop: {
@@ -1247,14 +1261,14 @@ const styles = StyleSheet.create({
   orderCode: {
     fontSize: 17,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   orderDate: {
     marginTop: 6,
     fontSize: 12,
     fontWeight: "600",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   heroMetaRow: {
@@ -1265,7 +1279,7 @@ const styles = StyleSheet.create({
 
   heroMetaBox: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: PALETTE.navyTint,
     borderRadius: 14,
     padding: 12,
   },
@@ -1273,21 +1287,21 @@ const styles = StyleSheet.create({
   heroMetaLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
     marginBottom: 6,
   },
 
   heroMetaValue: {
     fontSize: 13,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   payNowBtn: {
     marginTop: 14,
     height: 42,
     borderRadius: 14,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1295,7 +1309,7 @@ const styles = StyleSheet.create({
   },
 
   payNowBtnText: {
-    color: "#FFFFFF",
+    color: PALETTE.white,
     fontWeight: "800",
   },
 
@@ -1330,11 +1344,11 @@ const styles = StyleSheet.create({
   },
 
   sectionCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#EEF2F7",
+    borderColor: PALETTE.border,
   },
 
   sectionHeader: {
@@ -1353,7 +1367,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   infoRow: {
@@ -1362,21 +1376,21 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: PALETTE.border,
   },
 
   infoLabel: {
     flex: 1,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   infoValue: {
     flex: 1,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#111827",
+    color: PALETTE.text,
     textAlign: "right",
   },
 
@@ -1392,7 +1406,7 @@ const styles = StyleSheet.create({
   productCountText: {
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   productsWrap: {
@@ -1404,23 +1418,23 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 10,
     borderRadius: 16,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: PALETTE.navyTint,
     borderWidth: 1,
-    borderColor: "#EEF2F7",
+    borderColor: PALETTE.border,
   },
 
   productImage: {
     width: 62,
     height: 62,
     borderRadius: 12,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.white,
   },
 
   productFallback: {
     width: 62,
     height: 62,
     borderRadius: 12,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.white,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1432,7 +1446,7 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#111827",
+    color: PALETTE.text,
     lineHeight: 18,
   },
 
@@ -1442,20 +1456,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.white,
   },
 
   productTypeBadgeText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#374151",
+    color: PALETTE.navy,
   },
 
   productVariant: {
     marginTop: 4,
     fontSize: 11.5,
     fontWeight: "600",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   lensSpecsWrap: {
@@ -1466,7 +1480,7 @@ const styles = StyleSheet.create({
   lensSpecText: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#4B5563",
+    color: PALETTE.muted,
     lineHeight: 16,
   },
 
@@ -1480,7 +1494,38 @@ const styles = StyleSheet.create({
   productMeta: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#374151",
+    color: PALETTE.muted,
+  },
+  uploadPreviewCard: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  uploadPreviewImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: PALETTE.border,
+  },
+  uploadPreviewMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  uploadPreviewTitle: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: PALETTE.text,
+  },
+  uploadPreviewHint: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: PALETTE.muted,
   },
 
   payLaterText: {
@@ -1497,13 +1542,13 @@ const styles = StyleSheet.create({
   productLineTotal: {
     fontSize: 12.5,
     fontWeight: "900",
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 
   linkText: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 
   timeline: {
@@ -1524,23 +1569,23 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: PALETTE.border,
     marginTop: 2,
   },
 
   stepDotActive: {
-    backgroundColor: "#2563EB",
+    backgroundColor: "green",
   },
 
   stepLine: {
     width: 2,
     height: 40,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: PALETTE.border,
     marginTop: 2,
   },
 
   stepLineActive: {
-    backgroundColor: "#2563EB",
+    backgroundColor: "green",
   },
 
   stepContent: {
@@ -1551,25 +1596,25 @@ const styles = StyleSheet.create({
   stepTitle: {
     fontSize: 13.5,
     fontWeight: "900",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   stepTitleActive: {
-    color: "#111827",
+    color: "green",
   },
 
   stepDesc: {
     marginTop: 4,
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   refundHelperText: {
     marginTop: 2,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#4B5563",
+    color: PALETTE.muted,
     lineHeight: 18,
   },
 
@@ -1577,13 +1622,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
   },
 
   refundActionText: {
-    color: "#FFFFFF",
+    color: PALETTE.white,
     fontSize: 13,
     fontWeight: "900",
   },
@@ -1592,13 +1637,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     height: 42,
     borderRadius: 14,
-    backgroundColor: "#216afc",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
   },
 
   secondaryActionText: {
-    color: "#fff",
+    color: PALETTE.white,
     fontSize: 13,
     fontWeight: "900",
   },
@@ -1607,22 +1652,22 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: PALETTE.navyTint,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: PALETTE.border,
   },
 
   afterSalesStoreTitle: {
     fontSize: 12.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   afterSalesStoreMeta: {
     marginTop: 6,
     fontSize: 12,
     fontWeight: "700",
-    color: "#64748B",
+    color: PALETTE.muted,
     lineHeight: 17,
   },
 
@@ -1634,8 +1679,8 @@ const styles = StyleSheet.create({
   afterSalesCard: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.navyTint,
     padding: 12,
     gap: 10,
   },
@@ -1647,25 +1692,25 @@ const styles = StyleSheet.create({
   afterSalesTitle: {
     fontSize: 13,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   afterSalesMeta: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   afterSalesActionBtn: {
     height: 40,
     borderRadius: 12,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
   },
 
   afterSalesActionText: {
-    color: "#FFFFFF",
+    color: PALETTE.white,
     fontSize: 12.5,
     fontWeight: "900",
   },
@@ -1674,15 +1719,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.navyTint,
     padding: 12,
   },
 
   afterSalesNoteText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
     lineHeight: 17,
   },
 
@@ -1690,22 +1735,22 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.navyTint,
     padding: 12,
   },
 
   refundInfoTitle: {
     fontSize: 12.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   refundInfoText: {
     marginTop: 6,
     fontSize: 12,
     fontWeight: "700",
-    color: "#475569",
+    color: PALETTE.muted,
     lineHeight: 17,
   },
 
@@ -1724,15 +1769,15 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 12,
-    backgroundColor: "#E2E8F0",
+    backgroundColor: PALETTE.border,
   },
 
   refundTimelineItem: {
     marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.navyTint,
     padding: 12,
   },
 
@@ -1746,13 +1791,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   refundTimelineTime: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#64748B",
+    color: PALETTE.muted,
     textAlign: "right",
   },
 
@@ -1760,7 +1805,45 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     fontWeight: "700",
-    color: "#475569",
+    color: PALETTE.muted,
     lineHeight: 17,
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+  },
+  previewBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  previewContentWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 24,
+    zIndex: 2,
+  },
+  previewCard: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  previewCloseBtn: {
+    position: "absolute",
+    top: 50,
+    right: 18,
+    zIndex: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: PALETTE.white,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

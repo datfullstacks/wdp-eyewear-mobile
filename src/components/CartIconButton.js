@@ -1,5 +1,4 @@
-﻿// components/CartIconButton.js
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { TouchableOpacity, View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../store/authStore";
@@ -40,8 +39,8 @@ export default function CartIconButton({ onPress }) {
   }, [token]);
 
   return (
-    <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8} onPress={onPress}>
-      <Ionicons name="cart-outline" size={25} color={PALETTE.navy} />
+    <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={onPress}>
+      <Ionicons name="cart-outline" size={20} color={PALETTE.navy} />
       {token && qty > 0 ? (
         <View style={styles.cartDot}>
           <Text style={styles.cartDotText}>{qty > 99 ? "99+" : String(qty)}</Text>
@@ -53,11 +52,14 @@ export default function CartIconButton({ onPress }) {
 
 const styles = StyleSheet.create({
   iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
     position: "relative",
   },
   cartDot: {
@@ -68,9 +70,16 @@ const styles = StyleSheet.create({
     height: 18,
     paddingHorizontal: 4,
     borderRadius: 9,
-    backgroundColor: "#EF4444",
+    backgroundColor: "#EF4444", // Màu đỏ
+    borderWidth: 1.5,
+    borderColor: PALETTE.white,
     alignItems: "center",
     justifyContent: "center",
   },
-  cartDotText: { color: "white", fontSize: 11, fontWeight: "800" },
+  cartDotText: { 
+    color: PALETTE.white, 
+    fontSize: 10, 
+    fontWeight: "900",
+    lineHeight: 13,
+  },
 });

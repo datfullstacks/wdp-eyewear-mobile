@@ -50,14 +50,14 @@ function normalizeTryOnRow(row = {}) {
     publishedRaw == null
       ? null
       : typeof publishedRaw === "boolean"
-      ? publishedRaw
-      : toBoolean(publishedRaw, false);
+        ? publishedRaw
+        : toBoolean(publishedRaw, false);
   const isActive =
     isActiveRaw == null
       ? true
       : typeof isActiveRaw === "boolean"
-      ? isActiveRaw
-      : toBoolean(isActiveRaw, true);
+        ? isActiveRaw
+        : toBoolean(isActiveRaw, true);
 
   const status = toText(readField(row, ["status"]));
   const arUrl = toText(readField(row, ["ar_url", "arUrl", "web_url", "webUrl"]));
@@ -124,7 +124,7 @@ async function fetchTryOnRowsByProductIds(productIds = []) {
     .in(TRYON_SUPABASE_PRODUCT_ID_COLUMN, ids);
 
   if (error) {
-    console.warn(`[TryOn Supabase] Query failed on table "${TRYON_SUPABASE_TABLE}": ${error.message}`);
+    // console.warn(`[TryOn Supabase] Query failed on table "${TRYON_SUPABASE_TABLE}": ${error.message}`);
     return [];
   }
 

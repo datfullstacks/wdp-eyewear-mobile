@@ -85,7 +85,7 @@ async function resolveCachedPath(url) {
     return "";
   }
 
-  console.log(`[TryOn Cache] Reusing cached model: ${path}`);
+  // console.log(`[TryOn Cache] Reusing cached model: ${path}`);
   return path;
 }
 
@@ -129,7 +129,7 @@ async function downloadModelToCache(url) {
         }
       }
 
-      console.log(`[TryOn Cache] Downloaded model to cache: ${finalPath}`);
+      //  console.log(`[TryOn Cache] Downloaded model to cache: ${finalPath}`);
       return finalPath;
     } finally {
       try {
@@ -183,7 +183,7 @@ async function resolveModelUrl(url) {
       };
     }
   } catch (error) {
-    console.warn(`[TryOn Cache] Failed caching model: ${original} (${error?.message || error})`);
+    // console.warn(`[TryOn Cache] Failed caching model: ${original} (${error?.message || error})`);
   }
 
   return {

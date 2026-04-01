@@ -48,7 +48,7 @@ async function ensureAndroidChannelAsync() {
   if (Platform.OS !== "android") return;
 
   await Notifications.setNotificationChannelAsync("default", {
-    name: "Thong bao don hang",
+    name: "Thông báo đơn hàng",
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: "#2563EB",

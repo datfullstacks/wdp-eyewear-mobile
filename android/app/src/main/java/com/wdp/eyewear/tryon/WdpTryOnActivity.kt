@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.SurfaceView
+import android.view.View
 import android.util.TypedValue
 import android.widget.Button
 import android.widget.FrameLayout
@@ -16,6 +17,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import org.json.JSONArray
 
 private data class TryOnModelOption(
@@ -169,20 +172,14 @@ class WdpTryOnActivity : AppCompatActivity() {
       setPadding(dp(16), dp(12), dp(16), dp(12))
       setBackgroundColor(0x8F111827.toInt())
       text = buildStatusText("Preparing native AR session...")
+      visibility = View.GONE
     }
-    overlay.addView(
-      statusLabel,
-      LinearLayout.LayoutParams(
-        LinearLayout.LayoutParams.MATCH_PARENT,
-        LinearLayout.LayoutParams.WRAP_CONTENT
-      )
-    )
 
     if (availableModels.size > 1) {
       val selectorLabel = TextView(this).apply {
         setTextColor(0xFFFFFFFF.toInt())
         textSize = 14f
-        text = "Switch model"
+        text = "Đổi mẫu"
         setTypeface(typeface, android.graphics.Typeface.BOLD)
         setPadding(dp(4), dp(18), dp(4), dp(10))
       }
@@ -225,7 +222,8 @@ class WdpTryOnActivity : AppCompatActivity() {
 
     val closeButton =
       Button(this).apply {
-        text = "Close"
+        text = "Đóng"
+        isAllCaps = false
         setOnClickListener {
           finishCancelled("Native try-on closed by user.")
         }
@@ -233,7 +231,8 @@ class WdpTryOnActivity : AppCompatActivity() {
 
     val doneButton =
       Button(this).apply {
-        text = "Done"
+        text = "Xong"
+        isAllCaps = false
         setOnClickListener {
           finishSuccess(
             status = "completed",
@@ -268,7 +267,50 @@ class WdpTryOnActivity : AppCompatActivity() {
       }
     )
 
+    ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+      val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+      overlay.setPadding(dp(16), systemBars.top + dp(16), dp(16), 0)
+      actions.setPadding(dp(24), dp(16), dp(24), systemBars.bottom + dp(24))
+      insets
+    }
+    ViewCompat.requestApplyInsets(root)
+
     setContentView(root)
+  }
+
+  private fun localizeModelLabel(label: String): String {
+    val cleaned =
+      label
+        .replace(Regex("\\bnot\\s+ready\\b", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\bready\\b", RegexOption.IGNORE_CASE), "")
+        .trim()
+        .trim('/')
+
+    if (cleaned.isEmpty()) return "Mẫu"
+
+    return cleaned
+      .split("/")
+      .map { it.trim() }
+      .filter { it.isNotEmpty() }
+      .joinToString(" / ") { part ->
+        when (part.lowercase()) {
+          "red" -> "Đỏ"
+          "black" -> "Đen"
+          "white" -> "Trắng"
+          "blue" -> "Xanh dương"
+          "green" -> "Xanh lá"
+          "yellow" -> "Vàng"
+          "gold" -> "Vàng"
+          "silver" -> "Bạc"
+          "gray", "grey" -> "Xám"
+          "brown" -> "Nâu"
+          "pink" -> "Hồng"
+          "purple" -> "Tím"
+          "orange" -> "Cam"
+          "transparent", "clear" -> "Trong suốt"
+          else -> part
+        }
+      }
   }
 
   private fun renderModelButtons() {
@@ -284,12 +326,9 @@ class WdpTryOnActivity : AppCompatActivity() {
 
     availableModels.forEach { model ->
       val isActive = activeModel?.id == model.id
+      val localizedLabel = localizeModelLabel(model.label)
       val button = TextView(this).apply {
-        text = buildString {
-          append(model.label)
-          append("\n")
-          append(if (model.ready) "Ready" else "Not ready")
-        }
+        text = localizedLabel
         textSize = 12f
         setLineSpacing(0f, 1.05f)
         setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -396,7 +435,7 @@ class WdpTryOnActivity : AppCompatActivity() {
     renderModelButtons()
 
     if (!sessionStarted) {
-      updateStatus("Đã chọn ${model.label}")
+      updateStatus("Đã chọn ${localizeModelLabel(model.label)}")
       return
     }
 
@@ -415,7 +454,7 @@ class WdpTryOnActivity : AppCompatActivity() {
       val managerClass = sdkManagerClass ?: managerInstance.javaClass
       managerClass.getMethod("loadEffect", String::class.java, Boolean::class.javaPrimitiveType!!)
         .invoke(managerInstance, normalizeBanubaPath(effectToLoad), false)
-      updateStatus("Đang thử với ${model.label}")
+      updateStatus("")
     } catch (error: Throwable) {
       if (model.fallbackUrl.isNotEmpty()) {
         openFallbackAndFinish("Failed to switch model natively. Opening fallback URL instead.")
@@ -511,9 +550,7 @@ class WdpTryOnActivity : AppCompatActivity() {
 
       sessionStarted = true
       currentEffectPath = effectToLoad
-      updateStatus(
-        activeModel?.let { "Đang thử với ${it.label}" } ?: "Camera đã sẵn sàng"
-      )
+      updateStatus("")
     } catch (error: Throwable) {
       stopSession()
       if (resolveActiveFallbackUrl().isNotEmpty()) {
@@ -554,7 +591,9 @@ class WdpTryOnActivity : AppCompatActivity() {
   }
 
   private fun updateStatus(extraLine: String) {
-    statusLabel.text = buildStatusText(extraLine)
+    val text = buildStatusText(extraLine)
+    statusLabel.text = text
+    statusLabel.visibility = if (text.isBlank()) View.GONE else View.GONE
   }
 
   private fun resolveActiveFallbackUrl(): String {

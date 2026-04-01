@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
 import {
   addMyAddressApi,
   deleteMyAddressApi,
@@ -41,6 +41,19 @@ const EMPTY_FORM = {
   provinceId: "",
   country: "VN",
   note: "",
+};
+
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
 };
 
 function AddressCard({ item, onSetDefault, onDelete, onEdit }) {
@@ -94,14 +107,21 @@ function AddressCard({ item, onSetDefault, onDelete, onEdit }) {
       </Text>
 
       <View style={styles.actions}>
-        <TouchableOpacity activeOpacity={0.85} onPress={() => onEdit(item)}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => onEdit(item)}
+          style={[styles.actionBtn, styles.editBtn]}
+        >
+          <Feather name="edit" size={16} color={PALETTE.navy} />
           <Text style={styles.editText}>Sửa</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => onDelete(item?._id)}
+          style={[styles.actionBtn, styles.deleteBtn]}
         >
+          <MaterialIcons name="delete-outline" size={18} color="#DC2626" />
           <Text style={styles.deleteText}>Xóa</Text>
         </TouchableOpacity>
       </View>
@@ -386,7 +406,7 @@ export default function AddressBookScreen({ navigation }) {
         <Ionicons
           name={showForm ? "remove-circle-outline" : "add-circle-outline"}
           size={18}
-          color="#2563EB"
+          color={PALETTE.navy}
         />
         <Text style={styles.addNewBtnText}>
           {showForm ? "Ẩn form địa chỉ" : "Thêm địa chỉ mới"}
@@ -401,14 +421,16 @@ export default function AddressBookScreen({ navigation }) {
 
           <TextInput
             style={styles.input}
-            placeholder="Full name *"
+            placeholder="Họ và tên *"
+            placeholderTextColor="#9CA3AF"
             value={form.fullName}
             onChangeText={(v) => setForm((p) => ({ ...p, fullName: v }))}
           />
 
           <TextInput
             style={styles.input}
-            placeholder="Phone *"
+            placeholder="Số điện thoại *"
+            placeholderTextColor="#9CA3AF"
             keyboardType="phone-pad"
             value={form.phone}
             onChangeText={(v) => setForm((p) => ({ ...p, phone: v }))}
@@ -417,6 +439,7 @@ export default function AddressBookScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="Email"
+            placeholderTextColor="#9CA3AF"
             keyboardType="email-address"
             autoCapitalize="none"
             value={form.email}
@@ -426,6 +449,7 @@ export default function AddressBookScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="Số nhà, tên đường *"
+            placeholderTextColor="#9CA3AF"
             value={form.line1}
             onChangeText={(v) => setForm((p) => ({ ...p, line1: v }))}
           />
@@ -433,13 +457,16 @@ export default function AddressBookScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="Tòa nhà, tầng, căn hộ (không bắt buộc)"
+            placeholderTextColor="#9CA3AF"
             value={form.line2}
             onChangeText={(v) => setForm((p) => ({ ...p, line2: v }))}
           />
 
-          <Text style={styles.pickerLabel}>Tỉnh / Thành phố *</Text>
+          <Text style={styles.pickerLabel}>Tỉnh / Thành phố <Text style={{ color: "red" }}>*</Text></Text>
           <View style={styles.pickerWrap}>
             <Picker
+              style={[styles.picker, !form.provinceId && styles.pickerPlaceholder]}
+              dropdownIconColor="#6B7280"
               selectedValue={form.provinceId}
               onValueChange={(value) => {
                 if (!value) {
@@ -469,20 +496,23 @@ export default function AddressBookScreen({ navigation }) {
                 }));
               }}
             >
-              <Picker.Item label="Chọn tỉnh / thành phố" value="" />
+              <Picker.Item label="Chọn tỉnh / thành phố" value="" color="#E5E7EB" />
               {provinces.map((p) => (
                 <Picker.Item
                   key={String(p.id)}
                   label={p.name}
                   value={String(p.id)}
+                  color="#FFFFFF"
                 />
               ))}
             </Picker>
           </View>
 
-          <Text style={styles.pickerLabel}>Quận / Huyện *</Text>
+          <Text style={styles.pickerLabel}>Quận / Huyện <Text style={{ color: "red" }}>*</Text></Text>
           <View style={styles.pickerWrap}>
             <Picker
+              style={[styles.picker, !form.districtId && styles.pickerPlaceholder]}
+              dropdownIconColor="#6B7280"
               enabled={!!form.provinceId}
               selectedValue={form.districtId}
               onValueChange={(value) => {
@@ -509,20 +539,23 @@ export default function AddressBookScreen({ navigation }) {
                 }));
               }}
             >
-              <Picker.Item label="Chọn quận / huyện" value="" />
+              <Picker.Item label="Chọn quận / huyện" value="" color="#E5E7EB" />
               {districts.map((d) => (
                 <Picker.Item
                   key={String(d.id)}
                   label={d.name}
                   value={String(d.id)}
+                  color="#FFFFFF"
                 />
               ))}
             </Picker>
           </View>
 
-          <Text style={styles.pickerLabel}>Phường / Xã</Text>
+          <Text style={styles.pickerLabel}>Phường / Xã <Text style={{ color: "red" }}>*</Text></Text>
           <View style={styles.pickerWrap}>
             <Picker
+              style={[styles.picker, !form.wardCode && styles.pickerPlaceholder]}
+              dropdownIconColor="#6B7280"
               enabled={!!form.districtId}
               selectedValue={form.wardCode}
               onValueChange={(value) => {
@@ -541,12 +574,13 @@ export default function AddressBookScreen({ navigation }) {
                 }));
               }}
             >
-              <Picker.Item label="Chọn phường / xã" value="" />
+              <Picker.Item label="Chọn phường / xã" value="" color="#E5E7EB" />
               {wards.map((w) => (
                 <Picker.Item
                   key={String(w.code)}
                   label={w.name}
                   value={w.code}
+                  color="#FFFFFF"
                 />
               ))}
             </Picker>
@@ -561,6 +595,7 @@ export default function AddressBookScreen({ navigation }) {
                 setShowForm(false);
               }}
             >
+              <Ionicons name="close-outline" size={18} color="#DC2626" />
               <Text style={styles.cancelBtnText}>Hủy</Text>
             </TouchableOpacity>
 
@@ -570,6 +605,11 @@ export default function AddressBookScreen({ navigation }) {
               onPress={submit}
               disabled={submitting}
             >
+              <Ionicons
+                name={isEditing ? "save-outline" : "checkmark-circle-outline"}
+                size={18}
+                color="#FFFFFF"
+              />
               <Text style={styles.submitText}>
                 {submitting
                   ? "Đang lưu..."
@@ -666,14 +706,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     height: 44,
     borderRadius: 12,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    borderWidth: 1,
+    borderColor: PALETTE.navy,
   },
   addNewBtnText: {
-    color: "#2563EB",
+    color: PALETTE.navy,
     fontSize: 13,
     fontWeight: "900",
   },
@@ -718,6 +760,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#FFFFFF",
   },
+  picker: {
+    color: "#111827",
+  },
+  pickerPlaceholder: {
+    color: "#9CA3AF",
+  },
 
   formActions: {
     flexDirection: "row",
@@ -729,20 +777,24 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: "#FECACA",
+    flexDirection: "row",
+    gap: 6,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FEF2F2",
   },
   cancelBtnText: {
-    color: "#111827",
+    color: "#DC2626",
     fontWeight: "900",
   },
   submitBtn: {
     flex: 1,
     height: 42,
     borderRadius: 10,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
+    flexDirection: "row",
+    gap: 6,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -792,10 +844,29 @@ const styles = StyleSheet.create({
     marginTop: 10,
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: 16,
+    gap: 10,
+  },
+  actionBtn: {
+    minWidth: 84,
+    height: 36,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+  },
+  editBtn: {
+    backgroundColor: PALETTE.navyTint,
+    borderColor: PALETTE.border,
+  },
+  deleteBtn: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
   },
   editText: {
-    color: "#2563EB",
+    color: PALETTE.navy,
     fontWeight: "900",
     fontSize: 12.5,
   },
@@ -810,7 +881,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: {
-    color: "#6B7280",
+    color: "red",
     fontWeight: "700",
   },
   metaLabel: {

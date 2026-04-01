@@ -5,7 +5,7 @@ import { getApiBaseUrl } from "./runtimeConfig";
 const BASE_URL = getApiBaseUrl();
 
 if (typeof __DEV__ !== "undefined" && __DEV__) {
-  console.log("API baseURL =>", BASE_URL);
+  // console.log("API baseURL =>", BASE_URL);
 }
 
 export const api = axios.create({

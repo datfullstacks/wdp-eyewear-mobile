@@ -15,7 +15,7 @@ import {
   PermissionsAndroid,
   Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { AntDesign, Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
@@ -47,6 +47,7 @@ import {
 } from "../services/cartService";
 import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
+import { uploadFileApi } from "../services/uploadService";
 import { useAuthStore } from "../store/authStore";
 import { useStoreNetworkStore } from "../store/storeNetworkStore";
 import { useSystemConfigStore } from "../store/systemConfigStore";
@@ -73,6 +74,20 @@ const calcDiscountPct = (price, originalPrice) => {
   return Math.round(((originalPrice - price) / originalPrice) * 100);
 };
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
+
 const ORDER_TYPES = {
   READY: "Nhận thông số",
   PREORDER: "Đặt trước",
@@ -80,12 +95,12 @@ const ORDER_TYPES = {
 };
 
 const TRY_ON_STATUS_LABEL = {
-  draft: "Try-on chưa được phát hành",
-  pending_review: "Try-on đang chờ duyệt",
-  approved: "Try-on đã duyệt, chờ phát hành",
-  published: "Try-on đã sẵn sàng",
-  rejected: "Try-on cần cập nhật lại",
-  archived: "Try-on đã lưu trữ",
+  draft: "Thử kính chưa được phát hành",
+  pending_review: "Thử kính đang chờ duyệt",
+  approved: "Thử kính đã duyệt, chờ phát hành",
+  published: "Thử kính đã sẵn sàng",
+  rejected: "Thử kính cần cập nhật lại",
+  archived: "Thử kính đã lưu trữ",
 };
 
 const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
@@ -457,9 +472,9 @@ function normalizeAttachmentUrl(value) {
 function hasPrescriptionValues(prescription = {}) {
   return Boolean(
     normalizeTextValue(prescription?.rightEye?.cyl) ||
-      normalizeTextValue(prescription?.rightEye?.axis) ||
-      normalizeTextValue(prescription?.leftEye?.cyl) ||
-      normalizeTextValue(prescription?.leftEye?.axis)
+    normalizeTextValue(prescription?.rightEye?.axis) ||
+    normalizeTextValue(prescription?.leftEye?.cyl) ||
+    normalizeTextValue(prescription?.leftEye?.axis)
   );
 }
 
@@ -503,11 +518,11 @@ function isSameCartConfiguration(cartItem = {}, payload = {}) {
 
   if (
     normalizeTextValue(cartCustomization?.selectedColor) !==
-      normalizeTextValue(payloadCustomization?.selectedColor) ||
+    normalizeTextValue(payloadCustomization?.selectedColor) ||
     normalizeTextValue(cartCustomization?.selectedSize) !==
-      normalizeTextValue(payloadCustomization?.selectedSize) ||
+    normalizeTextValue(payloadCustomization?.selectedSize) ||
     normalizeTextValue(cartCustomization?.note) !==
-      normalizeTextValue(payloadCustomization?.note)
+    normalizeTextValue(payloadCustomization?.note)
   ) {
     return false;
   }
@@ -566,6 +581,8 @@ export default function ProductDetailScreen({ navigation, route }) {
   const [specsOpen, setSpecsOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState("");
+  const [uploadPreviewOpen, setUploadPreviewOpen] = useState(false);
+  const [uploadPreviewImageUrl, setUploadPreviewImageUrl] = useState("");
 
   const requireLogin = () => {
     Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để sử dụng tính năng này.", [
@@ -583,6 +600,7 @@ export default function ProductDetailScreen({ navigation, route }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [detailLoadError, setDetailLoadError] = useState("");
   const [isLaunchingTryOn, setIsLaunchingTryOn] = useState(false);
+  const [isUploadingRxPhoto, setIsUploadingRxPhoto] = useState(false);
   const [fav, setFav] = useState(false);
   const catalogType = getProductCatalogType(product);
   const isFrameLike = isFrameLikeProduct(product);
@@ -646,7 +664,7 @@ export default function ProductDetailScreen({ navigation, route }) {
         if (mounted) {
           setDetailLoadError(e?.response?.data?.message || e?.message || "Không tải được chi tiết sản phẩm.");
         }
-        console.warn("[ProductDetail] fetchProductById failed", e?.message || e);
+        // console.warn("[ProductDetail] fetchProductById failed", e?.message || e);
       } finally {
         if (mounted) setIsRefreshing(false);
       }
@@ -965,7 +983,7 @@ export default function ProductDetailScreen({ navigation, route }) {
       setSavedPrescriptions(normalized);
       return normalized;
     } catch (err) {
-      console.warn("[ProductDetail] getMyPrescriptionsApi failed", err?.message || err);
+      // console.warn("[ProductDetail] getMyPrescriptionsApi failed", err?.message || err);
       setSavedPrescriptions([]);
       return [];
     } finally {
@@ -975,7 +993,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
-      void refreshSystemConfig().catch(() => {});
+      void refreshSystemConfig().catch(() => { });
       if (token && isLensRxProduct) {
         void loadSavedPrescriptions();
       }
@@ -1029,10 +1047,29 @@ export default function ProductDetailScreen({ navigation, route }) {
     if (!res.canceled) {
       const a = res.assets?.[0];
       if (a?.uri) {
-        setLensDraft((prev) => ({
-          ...prev,
-          attachmentUrls: [a.uri],
-        }));
+        try {
+          setIsUploadingRxPhoto(true);
+          const uploaded = await uploadFileApi(
+            {
+              uri: a.uri,
+              name: a.fileName || `lens-rx-${Date.now()}.jpg`,
+              type: a.mimeType || "image/jpeg",
+            },
+            { folder: "lens-prescriptions" }
+          );
+
+          setLensDraft((prev) => ({
+            ...prev,
+            attachmentUrls: [uploaded.url],
+          }));
+        } catch (error) {
+          Alert.alert(
+            "Upload thất bại",
+            error?.response?.data?.message || error?.message || "Không thể tải ảnh đơn kính lên."
+          );
+        } finally {
+          setIsUploadingRxPhoto(false);
+        }
       }
     }
   }, []);
@@ -1115,34 +1152,34 @@ export default function ProductDetailScreen({ navigation, route }) {
 
       const payload = matchedItem
         ? {
-            ...nextPayload,
-            itemId: matchedItem._id || matchedItem.id,
-            quantity: Number(matchedItem.quantity || 0) + Number(qty || 1),
-          }
+          ...nextPayload,
+          itemId: matchedItem._id || matchedItem.id,
+          quantity: Number(matchedItem.quantity || 0) + Number(qty || 1),
+        }
         : nextPayload;
 
       await upsertCartItemApi(apiCartType, payload);
 
       if (typeof __DEV__ !== "undefined" && __DEV__ && product?.type === "LENS") {
-        console.log(
-          "[Cart] lens add payload",
-          JSON.stringify(
-            {
-              productId: payload.productId,
-              variantId: payload.variantId || "",
-              quantity: payload.quantity,
-              customization: {
-                selectedColor: payload?.customization?.selectedColor || "",
-                selectedSize: payload?.customization?.selectedSize || "",
-                prescription: summarizePrescriptionForDebug(
-                  payload?.customization?.prescription
-                ),
-              },
-            },
-            null,
-            2
-          )
-        );
+        // console.log(
+        //   "[Cart] lens add payload",
+        //   JSON.stringify(
+        //     {
+        //       productId: payload.productId,
+        //       variantId: payload.variantId || "",
+        //       quantity: payload.quantity,
+        //       customization: {
+        //         selectedColor: payload?.customization?.selectedColor || "",
+        //         selectedSize: payload?.customization?.selectedSize || "",
+        //         prescription: summarizePrescriptionForDebug(
+        //           payload?.customization?.prescription
+        //         ),
+        //       },
+        //     },
+        //     null,
+        //     2
+        //   )
+        // );
 
         const latestCart = await getMyCartApi(apiCartType);
         const latestItems = Array.isArray(latestCart?.items) ? latestCart.items : [];
@@ -1151,28 +1188,28 @@ export default function ProductDetailScreen({ navigation, route }) {
           latestItems.find((item) => isSameCartIdentity(item, payload)) ||
           null;
 
-        console.log(
-          "[Cart] lens saved customization",
-          JSON.stringify(
-            savedItem
-              ? {
-                  itemId: savedItem?._id || savedItem?.id || "",
-                  productId: savedItem?.productId || "",
-                  variantId: savedItem?.variantId || "",
-                  quantity: Number(savedItem?.quantity || 0),
-                  customization: {
-                    selectedColor: savedItem?.customization?.selectedColor || "",
-                    selectedSize: savedItem?.customization?.selectedSize || "",
-                    prescription: summarizePrescriptionForDebug(
-                      savedItem?.customization?.prescription
-                    ),
-                  },
-                }
-              : null,
-            null,
-            2
-          )
-        );
+        // console.log(
+        //   "[Cart] lens saved customization",
+        //   JSON.stringify(
+        //     savedItem
+        //       ? {
+        //         itemId: savedItem?._id || savedItem?.id || "",
+        //         productId: savedItem?.productId || "",
+        //         variantId: savedItem?.variantId || "",
+        //         quantity: Number(savedItem?.quantity || 0),
+        //         customization: {
+        //           selectedColor: savedItem?.customization?.selectedColor || "",
+        //           selectedSize: savedItem?.customization?.selectedSize || "",
+        //           prescription: summarizePrescriptionForDebug(
+        //             savedItem?.customization?.prescription
+        //           ),
+        //         },
+        //       }
+        //       : null,
+        //     null,
+        //     2
+        //   )
+        // );
       }
 
       changeCartBadgeQty(qty);
@@ -1307,7 +1344,7 @@ export default function ProductDetailScreen({ navigation, route }) {
         } catch (e) {
           fetchFailed = true;
           setDetailLoadError(e?.response?.data?.message || e?.message || "Không tải được dữ liệu try-on.");
-          console.warn("[ProductDetail] hydrate try-on failed", e?.message || e);
+          //console.warn("[ProductDetail] hydrate try-on failed", e?.message || e);
         }
       }
 
@@ -1332,9 +1369,9 @@ export default function ProductDetailScreen({ navigation, route }) {
         selectedModelId && hasSourceVariantSpecificModels
           ? sourceTryOnModels.find((model) => model.id === selectedModelId) || null
           : sourceTryOnModels.find((model) => model.id === selectedModelId) ||
-            sourceTryOnModels.find((model) => model.ready) ||
-            sourceTryOnModels[0] ||
-            null;
+          sourceTryOnModels.find((model) => model.ready) ||
+          sourceTryOnModels[0] ||
+          null;
       const tryOn =
         selectedModel?.tryOn ||
         buildTryOnPayload(sourceProduct?.tryOn || {}, sourceImage3DAsset || null);
@@ -1389,7 +1426,7 @@ export default function ProductDetailScreen({ navigation, route }) {
         },
       });
     } catch (error) {
-      console.warn("[TryOn Native] Direct launch failed", error);
+      // console.warn("[TryOn Native] Direct launch failed", error);
       Alert.alert(
         "Try-on",
         error?.message || "Không mở được try-on. Vui lòng thử lại."
@@ -1423,7 +1460,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
       <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={styles.content}>
         {isRefreshing ? (
-          <Text style={{ marginTop: 10, fontWeight: "700", color: "#6B7280" }}>
+          <Text style={{ marginTop: 10, fontWeight: "700", color: PALETTE.muted }}>
             Đang cập nhật dữ liệu mới nhất...
           </Text>
         ) : null}
@@ -1502,6 +1539,7 @@ export default function ProductDetailScreen({ navigation, route }) {
             lensDraft={lensDraft}
             setLensDraft={setLensDraft}
             pickRxPhoto={pickRxPhoto}
+            isUploadingRxPhoto={isUploadingRxPhoto}
             lensValidation={lensValidation}
             lensRange={lensRange}
             lensSummary={lensPrescriptionSummary}
@@ -1513,6 +1551,10 @@ export default function ProductDetailScreen({ navigation, route }) {
             canBuy={canBuy}
             onAdd={onAddToCart}
             onBuyNow={onBuyNow}
+            onPreviewUploadImage={(imageUrl) => {
+              setUploadPreviewImageUrl(imageUrl);
+              setUploadPreviewOpen(true);
+            }}
             isPreorderMode={isPreorderMode}
             qty={qty}
             incQty={incQty}
@@ -1567,6 +1609,13 @@ export default function ProductDetailScreen({ navigation, route }) {
           image={mainImage}
           model3DUrl={model3DUrl}
         />
+        <HeroPreviewModal
+          visible={uploadPreviewOpen}
+          onClose={() => setUploadPreviewOpen(false)}
+          mediaMode="2d"
+          image={uploadPreviewImageUrl}
+          model3DUrl=""
+        />
         <SavedPrescriptionPickerModal
           visible={savedPrescriptionPickerOpen}
           items={savedPrescriptions}
@@ -1594,7 +1643,7 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
           activeOpacity={0.8}
           style={styles.headerIconBtn}
         >
-          <Ionicons name="chevron-back" size={22} color="#111827" />
+          <Ionicons name="chevron-back" size={22} color='black' />
         </TouchableOpacity>
 
         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -1612,9 +1661,23 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
             })
           }
         />
-        <View  style={styles.headerIconBtn}>
-          <AntDesign name="comment" size={24} color="black" />
-        </View>
+        <Pressable
+          style={styles.iconBtn}
+          hitSlop={8}
+          onPress={() =>
+            navigation.navigate("Support", {
+              prefillCategory: "general",
+              lockCategory: false,
+              orderId: "",
+              orderCode: "",
+              orderItemId: "",
+              orderItemName: "",
+              draftSubject: "",
+            })
+          }
+        >
+          <AntDesign name="comment" size={18} color={PALETTE.navy} />
+        </Pressable>
       </View>
     </View>
   );
@@ -1699,7 +1762,7 @@ function Hero({
             onPress={onOpenPreview}
             style={styles.expand3DBtn}
           >
-            <Ionicons name="expand-outline" size={16} color="#111827" />
+            <Ionicons name="expand-outline" size={16} color={PALETTE.text} />
             <Text style={styles.expand3DBtnText}>Phóng to</Text>
           </TouchableOpacity>
         ) : null}
@@ -1803,7 +1866,7 @@ function HeroPreviewModal({
             onPress={onClose}
             style={styles.previewCloseBtn}
           >
-            <Ionicons name="close" size={22} color="#111827" />
+            <Ionicons name="close" size={22} color={PALETTE.text} />
           </TouchableOpacity>
 
           <View style={styles.previewCard}>
@@ -1854,8 +1917,8 @@ function InfoCard({
     ? splitPaymentEnabled === false
       ? "Thanh toán: SePay toàn bộ đơn"
       : allowCod === false
-      ? "Thanh toán: SePay đặt cọc"
-      : "Thanh toán: SePay đặt cọc, COD phần còn lại"
+        ? "Thanh toán: SePay đặt cọc"
+        : "Thanh toán: SePay đặt cọc, COD phần còn lại"
     : codEnabled
       ? "Thanh toán: SePay hoặc COD"
       : "Thanh toán: SePay";
@@ -1866,7 +1929,7 @@ function InfoCard({
 
       <View style={styles.metaRow}>
         <View style={styles.ratingRow}>
-          <Ionicons name="star" size={14} color="#F59E0B" />
+          <Ionicons name="star" size={14} color={PALETTE.gold} />
           <Text style={styles.ratingText}>{ratingAvg != null ? ratingAvg.toFixed(1) : "4.7"}</Text>
           <Text style={styles.dot}>•</Text>
           <Text style={styles.metaText}>{ratingCount} đánh giá</Text>
@@ -1912,6 +1975,7 @@ function LensOptions({
   lensDraft,
   setLensDraft,
   pickRxPhoto,
+  isUploadingRxPhoto,
   lensValidation,
   lensRange,
   lensSummary,
@@ -1923,6 +1987,7 @@ function LensOptions({
   canBuy,
   onAdd,
   onBuyNow,
+  onPreviewUploadImage,
   isPreorderMode,
   qty,
   incQty,
@@ -2005,9 +2070,9 @@ function LensOptions({
               </Text>
             </View>
             {savedPrescriptionsLoading ? (
-              <ActivityIndicator size="small" color="#2563EB" />
+              <ActivityIndicator size="small" color={PALETTE.navy} />
             ) : (
-              <Ionicons name="document-text-outline" size={18} color="#2563EB" />
+              <Ionicons name="document-text-outline" size={18} color={PALETTE.navy} />
             )}
           </View>
 
@@ -2132,7 +2197,7 @@ function LensOptions({
               }))
             }
             placeholder="Ghi chú thêm cho đơn kính hoặc nhu cầu của bạn..."
-            placeholderTextColor="#9AA4B2"
+            placeholderTextColor={PALETTE.muted}
             style={[styles.noteInput, { marginTop: 12 }]}
             multiline
           />
@@ -2163,16 +2228,42 @@ function LensOptions({
 
           <TouchableOpacity
             activeOpacity={0.9}
-            style={[styles.outlineBtn, { width: "100%", marginTop: 10 }]}
+            style={[styles.uploadRxBtn, isUploadingRxPhoto && styles.btnDisabled]}
             onPress={pickRxPhoto}
+            disabled={isUploadingRxPhoto}
           >
-            <Text style={styles.outlineBtnText}>
-              {lensDraft?.attachmentUrls?.length ? "Đổi ảnh đơn kính" : "Tải ảnh đơn kính"}
+            <Ionicons
+              name={isUploadingRxPhoto ? "cloud-upload" : "cloud-upload-outline"}
+              size={18}
+              color={PALETTE.navy}
+            />
+            <Text style={styles.uploadRxBtnText}>
+              {isUploadingRxPhoto
+                ? "Đang tải ảnh..."
+                : lensDraft?.attachmentUrls?.length
+                  ? "Đổi ảnh đơn kính"
+                  : "Tải ảnh đơn kính"}
             </Text>
           </TouchableOpacity>
 
           {lensDraft?.attachmentUrls?.length ? (
-            <Text style={styles.mutedText}>Đã chọn ảnh đơn kính.</Text>
+            <View style={styles.uploadPreviewWrap}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.uploadPreviewCard}
+                onPress={() => onPreviewUploadImage?.(lensDraft.attachmentUrls[0])}
+              >
+                <Image
+                  source={{ uri: lensDraft.attachmentUrls[0] }}
+                  style={styles.uploadPreviewImage}
+                />
+                <View style={styles.uploadPreviewMeta}>
+                  <Text style={styles.uploadPreviewTitle}>Ảnh đơn kính đã tải</Text>
+                  <Text style={styles.uploadPreviewHint}>Nhấn để xem ảnh lớn</Text>
+                </View>
+                <Ionicons name="expand-outline" size={18} color={PALETTE.navy} />
+              </TouchableOpacity>
+            </View>
           ) : null}
 
           <TextInput
@@ -2184,7 +2275,7 @@ function LensOptions({
               }))
             }
             placeholder="Ghi chú thêm cho đơn kính..."
-            placeholderTextColor="#9AA4B2"
+            placeholderTextColor={PALETTE.muted}
             style={[styles.noteInput, { marginTop: 12 }]}
             multiline
           />
@@ -2226,11 +2317,18 @@ function SavedPrescriptionPickerModal({
   onSelect,
   onManage,
 }) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.sheetOverlay}>
         <Pressable style={styles.sheetBackdrop} onPress={onClose} />
-        <View style={styles.pickerSheet}>
+        <View
+          style={[
+            styles.pickerSheet,
+            { paddingBottom: Math.max(insets.bottom + 12, 24) },
+          ]}
+        >
           <View style={styles.pickerSheetHeader}>
             <View>
               <Text style={styles.sheetTitleText}>Chọn đơn đã lưu</Text>
@@ -2239,18 +2337,18 @@ function SavedPrescriptionPickerModal({
               </Text>
             </View>
             <TouchableOpacity activeOpacity={0.85} onPress={onClose} style={styles.sheetCloseBtn}>
-              <Ionicons name="close" size={20} color="#111827" />
+              <Ionicons name="close" size={20} color={PALETTE.text} />
             </TouchableOpacity>
           </View>
 
           {loading ? (
             <View style={styles.savedPickerEmpty}>
-              <ActivityIndicator size="small" color="#2563EB" />
+              <ActivityIndicator size="small" color={PALETTE.navy} />
               <Text style={styles.savedPickerEmptyText}>Đang tải đơn kính đã lưu...</Text>
             </View>
           ) : items.length === 0 ? (
             <View style={styles.savedPickerEmpty}>
-              <Ionicons name="document-text-outline" size={22} color="#9CA3AF" />
+              <Ionicons name="document-text-outline" size={22} color={PALETTE.muted} />
               <Text style={styles.savedPickerEmptyTitle}>Chưa có đơn đã lưu</Text>
               <Text style={styles.savedPickerEmptyText}>
                 Bạn có thể thêm prescription ở hồ sơ rồi quay lại đây để áp dụng nhanh.
@@ -2287,7 +2385,7 @@ function SavedPrescriptionPickerModal({
                         </Text>
                       </View>
                       {active ? (
-                        <Ionicons name="checkmark-circle" size={20} color="#2563EB" />
+                        <Ionicons name="checkmark-circle" size={20} color={PALETTE.navy} />
                       ) : null}
                     </View>
                     {summary.lines.map((line) => (
@@ -2306,7 +2404,7 @@ function SavedPrescriptionPickerModal({
               <Text style={styles.outlineBtnText}>Làm mới</Text>
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.88} style={styles.primaryBtn} onPress={onManage}>
-              <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+              <Ionicons name="create-outline" size={16} color={PALETTE.white} />
               <Text style={styles.primaryBtnText}>Quản lý đơn kính</Text>
             </TouchableOpacity>
           </View>
@@ -2318,7 +2416,7 @@ function SavedPrescriptionPickerModal({
 
 function TryOnCard({ tryOn, onOpenTryOn, canOpen, modelCount = 0, isLaunching = false }) {
   const status = String(tryOn?.status || "").trim().toLowerCase();
-  const statusLabel = TRY_ON_STATUS_LABEL[status] || "Không có trạng thái try-on";
+  const statusLabel = TRY_ON_STATUS_LABEL[status] || "Không có trạng thái thử kính";
   const hintText =
     modelCount > 1
       ? `${statusLabel}. Có ${modelCount} mẫu để thử.`
@@ -2328,8 +2426,8 @@ function TryOnCard({ tryOn, onOpenTryOn, canOpen, modelCount = 0, isLaunching = 
     <Card>
       <View style={styles.tryOnHeader}>
         <View style={styles.tryOnTitleWrap}>
-          <Ionicons name="glasses-outline" size={18} color="#111827" />
-          <Text style={styles.sectionTitle}>Virtual Try-On</Text>
+          <Ionicons name="glasses-outline" size={18} color={PALETTE.text} />
+          <Text style={styles.sectionTitle}>Thử kính</Text>
         </View>
         <View style={[styles.tryOnStatusPill, canOpen ? styles.tryOnStatusPillReady : styles.tryOnStatusPillPending]}>
           <Text style={[styles.tryOnStatusText, canOpen ? styles.tryOnStatusTextReady : styles.tryOnStatusTextPending]}>
@@ -2347,12 +2445,12 @@ function TryOnCard({ tryOn, onOpenTryOn, canOpen, modelCount = 0, isLaunching = 
         style={[styles.tryOnButton, (!canOpen || isLaunching) && styles.btnDisabled]}
       >
         {isLaunching ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          <ActivityIndicator size="small" color={PALETTE.white} />
         ) : (
-          <Ionicons name="camera-outline" size={18} color="#FFFFFF" />
+          <Ionicons name="camera-outline" size={18} color={PALETTE.white} />
         )}
         <Text style={[styles.tryOnButtonText, (!canOpen || isLaunching) && styles.btnDisabledText]}>
-          {isLaunching ? "Đang mở Try-On..." : canOpen ? "Mở Try-On" : "Try-On chưa khả dụng"}
+          {isLaunching ? "Đang thử kính..." : canOpen ? "Thử kính" : "Thử kính chưa khả dụng"}
         </Text>
       </TouchableOpacity>
     </Card>
@@ -2383,7 +2481,7 @@ function StoreAvailabilityCard({
     <View style={styles.accWrap}>
       <TouchableOpacity activeOpacity={0.85} onPress={onToggle} style={styles.accHeader}>
         <Text style={styles.accTitle}>Cửa hàng</Text>
-        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color="#9AA4B2" />
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={PALETTE.muted} />
       </TouchableOpacity>
 
       {open ? (
@@ -2396,7 +2494,7 @@ function StoreAvailabilityCard({
 
               {selectedStore ? (
                 <View style={styles.storeHintBox}>
-                  <Ionicons name="business-outline" size={16} color="#1D4ED8" />
+                  <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
                   <Text style={styles.storeHintText}>
                     Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
                   </Text>
@@ -2430,14 +2528,14 @@ function StoreAvailabilityCard({
                         <Ionicons
                           name="checkmark-circle"
                           size={18}
-                          color="#1D4ED8"
+                          color={PALETTE.navy}
                           style={styles.storeCardStatusIcon}
                         />
                       ) : canSwitchStore ? (
                         <Ionicons
                           name="chevron-forward"
                           size={16}
-                          color="#9CA3AF"
+                          color={PALETTE.muted}
                           style={styles.storeCardStatusIcon}
                         />
                       ) : null}
@@ -2454,7 +2552,7 @@ function StoreAvailabilityCard({
             <>
               {selectedStore ? (
                 <View style={styles.storeHintBox}>
-                  <Ionicons name="business-outline" size={16} color="#1D4ED8" />
+                  <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
                   <Text style={styles.storeHintText}>
                     Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
                   </Text>
@@ -2487,14 +2585,14 @@ function StoreAvailabilityCard({
                       <Ionicons
                         name="checkmark-circle"
                         size={18}
-                        color="#1D4ED8"
+                        color={PALETTE.navy}
                         style={styles.storeCardStatusIcon}
                       />
                     ) : canSwitchStore ? (
                       <Ionicons
                         name="chevron-forward"
                         size={16}
-                        color="#9CA3AF"
+                        color={PALETTE.muted}
                         style={styles.storeCardStatusIcon}
                       />
                     ) : null}
@@ -2609,20 +2707,6 @@ function FrameOptions({
           <Text style={styles.qtyBtnText}>+</Text>
         </TouchableOpacity>
       </View>
-{/* 
-      {orderType === "READY" ? (
-        <View style={{ marginTop: 14 }}>
-          <Text style={styles.sectionTitle}>Thông số / Ghi chú</Text>
-          <TextInput
-            value={readyNote}
-            onChangeText={setReadyNote}
-            placeholder="Nhập ghi chú hoặc thông số bạn muốn cung cấp..."
-            placeholderTextColor="#9AA4B2"
-            style={styles.noteInput}
-            multiline
-          />
-        </View>
-      ) : null} */}
 
       <CTAButtons canBuy={canBuy} onAdd={onAdd} onBuyNow={onBuyNow} isPreorder={isPreorderMode} />
     </Card>
@@ -2641,7 +2725,7 @@ function CTAButtons({ canBuy, onAdd, onBuyNow, isPreorder }) {
         style={[styles.primaryBtn, !canBuy && styles.btnDisabled]}
         onPress={onAdd}
       >
-        <Ionicons name="cart-outline" size={18} color="#fff" />
+        <Ionicons name="cart-outline" size={18} color={PALETTE.white} />
         <Text style={[styles.primaryBtnText, !canBuy && styles.btnDisabledText]}>{addLabel}</Text>
       </TouchableOpacity>
 
@@ -2662,7 +2746,7 @@ function SpecsCard({ specs, open, onToggle }) {
     <View style={styles.accWrap}>
       <TouchableOpacity activeOpacity={0.85} onPress={onToggle} style={styles.accHeader}>
         <Text style={styles.accTitle}>Điểm nổi bật</Text>
-        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color="#9AA4B2" />
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={PALETTE.muted} />
       </TouchableOpacity>
 
       {open ? (
@@ -2763,7 +2847,7 @@ function Accordion({ title, open, onToggle, content }) {
     <View style={styles.accWrap}>
       <TouchableOpacity activeOpacity={0.85} onPress={onToggle} style={styles.accHeader}>
         <Text style={styles.accTitle}>{title}</Text>
-        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color="#9AA4B2" />
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={PALETTE.muted} />
       </TouchableOpacity>
       {open ? <View style={styles.accBody}>{content}</View> : null}
     </View>
@@ -2778,7 +2862,7 @@ function RxInput({ label, placeholder, value, onChangeText, error }) {
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#9AA4B2"
+        placeholderTextColor={PALETTE.muted}
         keyboardType="numeric"
         style={[styles.rxInput, error && styles.rxInputError]}
       />
@@ -2788,7 +2872,7 @@ function RxInput({ label, placeholder, value, onChangeText, error }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
   content: { paddingHorizontal: 16, paddingBottom: 16 },
 
   header: {
@@ -2800,13 +2884,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 5, flex: 1 },
-  headerRight: { flexDirection: "row", gap: 10 },
-  headerIconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 15.5, fontWeight: "900", color: "#111827", flexShrink: 1 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0 },
+  headerTitle: { fontSize: 15.5, fontWeight: "900", color: PALETTE.text, flexShrink: 1 },
 
   card: {
     marginTop: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 18,
     padding: 14,
     shadowColor: "#000",
@@ -2820,7 +2903,7 @@ const styles = StyleSheet.create({
   heroImageWrap: {
     height: 210,
     borderRadius: 16,
-    backgroundColor: "#fff",
+    backgroundColor: PALETTE.white,
     overflow: "hidden",
     position: "relative",
     alignItems: "center",
@@ -2837,12 +2920,12 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
     overflow: "hidden",
   },
   heroThumbItemActive: {
-    borderColor: "#111827",
+    borderColor: PALETTE.navy,
   },
   heroThumbImage: {
     width: "100%",
@@ -2859,7 +2942,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  discountBadgeText: { color: "#fff", fontWeight: "900", fontSize: 12 },
+  discountBadgeText: { color: PALETTE.white, fontWeight: "900", fontSize: 12 },
 
   statusPill: {
     position: "absolute",
@@ -2871,7 +2954,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
   },
-  statusText: { fontSize: 12, fontWeight: "800", color: "#111827" },
+  statusText: { fontSize: 12, fontWeight: "800", color: PALETTE.text },
 
   outOfStockOverlay: {
     position: "absolute",
@@ -2888,7 +2971,7 @@ const styles = StyleSheet.create({
   outOfStockText: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: PALETTE.white,
     textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
@@ -2929,13 +3012,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 12,
   },
-  modeSwitchItemActive: { backgroundColor: "#111827" },
-  modeSwitchText: { fontSize: 12, fontWeight: "900", color: "#111827" },
-  modeSwitchTextActive: { color: "#fff" },
+  modeSwitchItemActive: { backgroundColor: PALETTE.navy },
+  modeSwitchText: { fontSize: 12, fontWeight: "900", color: PALETTE.text },
+  modeSwitchTextActive: { color: PALETTE.white },
 
-  name: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  sectionTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  mutedText: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "black" },
+  name: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
+  sectionTitle: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
+  mutedText: { marginTop: 10, fontSize: 12, fontWeight: "700", color: PALETTE.muted },
   tryOnHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   tryOnTitleWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
   tryOnStatusPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
@@ -2944,24 +3027,24 @@ const styles = StyleSheet.create({
   tryOnStatusText: { fontSize: 11, fontWeight: "900" },
   tryOnStatusTextReady: { color: "#159947" },
   tryOnStatusTextPending: { color: "#D33A2C" },
-  tryOnHint: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  tryOnHint: { marginTop: 10, fontSize: 12, fontWeight: "700", color: PALETTE.muted },
   storeHintBox: {
     marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderRadius: 12,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  storeHintText: { flex: 1, fontSize: 12, fontWeight: "700", color: "#1D4ED8" },
+  storeHintText: { flex: 1, fontSize: 12, fontWeight: "700", color: PALETTE.navy },
   storeCardRow: {
     position: "relative",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
@@ -2970,33 +3053,33 @@ const styles = StyleSheet.create({
     paddingRight: 24,
   },
   storeCardRowActive: {
-    borderColor: "#2563EB",
-    backgroundColor: "#EFF6FF",
+    borderColor: PALETTE.navy,
+    backgroundColor: PALETTE.navyTint,
   },
   storeCardStatusIcon: {
     position: "absolute",
     top: 12,
     right: 12,
   },
-  storeCardTitle: { fontSize: 12.5, fontWeight: "800", color: "#111827" },
-  storeCardMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "600", color: "#6B7280" },
+  storeCardTitle: { fontSize: 12.5, fontWeight: "800", color: PALETTE.text },
+  storeCardMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "600", color: PALETTE.muted },
   tryOnButton: {
     marginTop: 12,
     height: 44,
     borderRadius: 12,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
   },
-  tryOnButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
+  tryOnButtonText: { color: PALETTE.white, fontSize: 13, fontWeight: "900" },
 
   metaRow: { marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  ratingText: { fontSize: 12, fontWeight: "900", color: "#111827" },
-  metaText: { fontSize: 12, fontWeight: "700", color: "#6B7280" },
-  dot: { color: "#9AA4B2", fontWeight: "900" },
+  ratingText: { fontSize: 12, fontWeight: "900", color: PALETTE.text },
+  metaText: { fontSize: 12, fontWeight: "700", color: PALETTE.muted },
+  dot: { color: PALETTE.muted, fontWeight: "900" },
 
   stockBadge: { backgroundColor: "#E7F8EF", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   stockBadgeText: { color: "#159947", fontWeight: "900", fontSize: 12 },
@@ -3005,35 +3088,35 @@ const styles = StyleSheet.create({
   outOfStockBadgeText: { color: "#EF4444", fontWeight: "900", fontSize: 12 },
 
   stockInfo: { marginTop: 10, fontSize: 12, fontWeight: "700", color: "#159947" },
-  paymentInfo: { marginTop: 8, fontSize: 12, fontWeight: "700", color: "#4B5563" },
+  paymentInfo: { marginTop: 8, fontSize: 12, fontWeight: "700", color: PALETTE.muted },
 
   priceRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 10 },
-  price: { fontSize: 18, fontWeight: "900", color: "green" },
-  priceDisabled: { color: "#9CA3AF" },
-  originalPrice: { fontSize: 12, fontWeight: "800", color: "#9CA3AF", textDecorationLine: "line-through" },
+  price: { fontSize: 18, fontWeight: "900", color: PALETTE.navy },
+  priceDisabled: { color: PALETTE.muted },
+  originalPrice: { fontSize: 12, fontWeight: "800", color: PALETTE.muted, textDecorationLine: "line-through" },
   offBadge: { backgroundColor: "#FFECEC", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
   offBadgeText: { color: "#D33A2C", fontWeight: "900", fontSize: 12 },
 
-  segmented: { marginTop: 10, flexDirection: "row", backgroundColor: "#F3F4F6", borderRadius: 14, padding: 4, gap: 6 },
+  segmented: { marginTop: 10, flexDirection: "row", backgroundColor: PALETTE.border, borderRadius: 14, padding: 4, gap: 6 },
   segmentItem: { flex: 1, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  segmentItemActive: { backgroundColor: "#FFFFFF" },
-  segmentText: { fontSize: 12, fontWeight: "900", color: "#6B7280" },
-  segmentTextActive: { color: "#111827" },
+  segmentItemActive: { backgroundColor: PALETTE.white },
+  segmentText: { fontSize: 12, fontWeight: "900", color: PALETTE.muted },
+  segmentTextActive: { color: PALETTE.navy },
 
-  eyeLabel: { marginTop: 10, fontSize: 12, fontWeight: "900", color: "#111827" },
+  eyeLabel: { marginTop: 10, fontSize: 12, fontWeight: "900", color: PALETTE.text },
   rxRow: { flexDirection: "row", gap: 10, marginTop: 8 },
   rxCell: { flex: 1 },
-  rxLabel: { fontSize: 12, fontWeight: "900", color: "#6B7280", marginBottom: 6 },
+  rxLabel: { fontSize: 12, fontWeight: "900", color: PALETTE.muted, marginBottom: 6 },
   rxInput: {
     height: 44,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     paddingHorizontal: 12,
     fontSize: 13,
     fontWeight: "900",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    color: PALETTE.text,
+    backgroundColor: PALETTE.white,
   },
   rxInputError: { borderColor: "#DC2626" },
   rxInputErrorText: { marginTop: 6, fontSize: 11.5, fontWeight: "700", color: "#DC2626" },
@@ -3058,28 +3141,28 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#DBEAFE",
-    backgroundColor: "#F8FBFF",
+    borderColor: PALETTE.navyTint,
+    backgroundColor: PALETTE.navyTint,
     padding: 12,
   },
   savedRxHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  savedRxTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  savedRxMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "700", color: "#2563EB" },
+  savedRxTitle: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
+  savedRxMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "700", color: PALETTE.navy },
   savedRxLines: { marginTop: 10, gap: 6 },
-  savedRxLine: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
+  savedRxLine: { fontSize: 12, fontWeight: "700", color: PALETTE.muted },
   savedRxActions: { marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12 },
   secondaryActionBtn: {
     height: 40,
     borderRadius: 12,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: "#BFDBFE",
-    backgroundColor: "#FFFFFF",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
     alignItems: "center",
     justifyContent: "center",
   },
-  secondaryActionText: { fontSize: 12, fontWeight: "900", color: "#2563EB" },
-  linkInlineText: { fontSize: 12, fontWeight: "900", color: "#2563EB" },
+  secondaryActionText: { fontSize: 12, fontWeight: "900", color: PALETTE.navy },
+  linkInlineText: { fontSize: 12, fontWeight: "900", color: PALETTE.navy },
 
   colorRow: { marginTop: 10, flexDirection: "row", gap: 10, alignItems: "center" },
   colorDotWrap: {
@@ -3087,18 +3170,18 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 17,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  colorDotWrapActive: { borderColor: "#111827", borderWidth: 2 },
+  colorDotWrapActive: { borderColor: PALETTE.navy, borderWidth: 2 },
   colorDot: { width: 18, height: 18, borderRadius: 9 },
 
   sizeRow: { marginTop: 10, flexDirection: "row", gap: 10 },
-  sizePill: { width: 46, height: 38, borderRadius: 12, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
-  sizePillActive: { backgroundColor: "#111827" },
-  sizeText: { fontWeight: "900", color: "#111827" },
-  sizeTextActive: { color: "#fff" },
+  sizePill: { width: 46, height: 38, borderRadius: 12, backgroundColor: PALETTE.navyTint, alignItems: "center", justifyContent: "center" },
+  sizePillActive: { backgroundColor: PALETTE.navy },
+  sizeText: { fontWeight: "900", color: PALETTE.navy },
+  sizeTextActive: { color: PALETTE.white },
 
   outOfStockInfoBox: {
     flexDirection: "row",
@@ -3115,30 +3198,78 @@ const styles = StyleSheet.create({
   outOfStockInfoText: { flex: 1, fontSize: 12, fontWeight: "700", color: "#D33A2C" },
 
   qtyRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 14 },
-  qtyBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
-  qtyBtnText: { fontSize: 18, fontWeight: "900", color: "#111827" },
-  qtyValue: { width: 30, textAlign: "center", fontSize: 14, fontWeight: "900", color: "#111827" },
+  qtyBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: PALETTE.navyTint, alignItems: "center", justifyContent: "center" },
+  qtyBtnText: { fontSize: 18, fontWeight: "900", color: PALETTE.navy },
+  qtyValue: { width: 30, textAlign: "center", fontSize: 14, fontWeight: "900", color: PALETTE.text },
 
   ctaRow: { marginTop: 14, flexDirection: "row", gap: 12 },
-  primaryBtn: { flex: 1, height: 46, borderRadius: 14, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
-  primaryBtnText: { color: "#fff", fontWeight: "900" },
-  outlineBtn: { width: 130, height: 46, borderRadius: 14, backgroundColor: "#FFFFFF", borderWidth: 1.5, borderColor: "#2563EB", alignItems: "center", justifyContent: "center" },
-  outlineBtnText: { color: "#2563EB", fontWeight: "900" },
+  primaryBtn: { flex: 1, height: 46, borderRadius: 14, backgroundColor: PALETTE.navy, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  primaryBtnText: { color: PALETTE.white, fontWeight: "900" },
+  outlineBtn: { width: 130, height: 46, borderRadius: 14, backgroundColor: PALETTE.white, borderWidth: 1.5, borderColor: PALETTE.navy, alignItems: "center", justifyContent: "center" },
+  outlineBtnText: { color: PALETTE.navy, fontWeight: "900" },
+  uploadRxBtn: {
+    width: "100%",
+    marginTop: 10,
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: PALETTE.white,
+    borderWidth: 1.5,
+    borderColor: PALETTE.navy,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  uploadRxBtnText: { color: PALETTE.navy, fontWeight: "900", fontSize: 13 },
+  uploadPreviewWrap: {
+    marginTop: 12,
+  },
+  uploadPreviewCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  uploadPreviewImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: PALETTE.border,
+  },
+  uploadPreviewMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  uploadPreviewTitle: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: PALETTE.text,
+  },
+  uploadPreviewHint: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: PALETTE.muted,
+  },
   btnDisabled: { opacity: 0.45 },
-  btnDisabledText: { color: "#9CA3AF" },
+  btnDisabledText: { color: PALETTE.muted },
 
   noteInput: {
     marginTop: 10,
     minHeight: 76,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
     fontWeight: "800",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    color: PALETTE.text,
+    backgroundColor: PALETTE.white,
   },
   sheetOverlay: {
     flex: 1,
@@ -3147,7 +3278,7 @@ const styles = StyleSheet.create({
   },
   sheetBackdrop: { flex: 1 },
   pickerSheet: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 16,
@@ -3161,13 +3292,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
-  sheetTitleText: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  sheetSubtitleText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  sheetTitleText: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
+  sheetSubtitleText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: PALETTE.muted },
   sheetCloseBtn: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.bg,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3178,25 +3309,25 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
   },
-  savedPickerEmptyTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  savedPickerEmptyTitle: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
   savedPickerEmptyText: {
     textAlign: "center",
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
     lineHeight: 18,
   },
   savedPickerCard: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
     padding: 12,
     gap: 6,
   },
   savedPickerCardActive: {
-    borderColor: "#2563EB",
-    backgroundColor: "#EFF6FF",
+    borderColor: PALETTE.navy,
+    backgroundColor: PALETTE.navyTint,
   },
   savedPickerCardHeader: {
     flexDirection: "row",
@@ -3204,20 +3335,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  savedPickerCardTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  savedPickerCardMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "700", color: "#2563EB" },
-  savedPickerLine: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
+  savedPickerCardTitle: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
+  savedPickerCardMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "700", color: PALETTE.navy },
+  savedPickerLine: { fontSize: 12, fontWeight: "700", color: PALETTE.muted },
   savedPickerActions: { flexDirection: "row", gap: 12 },
 
-  specRow: { flexDirection: "row", paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#EEF2F7" },
-  specLabel: { width: 130, fontSize: 12, fontWeight: "800", color: "#6B7280" },
-  specValue: { flex: 1, fontSize: 12, fontWeight: "900", color: "#111827" },
+  specRow: { flexDirection: "row", paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: PALETTE.border },
+  specLabel: { width: 130, fontSize: 12, fontWeight: "800", color: PALETTE.muted },
+  specValue: { flex: 1, fontSize: 12, fontWeight: "900", color: PALETTE.text },
 
-  accWrap: { marginTop: 12, backgroundColor: "#FFFFFF", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 4, elevation: 3 },
+  accWrap: { marginTop: 12, backgroundColor: PALETTE.white, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 4, elevation: 3 },
   accHeader: { height: 46, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  accTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  accTitle: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
   accBody: { paddingBottom: 14 },
-  accText: { fontSize: 13, fontWeight: "700", color: "#4B5563", lineHeight: 18 },
+  accText: { fontSize: 13, fontWeight: "700", color: PALETTE.muted, lineHeight: 18 },
 
   expand3DBtn: {
     position: "absolute",
@@ -3236,7 +3367,7 @@ const styles = StyleSheet.create({
   expand3DBtnText: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   previewOverlay: {
@@ -3278,7 +3409,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3290,5 +3421,23 @@ const styles = StyleSheet.create({
   previewModelViewer: {
     width: "100%",
     height: "100%",
+  },
+
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
 });

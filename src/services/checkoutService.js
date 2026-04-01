@@ -48,14 +48,14 @@ function hasManualPrescriptionValues(prescription = {}) {
 
   return Boolean(
     toText(rightEye?.sphere) ||
-      toText(rightEye?.cyl) ||
-      toText(rightEye?.axis) ||
-      toText(rightEye?.add) ||
-      toText(leftEye?.sphere) ||
-      toText(leftEye?.cyl) ||
-      toText(leftEye?.axis) ||
-      toText(leftEye?.add) ||
-      toText(prescription?.pd)
+    toText(rightEye?.cyl) ||
+    toText(rightEye?.axis) ||
+    toText(rightEye?.add) ||
+    toText(leftEye?.sphere) ||
+    toText(leftEye?.cyl) ||
+    toText(leftEye?.axis) ||
+    toText(leftEye?.add) ||
+    toText(prescription?.pd)
   );
 }
 
@@ -195,7 +195,7 @@ export function buildCheckoutItems(items = []) {
 
       if (!productId) {
         if (typeof __DEV__ !== "undefined" && __DEV__) {
-          console.warn("checkout item missing productId", it);
+          // console.warn("checkout item missing productId", it);
         }
         return null;
       }
@@ -272,7 +272,7 @@ export function buildCheckoutPayload({
 
 export async function fetchCheckoutQuote(payload) {
   if (typeof __DEV__ !== "undefined" && __DEV__) {
-    console.log("api/checkout/quote payload", payload);
+    // console.log("api/checkout/quote payload", payload);
   }
   const res = await api.post("/api/checkout/quote", payload);
   return res?.data?.data || res?.data || {};
@@ -280,7 +280,7 @@ export async function fetchCheckoutQuote(payload) {
 
 export async function createCheckout(payload) {
   if (typeof __DEV__ !== "undefined" && __DEV__) {
-    console.log("api/checkout payload", payload);
+    // console.log("api/checkout payload", payload);
   }
   const res = await api.post("/api/checkout", payload);
   return res?.data?.data || res?.data || {};
