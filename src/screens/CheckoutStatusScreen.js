@@ -76,13 +76,13 @@ const PAYMENT_STATUS_META = {
 const REFUND_STATUS_META = {
   requested: {
     label: "Đã gửi yêu cầu",
-    desc: "Yêu cầu hoàn tiền đã được ghi nhận và đang chờ sale tiếp nhận.",
+    desc: "Yêu cầu hoàn tiền đã được ghi nhận và đang chờ nhân viên tiếp nhận.",
     color: PALETTE.gold,
     bg: PALETTE.goldSoft,
   },
   reviewing: {
-    label: "Đang review",
-    desc: "Sale đang kiểm tra thông tin hoàn tiền của bạn.",
+    label: "Đang kiểm tra",
+    desc: "Nhân viên đang kiểm tra thông tin hoàn tiền của bạn.",
     color: PALETTE.navy,
     bg: PALETTE.navyTint,
   },
@@ -93,38 +93,38 @@ const REFUND_STATUS_META = {
     bg: PALETTE.goldSoft,
   },
   escalated_to_manager: {
-    label: "Chờ manager",
-    desc: "Case đang được chuyển manager để phê duyệt thêm.",
+    label: "Chờ quảng lý phê duyệt",
+    desc: "Yêu cầu đang được chuyển đến quảng lý để phê duyệt thêm.",
     color: "#991B1B",
     bg: "#FEE2E2",
   },
   approved: {
     label: "Đã duyệt",
-    desc: "Yêu cầu hoàn tiền đã được duyệt. Sale đang chuẩn bị xử lý chuyển khoản.",
+    desc: "Yêu cầu hoàn tiền đã được duyệt. Nhân viên đang chuẩn bị xử lý chuyển khoản.",
     color: "#15803D",
     bg: "#ECFDF5",
   },
   return_pending: {
     label: "Chờ trả hàng",
-    desc: "Case cần xác nhận hàng hoàn trước khi tiếp tục chuyển khoản.",
+    desc: "Yêu cầu cần xác nhận hàng hoàn trước khi tiếp tục chuyển khoản.",
     color: PALETTE.gold,
     bg: PALETTE.goldSoft,
   },
   return_received: {
     label: "Đã nhận hàng hoàn",
-    desc: "Hàng hoàn đã được xác nhận. Sale sẽ tiếp tục xử lý hoàn tiền.",
+    desc: "Hàng hoàn đã được xác nhận. Nhân viên sẽ tiếp tục xử lý hoàn tiền.",
     color: PALETTE.navy,
     bg: PALETTE.navyTint,
   },
   processing: {
     label: "Đang hoàn tiền",
-    desc: "Sale đang xử lý giao dịch hoàn tiền cho bạn.",
+    desc: "Nhân viên đang xử lý giao dịch hoàn tiền cho bạn.",
     color: PALETTE.navy,
     bg: PALETTE.navyTint,
   },
   completed: {
     label: "Hoàn tất",
-    desc: "Refund đã hoàn tất.",
+    desc: "Yêu cầu hoàn tiền đã hoàn tất.",
     color: "#15803D",
     bg: "#ECFDF5",
   },
@@ -453,11 +453,11 @@ const normalizeRefund = (refund, { total = 0, shippingFee = 0 } = {}) => {
 
 const getRefundOwnerLabel = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "sales") return "Sale";
-  if (normalized === "manager") return "Manager";
+  if (normalized === "sales") return "Nhân viên bán hàng";
+  if (normalized === "manager") return "Quản lý";
   if (normalized === "operations") return "Bộ phận nhận hàng hoàn";
   if (normalized === "customer") return "Bạn";
-  return "Đã đóng case";
+  return "Đã đóng yêu cầu";
 };
 
 const getRefundNextStepLabel = (value) => {
@@ -467,9 +467,9 @@ const getRefundNextStepLabel = (value) => {
   if (normalized === "confirm_return_received") {
     return "Đang chờ xác nhận hàng hoàn";
   }
-  if (normalized === "start_processing") return "Sale đang chuẩn bị chuyển khoản";
-  if (normalized === "complete") return "Sale xác nhận đã chuyển tiền";
-  if (normalized === "start_review") return "Sale đang xem xét hồ sơ";
+  if (normalized === "start_processing") return "Nhân viên đang chuẩn bị chuyển khoản";
+  if (normalized === "complete") return "Nhân viên xác nhận đã chuyển tiền";
+  if (normalized === "start_review") return "Nhân viên đang xem xét hồ sơ";
   return "--";
 };
 
@@ -484,7 +484,7 @@ const getRefundInspectionLabel = (value) => {
 const getShippingMethodLabel = (value) => {
   const normalized = normalizeShippingMethod(value);
   if (normalized === "express") return "Giao nhanh";
-  return "Giao tieu chuan";
+  return "Giao tiêu chuẩn";
 };
 
 const getShippingCollectionTimingLabel = (value) => {
@@ -496,7 +496,7 @@ const getShippingCollectionTimingLabel = (value) => {
 
 const getShippingFeeModeLabel = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "estimated" ? "Tạm tính" : "Đã chốt";
+  return normalized === "estimated" ? "Tạm tính" : "Giá thanh toán";
 };
 
 const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
@@ -1131,7 +1131,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Không tìm thấy đơn hàng</Text>
             <Text style={styles.mutedText}>
-              Màn hình này cần được mở từ checkout hoặc từ một đơn hàng hợp lệ.
+              Màn hình này cần được mở từ thanh toán hoặc từ một đơn hàng hợp lệ.
             </Text>
 
             <View style={styles.actionRow}>
@@ -1298,7 +1298,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               Thanh toán {paymentMethodLabel}
             </Text>
             <Text style={styles.mutedText}>
-              Không có ảnh QR hợp lệ từ hệ thống. Vui lòng mở link thanh toán.
+              Không có ảnh QR hợp lệ từ hệ thống. Vui lòng mở liên kết thanh toán.
             </Text>
 
             <TouchableOpacity
@@ -1311,7 +1311,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               onPress={() => Linking.openURL(order.payment.paymentUrl)}
             >
               <Text style={[styles.actionText, styles.actionTextPrimary]}>
-                Mở link thanh toán
+                Mở liên kết thanh toán
               </Text>
             </TouchableOpacity>
 
@@ -1372,14 +1372,14 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           ) : null}
 
           <View style={styles.rowBetween}>
-            <Text style={styles.metaLabel}>Phí ship</Text>
+            <Text style={styles.metaLabel}>Phí giao hàng</Text>
             <Text style={styles.metaValue}>
               {getShippingFeeModeLabel(order.totals.shippingFeeMode)}
             </Text>
           </View>
 
           <View style={styles.rowBetween}>
-            <Text style={styles.metaLabel}>Thu phí ship</Text>
+            <Text style={styles.metaLabel}>Thu phí giao hàng</Text>
             <Text style={styles.metaValue}>
               {getShippingCollectionTimingLabel(
                 order.totals.shippingCollectionTiming,
@@ -1548,7 +1548,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.contactNote ? (
               <Text style={styles.refundNote}>
-                Sale yêu cầu: {order.refund.contactNote}
+                Nhân viên yêu cầu: {order.refund.contactNote}
               </Text>
             ) : null}
 
@@ -1556,13 +1556,13 @@ export default function CheckoutStatusScreen({ navigation, route }) {
               order.refund.returnShipmentCode ||
               order.refund.inspectionStatus !== "not_required" ? (
               <View style={styles.refundSubCard}>
-                <Text style={styles.refundSubTitle}>Thông tin return / QC</Text>
+                <Text style={styles.refundSubTitle}>Thông tin hoàn hàng & kiểm tra</Text>
                 <Text style={styles.refundSubText}>
-                  QC: {getRefundInspectionLabel(order.refund.inspectionStatus)}
+                  Kiểm tra: {getRefundInspectionLabel(order.refund.inspectionStatus)}
                 </Text>
                 {order.refund.inspectionNote ? (
                   <Text style={styles.refundSubText}>
-                    Ghi chú QC: {order.refund.inspectionNote}
+                    Ghi chú kiểm tra: {order.refund.inspectionNote}
                   </Text>
                 ) : null}
                 {order.refund.inspectionAt ? (
@@ -1597,13 +1597,13 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.totals.payLater > 0 ? (
               <Text style={styles.refundNote}>
-                Refund hiện tại chỉ áp dụng trên tiền cọc/tiền đã thanh toán.
+                Hoàn tiền hiện tại chỉ áp dụng trên tiền cọc/tiền đã thanh toán.
               </Text>
             ) : null}
 
             {order.refund.transactionRef ? (
               <Text style={styles.refundNote}>
-                Mã giao dịch refund: {order.refund.transactionRef}
+                Mã giao dịch hoàn tiền: {order.refund.transactionRef}
               </Text>
             ) : null}
 
@@ -1629,7 +1629,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.history?.length ? (
               <View style={styles.refundTimeline}>
-                <Text style={styles.refundSubTitle}>Tiến trình refund</Text>
+                <Text style={styles.refundSubTitle}>Tiến trình hoàn tiền</Text>
                 {order.refund.history
                   .slice()
                   .reverse()
@@ -1696,7 +1696,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Yêu cầu hoàn tiền</Text>
             <Text style={styles.mutedText}>
-              Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để sale tiếp
+              Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để nhân viên tiếp
               nhận và xử lý.
             </Text>
 
@@ -1748,7 +1748,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           </View>
 
           <View style={styles.rowBetween}>
-            <Text style={styles.metaLabel}>Thu phí ship</Text>
+            <Text style={styles.metaLabel}>Thu phí giao hàng</Text>
             <Text style={styles.metaValue}>
               {getShippingCollectionTimingLabel(
                 order.totals.shippingCollectionTiming,

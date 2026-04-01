@@ -73,7 +73,7 @@ export function CartItemCard({ ci, onDec, onInc, onRemove, cartType }) {
 
           {ci.variantText ? <Text style={styles.variantText}>{ci.variantText}</Text> : null}
 
-          <View style={styles.pillRow}>
+          {/* <View style={styles.pillRow}>
             <View style={styles.pill}>
               <Text style={styles.pillText}>{ORDER_TYPE_LABEL[ci.orderType] || "-"}</Text>
             </View>
@@ -87,7 +87,7 @@ export function CartItemCard({ ci, onDec, onInc, onRemove, cartType }) {
                 </View>
               </>
             ) : null}
-          </View>
+          </View> */}
 
           <View style={styles.priceRow}>
             <Text style={styles.priceRed}>{formatVND(unitPrice)}</Text>

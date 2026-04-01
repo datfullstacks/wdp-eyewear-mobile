@@ -149,6 +149,9 @@ class WdpTryOnActivity : AppCompatActivity() {
   }
 
   private fun setupUi() {
+    val colorNavy = 0xFF0C2C5C.toInt()
+    val colorBorder = 0xFFE3E8EF.toInt()
+
     val root = FrameLayout(this)
     root.setBackgroundColor(0xFF000000.toInt())
 
@@ -224,6 +227,13 @@ class WdpTryOnActivity : AppCompatActivity() {
       Button(this).apply {
         text = "Đóng"
         isAllCaps = false
+        setTextColor(colorNavy)
+        background =
+          GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(12).toFloat()
+            setColor(colorBorder)
+          }
         setOnClickListener {
           finishCancelled("Native try-on closed by user.")
         }
@@ -233,6 +243,13 @@ class WdpTryOnActivity : AppCompatActivity() {
       Button(this).apply {
         text = "Xong"
         isAllCaps = false
+        setTextColor(colorNavy)
+        background =
+          GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(12).toFloat()
+            setColor(colorBorder)
+          }
         setOnClickListener {
           finishSuccess(
             status = "completed",

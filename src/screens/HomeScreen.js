@@ -589,7 +589,7 @@ export default function HomeScreen({ navigation }) {
       } catch (err) {
         const message =
           err?.response?.data?.message || err?.message || "Không thiết lập lại mặc định được";
-        Alert.alert("Address", message);
+        Alert.alert("Địa chỉ", message);
       } finally {
         setSettingDefaultId(null);
       }

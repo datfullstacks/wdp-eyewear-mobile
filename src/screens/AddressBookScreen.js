@@ -409,7 +409,7 @@ export default function AddressBookScreen({ navigation }) {
           color={PALETTE.navy}
         />
         <Text style={styles.addNewBtnText}>
-          {showForm ? "Ẩn form địa chỉ" : "Thêm địa chỉ mới"}
+          {showForm ? "Ẩn ô nhập địa chỉ" : "Thêm địa chỉ mới"}
         </Text>
       </TouchableOpacity>
 

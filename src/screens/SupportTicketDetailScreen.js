@@ -133,7 +133,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
         const nextTicket = await getSupportTicketByIdApi(ticketId);
         setTicket(nextTicket || null);
       } catch (err) {
-        setError(err?.response?.data?.message || err?.message || "Không tải được chi tiết ticket");
+        setError(err?.response?.data?.message || err?.message || "Không tải được chi tiết yêu cầu.");
       } finally {
         if (!silent) setLoading(false);
         setRefreshing(false);
@@ -156,7 +156,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
       setTicket(nextTicket || ticket);
       setReply("");
     } catch (err) {
-      Alert.alert("Support", err?.message || "Không gửi được phản hồi");
+      Alert.alert("Hỗ trợ", err?.message || "Không gửi được phản hồi");
     } finally {
       setSubmitting(false);
     }
@@ -175,7 +175,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
         </View>
         <View style={styles.centerWrap}>
           <ActivityIndicator size="small" color={PALETTE.navy} />
-          <Text style={styles.mutedText}>Đang tải ticket...</Text>
+          <Text style={styles.mutedText}>Đang tải yêu cầu...</Text>
         </View>
       </SafeAreaView>
     );
@@ -194,7 +194,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
         </View>
         <View style={styles.centerWrap}>
           <Ionicons name="alert-circle-outline" size={40} color={PALETTE.muted} />
-          <Text style={styles.errorText}>{error || "Không tìm thấy ticket"}</Text>
+          <Text style={styles.errorText}>{error || "Không tìm thấy yêu cầu"}</Text>
           <TouchableOpacity style={styles.retryBtn} onPress={() => loadTicket()}>
             <Text style={styles.retryText}>Thử lại</Text>
           </TouchableOpacity>
@@ -265,7 +265,7 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
         <SectionCard title="Phản hồi" icon="create-outline">
           <TextInput
             style={styles.replyInput}
-            placeholder="Nhập nội dung phản hồi cho Staff..."
+            placeholder="Nhập nội dung phản hồi cho nhân viên..."
             multiline
             textAlignVertical="top"
             value={reply}

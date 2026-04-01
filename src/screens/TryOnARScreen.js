@@ -156,7 +156,7 @@ export default function TryOnARScreen({ navigation, route }) {
     if (!activeTryOn?.ready) {
       setNativeLaunchState({
         status: "not_ready",
-        message: "Model đang chọn chưa sẵn sàng để mở AR.",
+        message: "Mẫu đang chọn chưa sẵn sàng để mở AR.",
       });
       return;
     }
@@ -243,7 +243,7 @@ export default function TryOnARScreen({ navigation, route }) {
     if (!activeTryOn.ready) {
       setNativeLaunchState({
         status: "not_ready",
-        message: "Model đang chọn chưa sẵn sàng.",
+        message: "Mẫu đang chọn chưa sẵn sàng.",
       });
       return;
     }
@@ -383,7 +383,7 @@ export default function TryOnARScreen({ navigation, route }) {
             <View style={styles.selectedModelBanner}>
               <Ionicons name="glasses-outline" size={14} color="#111827" />
               <Text style={styles.selectedModelText}>
-                Model hiện tại: {selectedModel.label}
+                Mẫu hiện tại: {selectedModel.label}
               </Text>
             </View>
           ) : null}

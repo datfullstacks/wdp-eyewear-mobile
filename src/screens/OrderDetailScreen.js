@@ -124,16 +124,16 @@ function getShippingCollectionTimingLabel(value) {
 
 function getShippingFeeModeLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "estimated" ? "Tạm tính" : "Đã chốt";
+  return normalized === "estimated" ? "Tạm tính" : "Giá thanh toán";
 }
 
 function getRefundOwnerLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "sales") return "Sale";
-  if (normalized === "manager") return "Manager";
+  if (normalized === "sales") return "Nhân viên bán hàng";
+  if (normalized === "manager") return "Quản lý";
   if (normalized === "operations") return "Bộ phận nhận hàng hoàn";
   if (normalized === "customer") return "Bạn";
-  return "Đã đóng case";
+  return "Đã đóng yêu cầu";
 }
 
 function getRefundNextStepLabel(value) {
@@ -141,9 +141,9 @@ function getRefundNextStepLabel(value) {
   if (normalized === "customer_submit_info") return "Bạn bổ sung thông tin";
   if (normalized === "manager_approve") return "Đang chờ phê duyệt thêm";
   if (normalized === "confirm_return_received") return "Đang chờ xác nhận hàng hoàn";
-  if (normalized === "start_processing") return "Sale đang chuẩn bị chuyển khoản";
-  if (normalized === "complete") return "Sale xác nhận đã chuyển tiền";
-  if (normalized === "start_review") return "Sale đang xem xét hồ sơ";
+  if (normalized === "start_processing") return "Nhân viên đang chuẩn bị chuyển khoản";
+  if (normalized === "complete") return "Nhân viên xác nhận đã chuyển tiền";
+  if (normalized === "start_review") return "Nhân viên đang xem xét hồ sơ";
   return "--";
 }
 
@@ -589,7 +589,7 @@ export default function OrderDetailScreen({ navigation, route }) {
     (item) => {
       const itemId = item?.itemId || item?._id || null;
       if (!itemId) {
-        Alert.alert("Bảo hành", "Không xác định được sản phẩm để tạo case bảo hành.");
+        Alert.alert("Bảo hành", "Không xác định được sản phẩm để tạo yêu cầu bảo hành.");
         return;
       }
 
@@ -954,13 +954,13 @@ export default function OrderDetailScreen({ navigation, route }) {
             order?.refund?.returnShipmentCode ||
             order?.refund?.returnCarrier ? (
             <View style={styles.refundInfoBox}>
-              <Text style={styles.refundInfoTitle}>Return / QC</Text>
+              <Text style={styles.refundInfoTitle}>hoàn hàng & kiểm tra</Text>
               <Text style={styles.refundInfoText}>
-                QC: {getRefundInspectionLabel(order?.refund?.inspectionStatus)}
+                Kiểm tra: {getRefundInspectionLabel(order?.refund?.inspectionStatus)}
               </Text>
               {order?.refund?.inspectionNote ? (
                 <Text style={styles.refundInfoText}>
-                  Ghi chú QC: {order.refund.inspectionNote}
+                  Ghi chú kiểm tra: {order.refund.inspectionNote}
                 </Text>
               ) : null}
               {order?.refund?.inspectionAt ? (
@@ -1009,7 +1009,7 @@ export default function OrderDetailScreen({ navigation, route }) {
 
           {getRefundHistoryEntries(order?.refund).length > 0 ? (
             <View style={styles.refundTimelineWrap}>
-              <Text style={styles.refundInfoTitle}>Tiến trình refund</Text>
+              <Text style={styles.refundInfoTitle}>Tiến trình hoàn tiền</Text>
               {getRefundHistoryEntries(order?.refund)
                 .slice()
                 .reverse()
@@ -1047,8 +1047,8 @@ export default function OrderDetailScreen({ navigation, route }) {
         <SectionCard title="Yêu cầu hoàn tiền" icon="return-down-back-outline">
           <Text style={styles.refundHelperText}>
             {canSubmitRefundInfo
-              ? "Refund này đang chờ bạn bổ sung thông tin để sale tiếp tục xem xét."
-              : "Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để sale tiếp nhận và xử lý."}
+              ? "Yêu cầu hoàn tiền này đang chờ bạn bổ sung thông tin để nhân viên tiếp tục xem xét."
+              : "Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu hoàn tiền để nhân viên tiếp nhận và xử lý."}
           </Text>
           <TouchableOpacity
             style={styles.refundActionBtn}
@@ -1071,12 +1071,12 @@ export default function OrderDetailScreen({ navigation, route }) {
         icon="chatbubble-ellipses-outline"
         right={
           <TouchableOpacity onPress={openSupportCenter} activeOpacity={0.8}>
-            <Text style={styles.linkText}>Tất cả case</Text>
+            <Text style={styles.linkText}>Tất cả yêu cầu</Text>
           </TouchableOpacity>
         }
       >
         <Text style={styles.refundHelperText}>
-          Theo dõi support, refund, và warranty của đơn này từ cùng một nơi.
+          Theo dõi hỗ trợ, hoàn tiền, và bảo hành của đơn này từ cùng một nơi.
         </Text>
 
         {!!orderStore && (
@@ -1103,7 +1103,7 @@ export default function OrderDetailScreen({ navigation, route }) {
           onPress={openOrderSupport}
           activeOpacity={0.85}
         >
-          <Text style={styles.secondaryActionText}>Tạo ticket cho đơn hàng</Text>
+          <Text style={styles.secondaryActionText}>Tạo yêu cầu cho đơn hàng</Text>
         </TouchableOpacity>
 
         {canRequestWarranty ? (

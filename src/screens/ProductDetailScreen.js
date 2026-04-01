@@ -163,6 +163,11 @@ function toIdString(value) {
   return "";
 }
 
+function normalizeStockValue(value) {
+  const stock = Number(value);
+  return Number.isFinite(stock) && stock >= 0 ? stock : null;
+}
+
 function pick2DAsset(assets = []) {
   return (
     assets.find((a) => a?.assetType === "2d" && a?.role === "hero") ||
@@ -893,12 +898,6 @@ export default function ProductDetailScreen({ navigation, route }) {
     return explicitMatches.length ? explicitMatches : getOppositeTypeList(products, product, 10);
   }, [products, product]);
 
-  const minQty = product?.qtyLimits?.min ?? 1;
-  const maxQty = product?.qtyLimits?.max ?? 99;
-
-  const incQty = () => setQty((q) => Math.min(maxQty, q + 1));
-  const decQty = () => setQty((q) => Math.max(minQty, q - 1));
-
   const onToggleAccordion = (key) => setOpen((p) => ({ ...p, [key]: !p[key] }));
 
   const variantStock = selectedVariant?.stock ?? product?.totalStock ?? 0;
@@ -911,6 +910,24 @@ export default function ProductDetailScreen({ navigation, route }) {
     product?.allowCod !== false &&
     runtimeSplitPaymentEnabled &&
     runtimeCodEnabled;
+  const minQty = product?.qtyLimits?.min ?? 1;
+  const maxQty = product?.qtyLimits?.max ?? 99;
+  const stockCap = !isPreorderMode ? normalizeStockValue(variantStock) : null;
+  const effectiveMaxQty =
+    stockCap != null ? Math.max(minQty, Math.min(maxQty, stockCap)) : maxQty;
+  const reachedQtyLimit = qty >= effectiveMaxQty;
+
+  const incQty = () => {
+    if (qty >= effectiveMaxQty) {
+      if (!isPreorderMode && stockCap != null) {
+        Alert.alert("Vượt tồn kho", `Chỉ còn ${stockCap} sản phẩm trong kho.`);
+      }
+      return;
+    }
+
+    setQty((q) => Math.min(effectiveMaxQty, q + 1));
+  };
+  const decQty = () => setQty((q) => Math.max(minQty, q - 1));
 
   const orderTypeItems = useMemo(
     () =>
@@ -1113,7 +1130,7 @@ export default function ProductDetailScreen({ navigation, route }) {
   const doAddToCart = useCallback(async () => {
     if (!product) return false;
     if (isVariantOut && product?.preOrder?.enabled === true && !runtimePreorderEnabled) {
-      Alert.alert("Đặt trước đang tắt", "Admin đang tắt pre-order trong system config.");
+      Alert.alert("Đặt trước đang tắt", "Admin đang tắt chức năng đặt hàng trước trong cấu hình hệ thống.");
       return false;
     }
 
@@ -1157,6 +1174,14 @@ export default function ProductDetailScreen({ navigation, route }) {
           quantity: Number(matchedItem.quantity || 0) + Number(qty || 1),
         }
         : nextPayload;
+
+      if (!isPreorderMode) {
+        const availableStock = normalizeStockValue(variantStock);
+        if (availableStock != null && Number(payload.quantity || 0) > availableStock) {
+          Alert.alert("Vượt tồn kho", `Chỉ còn ${availableStock} sản phẩm trong kho.`);
+          return false;
+        }
+      }
 
       await upsertCartItemApi(apiCartType, payload);
 
@@ -1323,7 +1348,7 @@ export default function ProductDetailScreen({ navigation, route }) {
 
     const permissionGranted = await ensureTryOnCameraPermission();
     if (!permissionGranted) {
-      Alert.alert("Try-on", "Bạn cần cấp quyền camera để sử dụng thử kính.");
+      Alert.alert("Thử kính", "Bạn cần cấp quyền camera để sử dụng thử kính.");
       return;
     }
 
@@ -1343,7 +1368,7 @@ export default function ProductDetailScreen({ navigation, route }) {
           }
         } catch (e) {
           fetchFailed = true;
-          setDetailLoadError(e?.response?.data?.message || e?.message || "Không tải được dữ liệu try-on.");
+          setDetailLoadError(e?.response?.data?.message || e?.message || "Không tải được dữ liệu thử kính.");
           //console.warn("[ProductDetail] hydrate try-on failed", e?.message || e);
         }
       }
@@ -1379,19 +1404,19 @@ export default function ProductDetailScreen({ navigation, route }) {
       if (!tryOn?.ready) {
         if (selectedModelId && hasSourceVariantSpecificModels) {
           Alert.alert(
-            "Try-on",
-            "Variant đang chọn chưa có model 3D riêng hoặc dữ liệu mới chưa được map đúng. Kiểm tra lại GLB của variant trong manager."
+            "Thử kính",
+            "Chiếc kính đang chọn chưa có mẫu 3D riêng hoặc dữ liệu mới chưa được kết hợp đúng. Kiểm tra lại GLB của chiếc kính đó trong quảng lý."
           );
           return;
         }
 
         if (fetchFailed || detailLoadError) {
           Alert.alert(
-            "Try-on",
-            "Không tải được dữ liệu try-on đầy đủ cho sản phẩm này. Kiểm tra kết nối rồi thử lại."
+            "Thử kính",
+            "Không tải được dữ liệu thử kính đầy đủ cho sản phẩm này. Kiểm tra kết nối rồi thử lại."
           );
         } else {
-          Alert.alert("Try-on", "Dữ liệu try-on của sản phẩm này chưa đầy đủ hoặc chưa phát hành.");
+          Alert.alert("Thử kính", "Dữ liệu thử kính của sản phẩm này chưa đầy đủ hoặc chưa phát hành.");
         }
         return;
       }
@@ -1428,8 +1453,8 @@ export default function ProductDetailScreen({ navigation, route }) {
     } catch (error) {
       // console.warn("[TryOn Native] Direct launch failed", error);
       Alert.alert(
-        "Try-on",
-        error?.message || "Không mở được try-on. Vui lòng thử lại."
+        "Thử kính",
+        error?.message || "Không mở được thử kính. Vui lòng thử lại."
       );
     } finally {
       setIsLaunchingTryOn(false);
@@ -1450,8 +1475,8 @@ export default function ProductDetailScreen({ navigation, route }) {
   const ACCORDIONS = [
     { key: "desc", title: "Mô tả sản phẩm", content: product.sections?.description || "—" },
     { key: "sizeGuide", title: "Hướng dẫn chọn size", content: product.sections?.sizeGuide || "—" },
-    { key: "reviews", title: `Đánh giá (${product.ratingCount ?? product.ratingsQuantity ?? 0})`, content: "Xem đánh giá..." },
-    { key: "qa", title: `Hỏi đáp (${product.qaCount ?? 0})`, content: "Xem Q&A..." },
+    // { key: "reviews", title: `Đánh giá (${product.ratingCount ?? product.ratingsQuantity ?? 0})`, content: "Xem đánh giá..." },
+    // { key: "qa", title: `Hỏi đáp (${product.qaCount ?? 0})`, content: "Xem Q&A..." },
   ];
 
   return (
@@ -1515,7 +1540,7 @@ export default function ProductDetailScreen({ navigation, route }) {
           />
         ) : null}
 
-        {!isLensRxProduct ? (
+        {/* {!isLensRxProduct ? (
           <Card>
             <Text style={styles.sectionTitle}>Loại đơn hàng</Text>
 
@@ -1527,7 +1552,7 @@ export default function ProductDetailScreen({ navigation, route }) {
                 : product.shipping?.etaLabel || "Giao nhanh 1–3 ngày"}
             </Text>
           </Card>
-        ) : null}
+        ) : null} */}
 
         {isLensRxProduct ? (
           <LensOptions
@@ -1559,6 +1584,7 @@ export default function ProductDetailScreen({ navigation, route }) {
             qty={qty}
             incQty={incQty}
             decQty={decQty}
+            reachedQtyLimit={reachedQtyLimit}
           />
         ) : (
           <FrameOptions
@@ -1578,6 +1604,7 @@ export default function ProductDetailScreen({ navigation, route }) {
             onBuyNow={onBuyNow}
             isVariantOut={isVariantOut}
             isPreorderMode={isPreorderMode}
+            reachedQtyLimit={reachedQtyLimit}
           />
         )}
 
@@ -1925,32 +1952,34 @@ function InfoCard({
 
   return (
     <Card>
-      <Text style={styles.name}>{product.name}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <Text style={styles.name}>{product.name}</Text>
 
-      <View style={styles.metaRow}>
-        <View style={styles.ratingRow}>
+        <View style={styles.metaRow}>
+          {/* <View style={styles.ratingRow}>
           <Ionicons name="star" size={14} color={PALETTE.gold} />
           <Text style={styles.ratingText}>{ratingAvg != null ? ratingAvg.toFixed(1) : "4.7"}</Text>
           <Text style={styles.dot}>•</Text>
           <Text style={styles.metaText}>{ratingCount} đánh giá</Text>
           <Text style={styles.dot}>•</Text>
           <Text style={styles.metaText}>Đã bán {product.soldCount ?? 0}</Text>
-        </View>
+        </View> */}
 
-        {isOutOfStock ? (
-          <View style={styles.outOfStockBadge}>
-            <Text style={styles.outOfStockBadgeText}>Hết hàng</Text>
-          </View>
-        ) : product.stockLabel ? (
-          <View style={styles.stockBadge}>
-            <Text style={styles.stockBadgeText}>{product.stockLabel}</Text>
-          </View>
-        ) : null}
+          {isOutOfStock ? (
+            <View style={styles.outOfStockBadge}>
+              <Text style={styles.outOfStockBadgeText}>Hết hàng</Text>
+            </View>
+          ) : product.stockLabel ? (
+            <View style={styles.stockBadge}>
+              <Text style={styles.stockBadgeText}>{product.stockLabel}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.priceRow}>
         <Text style={[styles.price, isOutOfStock && styles.priceDisabled]}>
-          {formatVND(product.price ?? product.pricing?.salePrice ?? product.pricing?.basePrice ?? 0)}
+          <Text style={{ color: PALETTE.navy, fontSize: 16 }}>Giá: </Text> {formatVND(product.price ?? product.pricing?.salePrice ?? product.pricing?.basePrice ?? 0)}
         </Text>
         {product.originalPrice ? <Text style={styles.originalPrice}>{formatVND(product.originalPrice)}</Text> : null}
         {discountPct > 0 && !isOutOfStock ? (
@@ -1992,6 +2021,7 @@ function LensOptions({
   qty,
   incQty,
   decQty,
+  reachedQtyLimit,
 }) {
   const hasColors = Array.isArray(product?.colors) && product.colors.length > 0;
   const lensMethodItems = [
@@ -2086,7 +2116,7 @@ function LensOptions({
             </View>
           ) : (
             <Text style={styles.mutedText}>
-              Chọn đơn đã lưu để tự động điền SPH/CYL/AXIS/ADD/PD vào draft hiện tại.
+              Chọn đơn đã lưu để tự động điền SPH/CYL/AXIS/ADD/PD vào bản nháp hiện tại.
             </Text>
           )}
 
@@ -2297,7 +2327,12 @@ function LensOptions({
           <Text style={styles.qtyBtnText}>-</Text>
         </TouchableOpacity>
         <Text style={styles.qtyValue}>{qty}</Text>
-        <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={incQty}>
+        <TouchableOpacity
+          style={[styles.qtyBtn, reachedQtyLimit && styles.btnDisabled]}
+          activeOpacity={0.85}
+          onPress={incQty}
+          disabled={reachedQtyLimit}
+        >
           <Text style={styles.qtyBtnText}>+</Text>
         </TouchableOpacity>
       </View>
@@ -2351,7 +2386,7 @@ function SavedPrescriptionPickerModal({
               <Ionicons name="document-text-outline" size={22} color={PALETTE.muted} />
               <Text style={styles.savedPickerEmptyTitle}>Chưa có đơn đã lưu</Text>
               <Text style={styles.savedPickerEmptyText}>
-                Bạn có thể thêm prescription ở hồ sơ rồi quay lại đây để áp dụng nhanh.
+                Bạn có thể thêm đơn kính ở hồ sơ rồi quay lại đây để áp dụng nhanh.
               </Text>
             </View>
           ) : (
@@ -2638,6 +2673,7 @@ function FrameOptions({
   onBuyNow,
   isVariantOut,
   isPreorderMode,
+  reachedQtyLimit,
 }) {
   const hasColors = Array.isArray(product?.colors) && product.colors.length > 0;
   const hasSizes = Array.isArray(product?.sizes) && product.sizes.length > 0;
@@ -2703,7 +2739,12 @@ function FrameOptions({
 
         <Text style={styles.qtyValue}>{qty}</Text>
 
-        <TouchableOpacity style={styles.qtyBtn} activeOpacity={0.85} onPress={incQty}>
+        <TouchableOpacity
+          style={[styles.qtyBtn, reachedQtyLimit && styles.btnDisabled]}
+          activeOpacity={0.85}
+          onPress={incQty}
+          disabled={reachedQtyLimit}
+        >
           <Text style={styles.qtyBtnText}>+</Text>
         </TouchableOpacity>
       </View>
@@ -3091,7 +3132,7 @@ const styles = StyleSheet.create({
   paymentInfo: { marginTop: 8, fontSize: 12, fontWeight: "700", color: PALETTE.muted },
 
   priceRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 10 },
-  price: { fontSize: 18, fontWeight: "900", color: PALETTE.navy },
+  price: { fontSize: 25, fontWeight: "900", color: 'red' },
   priceDisabled: { color: PALETTE.muted },
   originalPrice: { fontSize: 12, fontWeight: "800", color: PALETTE.muted, textDecorationLine: "line-through" },
   offBadge: { backgroundColor: "#FFECEC", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
