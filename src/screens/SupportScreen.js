@@ -35,7 +35,7 @@ const PALETTE = {
 const CATEGORY_OPTIONS = [
   { key: "general", label: "Chung" },
   { key: "order", label: "Đơn hàng" },
-  { key: "refund", label: "Refund" },
+  { key: "refund", label: "Hoàn tiền" },
   { key: "warranty", label: "Bảo hành" },
 ];
 
@@ -43,7 +43,7 @@ const FILTER_OPTIONS = [
   { key: "all", label: "Tất cả" },
   { key: "general", label: "Chung" },
   { key: "order", label: "Đơn hàng" },
-  { key: "refund", label: "Refund" },
+  { key: "refund", label: "Hoàn tiền" },
   { key: "warranty", label: "Bảo hành" },
 ];
 
@@ -74,7 +74,7 @@ function buildDefaultSubject({ category, orderCode, orderItemName }) {
   }
 
   if (category === "refund" && orderCode) {
-    return `Hỏi đáp refund đơn ${orderCode}`;
+    return `Hỏi đáp hoàn tiền đơn ${orderCode}`;
   }
 
   return "";
@@ -227,7 +227,7 @@ export default function SupportScreen({ navigation, route }) {
           err?.response?.data?.error ||
           err?.message ||
           "Không tải được phiếu hỗ trợ";
-        Alert.alert("Support", msg);
+        Alert.alert("Hỗ trợ", msg);
       } finally {
         if (!silent) setLoading(false);
         setRefreshing(false);
@@ -249,7 +249,7 @@ export default function SupportScreen({ navigation, route }) {
     const nextMessage = String(message || "").trim();
 
     if (!nextSubject || !nextMessage) {
-      Alert.alert("Support", "Subject và message là bắt buộc.");
+      Alert.alert("Hỗ trợ", "Tiêu đề và nội dung là bắt buộc.");
       return;
     }
 
@@ -294,7 +294,7 @@ export default function SupportScreen({ navigation, route }) {
         err?.response?.data?.error ||
         err?.message ||
         "Không tạo được phiếu hỗ trợ";
-      Alert.alert("Support", msg);
+      Alert.alert("Hỗ trợ", msg);
     } finally {
       setSubmitting(false);
     }
@@ -310,7 +310,7 @@ export default function SupportScreen({ navigation, route }) {
       return (
         <View style={styles.emptyWrap}>
           <ActivityIndicator size="small" color={PALETTE.navy} />
-          <Text style={styles.emptyText}>Đang tải ticket...</Text>
+          <Text style={styles.emptyText}>Đang tải yêu cầu...</Text>
         </View>
       );
     }
@@ -318,8 +318,8 @@ export default function SupportScreen({ navigation, route }) {
     return (
       <View style={styles.emptyWrap}>
         <Ionicons name="chatbubble-ellipses-outline" size={42} color={PALETTE.muted} />
-        <Text style={styles.emptyTitle}>Chưa có case hỗ trợ</Text>
-        <Text style={styles.emptyText}>Case mới sẽ hiện ở đây sau khi gửi yêu cầu.</Text>
+        <Text style={styles.emptyTitle}>Chưa có yêu cầu hỗ trợ</Text>
+        <Text style={styles.emptyText}>Yêu cầu mới sẽ hiện ở đây sau khi gửi.</Text>
       </View>
     );
   }, [loading]);
@@ -350,7 +350,7 @@ export default function SupportScreen({ navigation, route }) {
                 <View>
                   <Text style={styles.formTitle}>Tạo yêu cầu hỗ trợ mới</Text>
                   <Text style={styles.formSubTitle}>
-                    Gửi ticket đơn hàng, refund, hoặc bảo hành cho staff.
+                    Gửi yêu cầu cho đơn hàng, hoàn tiền, hoặc bảo hành cho nhân viên.
                   </Text>
                 </View>
               </View>
@@ -364,15 +364,15 @@ export default function SupportScreen({ navigation, route }) {
                   ) : null}
                   <Text style={styles.contextHint}>
                     {isWarrantyDraft
-                      ? "Case này sẽ được tạo dưới category Bảo hành và gắn với item đã chọn."
-                      : "Case này sẽ được gắn với đơn hàng hiện tại."}
+                      ? "Yêu cầu này sẽ được tạo dưới loại Bảo hành và gắn với sản phẩm đã chọn."
+                      : "Yêu cầu này sẽ được gắn với đơn hàng hiện tại."}
                   </Text>
                 </View>
               ) : null}
 
               {!lockCategory ? (
                 <View style={styles.optionGroup}>
-                  <Text style={styles.optionLabel}>Loại case</Text>
+                  <Text style={styles.optionLabel}>Loại yêu cầu</Text>
                   <View style={styles.optionRow}>
                     {CATEGORY_OPTIONS.map((option) => {
                       const active = category === option.key;
@@ -431,7 +431,7 @@ export default function SupportScreen({ navigation, route }) {
 
               <TextInput
                 style={styles.input}
-                placeholder="Subject"
+                placeholder="Tiêu đề"
                 placeholderTextColor={PALETTE.muted}
                 value={subject}
                 onChangeText={setSubject}
@@ -441,7 +441,7 @@ export default function SupportScreen({ navigation, route }) {
                 placeholder={
                   isWarrantyDraft
                     ? "Mô tả lỗi, tình trạng sản phẩm, và nhu cầu bảo hành..."
-                    : "Mô tả vấn đề cần staff hỗ trợ..."
+                    : "Mô tả vấn đề cần nhân viên hỗ trợ..."
                 }
                 placeholderTextColor={PALETTE.muted}
                 multiline

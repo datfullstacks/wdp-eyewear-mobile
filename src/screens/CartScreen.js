@@ -69,6 +69,21 @@ const UI_TO_API_CART_TYPE = {
   [CART_TYPES.PREORDER]: API_CART_TYPES.PRE_ORDER,
 };
 
+function toIdString(value) {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object") {
+    if (value._id != null) return toIdString(value._id);
+    if (value.id != null) return toIdString(value.id);
+  }
+  return "";
+}
+
+function normalizeStockValue(value) {
+  const stock = Number(value);
+  return Number.isFinite(stock) && stock >= 0 ? stock : null;
+}
+
 function inferOrderTypeFromItem(item) {
   if (item?.preOrder) return "PREORDER";
   const mode = String(item?.customization?.prescription?.mode || "").toLowerCase();
@@ -271,6 +286,29 @@ function buildUpsertPayloadFromUiItem(ci, nextQty) {
   };
 }
 
+function getCartItemAvailableStock(ci) {
+  if (ci?.isPreorder) return null;
+
+  const product = ci?.product || {};
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const selectedColor = String(ci?.customization?.selectedColor || "").trim().toLowerCase();
+  const selectedSize = String(ci?.customization?.selectedSize || "").trim().toLowerCase();
+  const variantId = toIdString(ci?.variantId);
+
+  const matchedVariant =
+    variants.find((variant) => toIdString(variant?._id || variant?.id) === variantId) ||
+    variants.find((variant) => {
+      const variantColor = String(variant?.options?.color || "").trim().toLowerCase();
+      const variantSize = String(variant?.options?.size || "").trim().toLowerCase();
+      const colorMatches = !selectedColor || variantColor === selectedColor;
+      const sizeMatches = !selectedSize || variantSize === selectedSize;
+      return colorMatches && sizeMatches;
+    }) ||
+    null;
+
+  return normalizeStockValue(matchedVariant?.stock ?? product?.totalStock);
+}
+
 function buildCheckoutItemsFromApiUi(cartItems) {
   return cartItems
     .filter((ci) => ci?.productId || ci?.product?.apiId || ci?.product?.id)
@@ -467,6 +505,12 @@ export default function CartScreen({ navigation, route }) {
       return;
     }
 
+    const availableStock = getCartItemAvailableStock(ci);
+    if (availableStock != null && nextQty > availableStock) {
+      Alert.alert("Vượt tồn kho", `Chỉ còn ${availableStock} sản phẩm trong kho.`);
+      return;
+    }
+
     try {
       const apiCartType = UI_TO_API_CART_TYPE[activeCartType] || API_CART_TYPES.READY_STOCK;
       await upsertCartItemApi(apiCartType, buildUpsertPayloadFromUiItem(ci, nextQty));
@@ -623,7 +667,7 @@ export default function CartScreen({ navigation, route }) {
   const proceedCheckout = async () => {
     if (!canCheckout || isQuoting) return;
     if (activeCartType === CART_TYPES.PREORDER && !preorderRuntimeEnabled) {
-      Alert.alert("Đặt trước đang tắt", "Admin đang tắt pre-order trong system config.");
+      Alert.alert("Đặt trước đang tắt", "Admin đang tắt chức năng đặt trước trong cấu hình hệ thống.");
       return;
     }
 
@@ -778,7 +822,7 @@ export default function CartScreen({ navigation, route }) {
               <Ionicons name="information-circle" size={16} color={PALETTE.gold} />
             </View>
             <Text style={styles.warnText}>
-              Pre-order đang tắt trong system config. Các sản phẩm đặt trước hiện không thể tiếp tục checkout.
+              Chức năng đặt trước đang tắt trong cấu hình hệ thống. Các sản phẩm đặt trước hiện không thể tiếp tục thanh toán.
             </Text>
           </View>
         ) : null}
@@ -831,7 +875,7 @@ export default function CartScreen({ navigation, route }) {
                     <Ionicons name="warning" size={16} color={PALETTE.gold} />
                   </View>
                   <Text style={styles.warnText}>
-                    Vui lòng hoàn thành thông tin tròng (nhập Rx hoặc tải ảnh đơn kính) trước khi thanh toán
+                    Vui lòng hoàn thành thông tin tròng (nhập thông số Rx hoặc tải ảnh đơn kính) trước khi thanh toán
                   </Text>
                 </View>
               ) : null}
@@ -957,6 +1001,8 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine, onPreview
   const payLater = calcLinePayLater(ci);
   const full = calcLineTotalFull(ci);
   const depositPercent = getDepositPercent(ci);
+  const availableStock = getCartItemAvailableStock(ci);
+  const reachedQtyLimit = availableStock != null && (ci.qty || 1) >= availableStock;
 
   const pairedLabel = ci.combineWithName ? `Đã kết hợp: ${ci.combineWithName}` : null;
   const uploadedPrescriptionUrl = Array.isArray(ci?.customization?.prescription?.attachmentUrls)
@@ -1080,7 +1126,12 @@ function CartItemCard({ ci, onDec, onInc, onRemove, onEdit, onCombine, onPreview
             <Text style={styles.qtyBtnText}>-</Text>
           </TouchableOpacity>
           <Text style={styles.qtyValue}>{ci.qty || 1}</Text>
-          <TouchableOpacity style={styles.qtyBtn} onPress={onInc} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={[styles.qtyBtn, reachedQtyLimit && styles.qtyBtnDisabled]}
+            onPress={onInc}
+            activeOpacity={0.85}
+            disabled={reachedQtyLimit}
+          >
             <Text style={styles.qtyBtnText}>+</Text>
           </TouchableOpacity>
         </View>
@@ -1263,6 +1314,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  qtyBtnDisabled: { opacity: 0.45 },
   qtyBtnText: { fontSize: 16, fontWeight: "900", color: PALETTE.navy },
   qtyValue: { width: 18, textAlign: "center", fontWeight: "900", color: PALETTE.text },
 

@@ -165,7 +165,7 @@ export default function ProductCard({
 
           {!!item?.canTryOn && !isOutOfStock && (
             <View style={styles.tryOnPill}>
-              <Ionicons name="camera-outline" size={15} color={PALETTE.gold} />
+              <Ionicons name="camera-outline" size={15} color={PALETTE.navy} />
               <Text style={styles.tryOnPillText}>Thử kính</Text>
             </View>
           )}
@@ -293,13 +293,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: PALETTE.navy,
+    backgroundColor: PALETTE.border,
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 999,
   },
   tryOnPillText: {
-    color: PALETTE.gold,
+    color: PALETTE.navy,
     fontSize: 11,
     fontWeight: "800",
   },

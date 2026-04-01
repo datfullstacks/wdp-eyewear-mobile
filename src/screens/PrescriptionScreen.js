@@ -121,7 +121,7 @@ export default function PrescriptionScreen({ navigation }) {
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       const message = err?.response?.data?.message || err?.message || "Không tải được đơn kính";
-      Alert.alert("Prescription", message);
+      Alert.alert("Đơn kính", message);
     } finally {
       setLoading(false);
     }
@@ -144,7 +144,7 @@ export default function PrescriptionScreen({ navigation }) {
   const submit = async () => {
     if (submitting) return;
     if (!form.name.trim()) {
-      Alert.alert("Prescription", "Họ và tên là bắt buộc.");
+      Alert.alert("Đơn kính", "Họ và tên là bắt buộc.");
       return;
     }
 
@@ -162,7 +162,7 @@ export default function PrescriptionScreen({ navigation }) {
         err?.response?.data?.message ||
         err?.message ||
         (editingId ? "Không cập nhật được đơn kính" : "Không tạo được đơn kính");
-      Alert.alert("Prescription", message);
+      Alert.alert("Đơn kính", message);
     } finally {
       setSubmitting(false);
     }
@@ -185,12 +185,12 @@ export default function PrescriptionScreen({ navigation }) {
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       const message = err?.response?.data?.message || err?.message || "Không thiết lập mặc định được";
-      Alert.alert("Prescription", message);
+      Alert.alert("Đơn kính", message);
     }
   };
 
   const onDelete = async (id) => {
-    Alert.alert("Prescription", "Xóa đơn kính này?", [
+    Alert.alert("Đơn kính", "Xóa đơn kính này?", [
       { text: "Hủy", style: "cancel" },
       {
         text: "Xóa",
@@ -206,7 +206,7 @@ export default function PrescriptionScreen({ navigation }) {
             }
           } catch (err) {
             const message = err?.response?.data?.message || err?.message || "Không xóa được đơn kính";
-            Alert.alert("Prescription", message);
+            Alert.alert("Đơn kính", message);
           }
         },
       },
@@ -233,7 +233,7 @@ export default function PrescriptionScreen({ navigation }) {
           color={PALETTE.navy}
         />
         <Text style={styles.addNewBtnText}>
-          {showForm ? "Ẩn form đơn kính" : "Thêm đơn kính mới"}
+          {showForm ? "Ẩn ô nhập đơn kính" : "Thêm đơn kính mới"}
         </Text>
       </TouchableOpacity>
 
@@ -353,7 +353,7 @@ export default function PrescriptionScreen({ navigation }) {
           />
 
           <Text style={styles.helperText}>
-            Điền trực tiếp các thông số đơn kính vào form rồi lưu.
+            Điền trực tiếp các thông số đơn kính vào ô nhập rồi lưu.
           </Text>
 
           <TouchableOpacity

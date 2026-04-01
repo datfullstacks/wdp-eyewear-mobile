@@ -129,7 +129,7 @@ const getShippingCollectionTimingLabel = (value) => {
 
 const getShippingFeeModeLabel = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "estimated" ? "Tạm tính" : "Đã chốt";
+  return normalized === "estimated" ? "Tạm tính" : "Giá thanh toán";
 };
 
 const formatShippingLeadtime = (value, fallback) => {
@@ -403,7 +403,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
   useEffect(() => {
     if (cartType === CART_TYPES.PREORDER && !preorderRuntimeEnabled) {
-      Alert.alert("Đặt trước đang tắt", "Admin đang tắt pre-order trong system config.", [
+      Alert.alert("Đặt trước đang tắt", "Admin đang tắt chức năng đặt hàng trước trong cấu hình hệ thống.", [
         {
           text: "Quay lại giỏ hàng",
           onPress: () => {
@@ -805,7 +805,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
     if (cartType === CART_TYPES.PREORDER && !preorderRuntimeEnabled) {
       setQuote(null);
-      setQuoteError(new Error("Pre-order is currently disabled."));
+      setQuoteError(new Error("Chức năng đặt trước hiện đang bị vô hiệu hóa."));
       return undefined;
     }
 
@@ -847,8 +847,8 @@ export default function CheckoutScreen({ navigation, route }) {
           setQuote(null);
           setQuoteError(null);
           Alert.alert(
-            "Voucher không còn áp dụng",
-            message || "Voucher hiện không còn hợp lệ với đơn hàng này.",
+            "Mã giảm giá không còn áp dụng",
+            message || "Mã giảm giá hiện không còn hợp lệ với đơn hàng này.",
           );
           return;
         }
@@ -907,7 +907,7 @@ export default function CheckoutScreen({ navigation, route }) {
 
       const validated = await validatePromotionApi(validatePayload);
       if (!validated?.valid) {
-        throw new Error(validated?.message || "Voucher không hợp lệ.");
+        throw new Error(validated?.message || "Mã giảm giá không hợp lệ.");
       }
 
       setAppliedVoucherCode(code);
@@ -927,11 +927,11 @@ export default function CheckoutScreen({ navigation, route }) {
       setQuote(refreshedQuote);
       setQuoteError(null);
       setSkipInitialQuote(false);
-      Alert.alert("Áp mã thành công", `Đã áp dụng voucher ${code}.`);
+      Alert.alert("Áp mã giảm giá thành công", `Đã áp dụng mã giảm giá ${code}.`);
     } catch (err) {
       const message = extractApiErrorMessage(err);
       Alert.alert(
-        "Không áp dụng được voucher",
+        "Không áp dụng được mã giảm giá",
         message || "Vui lòng thử mã khác.",
       );
     } finally {
@@ -942,7 +942,7 @@ export default function CheckoutScreen({ navigation, route }) {
   const checkoutOrder = async () => {
     if (isSubmitting || !checkoutItems.length) return;
     if (cartType === CART_TYPES.PREORDER && !preorderRuntimeEnabled) {
-      Alert.alert("Đặt trước đang tắt", "Admin đang tắt pre-order trong system config.");
+      Alert.alert("Đặt trước đang tắt", "Admin đang tắt chức năng đặt hàng trước trong cấu hình hệ thống.");
       return;
     }
 
@@ -1000,7 +1000,7 @@ export default function CheckoutScreen({ navigation, route }) {
       const data = await createCheckout(payload);
       const orderId = data?.orderId || data?._id || data?.id || null;
       if (!orderId) {
-        throw new Error("API checkout did not return orderId.");
+        throw new Error("API thanh toán không trả về orderId.");
       }
 
       let orderPayload = null;
