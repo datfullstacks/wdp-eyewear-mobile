@@ -52,7 +52,7 @@ function BottomSheet({ visible, title, onClose, children }) {
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <Pressable
           style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}
-          onPress={() => {}}
+          onPress={() => { }}
         >
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{title}</Text>
@@ -94,9 +94,9 @@ export default function FavoritesScreen({ navigation }) {
       const result = await getMyFavoriteIdsApi();
       const ids = normalizeFavoriteIds(result);
       setFavoriteIds(ids);
-      console.log("Loaded favorite IDs:", ids);
+      // console.log("Loaded favorite IDs:", ids);
     } catch (err) {
-      console.log("loadFavorites error:", err);
+      // console.log("loadFavorites error:", err);
       setFavoriteIds([]);
     } finally {
       setLoadingFavs(false);
@@ -118,7 +118,7 @@ export default function FavoritesScreen({ navigation }) {
     try {
       const remoteIds = await removeMyFavoriteApi(id);
       setFavoriteIds(Array.isArray(remoteIds) ? remoteIds.map(String) : []);
-      console.log(`Removed favorite ${id}. Updated IDs:`, remoteIds);
+      // console.log(`Removed favorite ${id}. Updated IDs:`, remoteIds);
     } catch {
       setFavoriteIds(prev);
     }
@@ -131,7 +131,7 @@ export default function FavoritesScreen({ navigation }) {
     try {
       const remoteIds = await clearMyFavoritesApi();
       setFavoriteIds(Array.isArray(remoteIds) ? remoteIds.map(String) : []);
-      console.log("Cleared favorites. Updated IDs:", remoteIds);
+      // console.log("Cleared favorites. Updated IDs:", remoteIds);
     } catch {
       setFavoriteIds(prev);
     }
@@ -162,6 +162,21 @@ export default function FavoritesScreen({ navigation }) {
     return sorted;
   }, [favoriteIds, products, sortBy]);
 
+  const getSortButtonLabel = () => {
+    switch (sortBy) {
+      case "name_asc":
+        return "Tên A-Z";
+      case "name_desc":
+        return "Tên Z-A";
+      case "price_asc":
+        return "Giá ↑";
+      case "price_desc":
+        return "Giá ↓";
+      default:
+        return "Sắp xếp";
+    }
+  };
+
   const isPageLoading = isLoading || loadingFavs;
 
   return (
@@ -173,7 +188,7 @@ export default function FavoritesScreen({ navigation }) {
             activeOpacity={0.85}
             style={styles.iconBtn}
           >
-            <Ionicons name="chevron-back" size={22} color="black" />
+            <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Yêu thích</Text>
         </View>
@@ -181,21 +196,33 @@ export default function FavoritesScreen({ navigation }) {
         <View style={styles.headerRight}>
           {data.length > 0 && (
             <TouchableOpacity
+              style={[styles.sortBtn, showSortModal && styles.sortBtnActive]}
               onPress={() => setShowSortModal(true)}
-              activeOpacity={0.85}
-              style={styles.iconBtn}
+              activeOpacity={0.7}
             >
-              <Ionicons name="funnel-outline" size={20} color={PALETTE.navy} />
+              <Ionicons
+                name="swap-vertical-outline"
+                size={14}
+                color={PALETTE.navy}
+              />
+              <Text
+                style={[
+                  styles.sortBtnText,
+                  showSortModal && styles.sortBtnTextActive,
+                ]}
+              >
+                {getSortButtonLabel()}
+              </Text>
             </TouchableOpacity>
           )}
 
           {data.length > 0 && (
             <TouchableOpacity
+              style={styles.filterBtn}
               onPress={handleClearFavorites}
-              activeOpacity={0.85}
-              style={styles.iconBtn}
+              activeOpacity={0.7}
             >
-              <Ionicons name="trash-outline" size={20} color={PALETTE.navy} />
+              <Ionicons name="trash-outline" size={16} color={PALETTE.navy} />
             </TouchableOpacity>
           )}
         </View>
@@ -225,7 +252,7 @@ export default function FavoritesScreen({ navigation }) {
         )}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Ionicons name="heart-outline" size={44} color="red" />
+            <Ionicons name="heart-outline" size={44} color="#EF4444" />
             <Text style={styles.emptyTitle}>
               {isPageLoading ? "Đang tải danh sách..." : "Chưa có sản phẩm yêu thích"}
             </Text>
@@ -253,36 +280,34 @@ export default function FavoritesScreen({ navigation }) {
         title="Sắp xếp"
         onClose={() => setShowSortModal(false)}
       >
-        {SORT_OPTIONS.map((option) => (
-          <TouchableOpacity
-            key={option.key}
-            style={[
-              styles.sortOption,
-              sortBy === option.key && styles.sortOptionActive,
-            ]}
-            onPress={() => {
-              setSortBy(option.key);
-              setShowSortModal(false);
-            }}
-          >
-            <Ionicons
-              name={option.icon}
-              size={20}
-              color={sortBy === option.key ? PALETTE.navy : PALETTE.muted}
-            />
-            <Text
-              style={[
-                styles.sortOptionText,
-                sortBy === option.key && styles.sortOptionTextActive,
-              ]}
-            >
-              {option.label}
-            </Text>
-            {sortBy === option.key && (
-              <Ionicons name="checkmark" size={20} color={PALETTE.gold} />
-            )}
-          </TouchableOpacity>
-        ))}
+        <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}>
+          {SORT_OPTIONS.map((option) => {
+            const active = sortBy === option.key;
+            return (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.optionRow, active && styles.optionRowActive]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setSortBy(option.key);
+                  setShowSortModal(false);
+                }}
+              >
+                <View style={styles.optionRowMain}>
+                  <Ionicons
+                    name={option.icon}
+                    size={18}
+                    color={active ? PALETTE.navy : PALETTE.muted}
+                  />
+                  <Text style={[styles.optionText, active && styles.optionTextActive]}>
+                    {option.label}
+                  </Text>
+                </View>
+                {active ? <Ionicons name="checkmark" size={18} color={PALETTE.gold} /> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </BottomSheet>
     </SafeAreaView>
   );
@@ -300,14 +325,59 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "black" },
-  headerRight: { flexDirection: "row", gap: 8 },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
+
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+
   iconBtn: {
     width: 36,
     height: 36,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  sortBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
+
+  sortBtnActive: {
+    backgroundColor: PALETTE.navyTint,
+    borderColor: PALETTE.navy,
+  },
+
+  sortBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: PALETTE.navy,
+  },
+
+  sortBtnTextActive: {
+    color: PALETTE.navy,
+  },
+
+  filterBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    position: "relative",
   },
 
   listContent: { paddingHorizontal: PAGE_PADDING, paddingBottom: 8 },
@@ -354,17 +424,31 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.navy },
   sheetBody: { paddingHorizontal: 16, paddingTop: 8 },
 
-  sortOption: {
+  optionRow: {
+    backgroundColor: PALETTE.white,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
-  sortOptionActive: {
-    backgroundColor: PALETTE.navyTint,
-    borderRadius: 12,
+  optionRowMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
   },
-  sortOptionText: { flex: 1, fontSize: 14, fontWeight: "700", color: PALETTE.muted },
-  sortOptionTextActive: { color: PALETTE.navy },
+  optionRowActive: {
+    borderWidth: 1,
+    borderColor: PALETTE.gold,
+    backgroundColor: PALETTE.goldSoft,
+  },
+  optionText: { fontSize: 13, fontWeight: "800", color: PALETTE.text },
+  optionTextActive: { color: PALETTE.navy },
 });

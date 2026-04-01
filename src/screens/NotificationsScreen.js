@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, AntDesign } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuthStore } from "../store/authStore";
 import {
@@ -280,19 +280,26 @@ export default function NotificationsScreen({ navigation, onNotificationsChanged
             activeOpacity={0.85}
             style={styles.iconBtn}
           >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+            <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Thông báo</Text>
         </View>
 
-        <TouchableOpacity style={{backgroundColor: PALETTE.navy, paddingVertical: 5, paddingHorizontal: 15, borderRadius: 50 }} activeOpacity={0.85} onPress={onMarkAll}>
-          <Text style={styles.markAll}><AntDesign name="tag" size={15} color={PALETTE.gold} />  Đọc tất cả</Text>
-        </TouchableOpacity>
+        {items.length > 0 && (
+          <TouchableOpacity
+            style={styles.markAllBtn}
+            activeOpacity={0.7}
+            onPress={onMarkAll}
+          >
+            <Ionicons name="checkmark-done-outline" size={16} color={PALETTE.navy} />
+            <Text style={styles.markAllText}>Đọc tất cả</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="small" color="#2563EB" />
+          <ActivityIndicator size="small" color={PALETTE.navy} />
         </View>
       ) : (
         <FlatList
@@ -316,7 +323,7 @@ export default function NotificationsScreen({ navigation, onNotificationsChanged
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#F6F7FB",
+    backgroundColor: PALETTE.bg,
   },
 
   header: {
@@ -337,7 +344,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 16,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   iconBtn: {
@@ -348,10 +355,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  markAll: {
-    color: PALETTE.gold,
-    fontWeight: "900",
-    fontSize: 14,
+  markAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
+
+  markAllText: {
+    color: PALETTE.navy,
+    fontWeight: "700",
+    fontSize: 12.5,
   },
 
   loadingWrap: {
@@ -373,13 +392,13 @@ const styles = StyleSheet.create({
   },
 
   cardRead: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E7EB",
+    backgroundColor: PALETTE.white,
+    borderColor: PALETTE.border,
   },
 
   cardUnread: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#BFDBFE",
+    backgroundColor: PALETTE.navyTint,
+    borderColor: "transparent",
   },
 
   cardHeader: {
@@ -392,7 +411,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
     flex: 1,
   },
 
@@ -400,14 +419,14 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#2563EB",
+    backgroundColor: "red",
   },
 
   message: {
     marginTop: 6,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   metaWrap: {
@@ -418,14 +437,14 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#374151",
+    color: PALETTE.text,
   },
 
   time: {
     marginTop: 8,
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#9CA3AF",
+    color: PALETTE.muted,
   },
 
   empty: {
@@ -434,7 +453,7 @@ const styles = StyleSheet.create({
   },
 
   emptyText: {
-    color: "#6B7280",
+    color: PALETTE.muted,
     fontWeight: "700",
   },
 });

@@ -2,25 +2,25 @@ import { api } from "./apiClient";
 
 export const SUPPORT_CATEGORY_META = Object.freeze({
   general: { label: "Chung", bg: "#F3F4F6", fg: "#374151" },
-  order: { label: "Don hang", bg: "#EFF6FF", fg: "#1D4ED8" },
-  prescription: { label: "Prescription", bg: "#EEF2FF", fg: "#4338CA" },
-  shipping: { label: "Giao hang", bg: "#ECFEFF", fg: "#0F766E" },
-  refund: { label: "Refund", bg: "#FEF3C7", fg: "#B45309" },
-  return: { label: "Tra hang", bg: "#FCE7F3", fg: "#BE185D" },
-  warranty: { label: "Bao hanh", bg: "#ECFDF5", fg: "#15803D" },
+  order: { label: "Đơn hàng", bg: "#EFF6FF", fg: "#1D4ED8" },
+  prescription: { label: "Đơn thuốc", bg: "#EEF2FF", fg: "#4338CA" },
+  shipping: { label: "Giao hàng", bg: "#ECFEFF", fg: "#0F766E" },
+  refund: { label: "Hoàn tiền", bg: "#FEF3C7", fg: "#B45309" },
+  return: { label: "Trả hàng", bg: "#FCE7F3", fg: "#BE185D" },
+  warranty: { label: "Bảo hành", bg: "#ECFDF5", fg: "#15803D" },
 });
 
 export const SUPPORT_STATUS_META = Object.freeze({
-  open: { label: "Moi tao", bg: "#F3F4F6", fg: "#374151" },
-  in_progress: { label: "Dang xu ly", bg: "#EFF6FF", fg: "#1D4ED8" },
-  resolved: { label: "Da giai quyet", bg: "#ECFDF5", fg: "#15803D" },
-  closed: { label: "Da dong", bg: "#F3F4F6", fg: "#6B7280" },
-  requested: { label: "Da gui yeu cau", bg: "#FFF7ED", fg: "#B45309" },
-  under_review: { label: "Dang review", bg: "#EFF6FF", fg: "#1D4ED8" },
-  approved: { label: "Da duyet", bg: "#ECFDF5", fg: "#15803D" },
-  rejected: { label: "Tu choi", bg: "#FEE2E2", fg: "#991B1B" },
-  in_service: { label: "Dang bao hanh", bg: "#ECFEFF", fg: "#0F766E" },
-  completed: { label: "Hoan tat", bg: "#ECFDF5", fg: "#15803D" },
+  open: { label: "Mới tạo", bg: "#F3F4F6", fg: "#374151" },
+  in_progress: { label: "Đang xử lý", bg: "#EFF6FF", fg: "#1D4ED8" },
+  resolved: { label: "Đã giải quyết", bg: "#ECFDF5", fg: "#15803D" },
+  closed: { label: "Đã đóng", bg: "#F3F4F6", fg: "#6B7280" },
+  requested: { label: "Đã gửi yêu cầu", bg: "#FFF7ED", fg: "#B45309" },
+  under_review: { label: "Đang xem xét", bg: "#EFF6FF", fg: "#1D4ED8" },
+  approved: { label: "Đã duyệt", bg: "#ECFDF5", fg: "#15803D" },
+  rejected: { label: "Từ chối", bg: "#FEE2E2", fg: "#991B1B" },
+  in_service: { label: "Đang bảo hành", bg: "#ECFEFF", fg: "#0F766E" },
+  completed: { label: "Hoàn tất", bg: "#ECFDF5", fg: "#15803D" },
 });
 
 const DEFAULT_CATEGORY_META = SUPPORT_CATEGORY_META.general;

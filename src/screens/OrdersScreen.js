@@ -16,6 +16,19 @@ import { useFocusEffect } from "@react-navigation/native";
 import { getMyOrdersApi, cancelOrderApi } from "../services/orderService";
 import OrderCard from "../components/OrderCard";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const STATUS_FILTERS = [
   { key: "all", label: "Tất cả", icon: "apps-outline" },
   { key: "pending", label: "Chờ xác nhận", icon: "time-outline", color: "#B45309" },
@@ -257,7 +270,7 @@ export default function OrdersScreen({ navigation, route }) {
     if (loading) {
       return (
         <View style={styles.emptyWrap}>
-          <ActivityIndicator size="small" color="#2563EB" />
+          <ActivityIndicator size="small" color={PALETTE.navy} />
           <Text style={styles.emptySub}>Đang tải đơn hàng...</Text>
         </View>
       );
@@ -267,7 +280,7 @@ export default function OrdersScreen({ navigation, route }) {
       return (
         <View style={styles.emptyWrap}>
           <View style={styles.emptyIconContainer}>
-            <Ionicons name="filter-outline" size={44} color="#9CA3AF" />
+            <Ionicons name="filter-outline" size={44} color={PALETTE.muted} />
           </View>
           <Text style={styles.emptyTitle}>Không có đơn hàng</Text>
           <Text style={styles.emptySub}>
@@ -285,7 +298,7 @@ export default function OrdersScreen({ navigation, route }) {
 
     return (
       <View style={styles.emptyWrap}>
-        <Ionicons name="receipt-outline" size={44} color="#9CA3AF" />
+        <Ionicons name="receipt-outline" size={44} color={PALETTE.muted} />
         <Text style={styles.emptyTitle}>Chưa có đơn hàng</Text>
         <Text style={styles.emptySub}>
           Đơn hàng sẽ hiển thị ở đây sau khi thanh toán.
@@ -357,7 +370,7 @@ export default function OrdersScreen({ navigation, route }) {
   };
 
   const renderSortIcon = (option) => {
-    const color = sortBy === option.key ? "#2563EB" : "#6B7280";
+    const color = sortBy === option.key ? PALETTE.navy : PALETTE.muted;
     const size = 14;
     return <FontAwesome5 name={option.icon} size={size} color={color} />;
   };
@@ -373,7 +386,7 @@ export default function OrdersScreen({ navigation, route }) {
             activeOpacity={0.85}
             style={styles.iconBtn}
           >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+            <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Đơn hàng</Text>
         </View>
@@ -390,7 +403,7 @@ export default function OrdersScreen({ navigation, route }) {
             <FontAwesome5
               name="sort-amount-down"
               size={14}
-              color={showSortDropdown ? "#2563EB" : "#6B7280"}
+              color={showSortDropdown ? PALETTE.navy : PALETTE.muted}
             />
             <Text
               style={[
@@ -416,7 +429,7 @@ export default function OrdersScreen({ navigation, route }) {
             <FontAwesome5
               name="filter"
               size={14}
-              color={showFilterDropdown ? "#2563EB" : "#6B7280"}
+              color={showFilterDropdown ? PALETTE.navy : PALETTE.muted}
             />
             {!selectedFilters.includes("all") && <View style={styles.filterDot} />}
           </TouchableOpacity>
@@ -453,7 +466,7 @@ export default function OrdersScreen({ navigation, route }) {
                   </Text>
                 </View>
                 {sortBy === option.key && (
-                  <Ionicons name="checkmark" size={16} color="#2563EB" />
+                  <Ionicons name="checkmark" size={16} color={PALETTE.navy} />
                 )}
               </TouchableOpacity>
             ))}
@@ -487,7 +500,7 @@ export default function OrdersScreen({ navigation, route }) {
                   <Ionicons
                     name={filter.icon}
                     size={14}
-                    color={isActive ? "#2563EB" : filter.color || "#6B7280"}
+                    color={isActive ? PALETTE.navy : filter.color || PALETTE.muted}
                   />
                   <Text
                     style={[
@@ -529,7 +542,7 @@ export default function OrdersScreen({ navigation, route }) {
                         <Ionicons
                           name={filterObj.icon}
                           size={12}
-                          color={filterObj.color || "#2563EB"}
+                          color={filterObj.color || PALETTE.navy}
                         />
                         <Text style={styles.activeFilterText}>
                           {filterObj.label}
@@ -543,7 +556,7 @@ export default function OrdersScreen({ navigation, route }) {
                           <Ionicons
                             name="close-circle"
                             size={14}
-                            color="#9CA3AF"
+                            color="red"
                           />
                         </TouchableOpacity>
                       </View>
@@ -625,7 +638,7 @@ export default function OrdersScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
 
   header: {
     paddingHorizontal: 12,
@@ -638,7 +651,7 @@ const styles = StyleSheet.create({
 
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
 
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
 
   iconBtn: {
     width: 36,
@@ -661,21 +674,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
 
   sortBtnActive: {
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
+    borderColor: PALETTE.navy,
   },
 
   sortBtnText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   sortBtnTextActive: {
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 
   filterBtn: {
@@ -684,12 +700,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
     position: "relative",
   },
 
   filterBtnActive: {
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
+    borderColor: PALETTE.navy,
   },
 
   filterDot: {
@@ -699,16 +718,16 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.gold,
     borderWidth: 1.5,
-    borderColor: "#FFFFFF",
+    borderColor: PALETTE.white,
   },
 
   sortDropdown: {
     position: "absolute",
     top: 60,
     right: 60,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 16,
     padding: 8,
     shadowColor: "#000",
@@ -735,7 +754,7 @@ const styles = StyleSheet.create({
   },
 
   sortOptionActive: {
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
   },
 
   sortOptionLeft: {
@@ -747,18 +766,18 @@ const styles = StyleSheet.create({
   sortOptionText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   sortOptionTextActive: {
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 
   filterDropdown: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: PALETTE.border,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -777,25 +796,25 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.white,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "transparent",
+    borderColor: PALETTE.border,
   },
 
   filterChipActive: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#2563EB",
+    backgroundColor: PALETTE.navyTint,
+    borderColor: PALETTE.navy,
   },
 
   filterChipText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   filterChipTextActive: {
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 
   filterChipBadge: {
@@ -809,7 +828,7 @@ const styles = StyleSheet.create({
   filterChipBadgeText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.text,
   },
 
   orderTypeFilterWrap: {
@@ -820,7 +839,7 @@ const styles = StyleSheet.create({
     padding: 4,
     gap: 6,
     borderRadius: 16,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.border,
   },
 
   orderTypeChip: {
@@ -834,17 +853,17 @@ const styles = StyleSheet.create({
   },
 
   orderTypeChipActive: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
   },
 
   orderTypeChipText: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   orderTypeChipTextActive: {
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 
   activeFilterBar: {
@@ -854,9 +873,9 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: PALETTE.white,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: PALETTE.border,
   },
 
   activeFilterLeft: {
@@ -878,7 +897,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
@@ -887,13 +906,13 @@ const styles = StyleSheet.create({
   activeFilterText: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 
   activeFilterCount: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   errorBox: {
@@ -918,7 +937,7 @@ const styles = StyleSheet.create({
   },
 
   retryText: {
-    color: "#1D4ED8",
+    color: PALETTE.navy,
     fontWeight: "900",
     fontSize: 12.5,
   },
@@ -938,13 +957,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 14,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
 
   emptySub: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
     textAlign: "center",
   },
 
@@ -956,13 +975,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
     borderRadius: 20,
   },
 
   clearFilterText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
 });

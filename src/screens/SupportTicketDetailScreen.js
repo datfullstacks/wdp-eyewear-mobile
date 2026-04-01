@@ -18,6 +18,18 @@ import {
   replySupportTicketApi,
 } from "../services/supportService";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  bg: "#F6F7FB",
+  white: "#FFFFFF",
+  text: "#111827",
+  muted: "#6B7280",
+  border: "#EEF2F7",
+  blue: "#2563EB",
+};
+
 function formatTime(value) {
   if (!value) return "--";
   const d = new Date(value);
@@ -45,7 +57,7 @@ function SectionCard({ title, icon, children, right }) {
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
-          <Ionicons name={icon} size={18} color="#111827" />
+          <Ionicons name={icon} size={18} color={PALETTE.text} />
           <Text style={styles.cardTitle}>{title}</Text>
         </View>
         {right}
@@ -67,7 +79,7 @@ function InfoRow({ label, value }) {
 function MetaBadge({ label, fg, bg }) {
   return (
     <View style={[styles.badge, { backgroundColor: bg || "#F3F4F6" }]}>
-      <Text style={[styles.badgeText, { color: fg || "#111827" }]}>{label}</Text>
+      <Text style={[styles.badgeText, { color: fg || PALETTE.text }]}>{label}</Text>
     </View>
   );
 }
@@ -115,20 +127,13 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
         setRefreshing(false);
         return;
       }
-
       if (!silent) setLoading(true);
       setError("");
-
       try {
         const nextTicket = await getSupportTicketByIdApi(ticketId);
         setTicket(nextTicket || null);
       } catch (err) {
-        const message =
-          err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          err?.message ||
-          "Không tải được chi tiết ticket";
-        setError(message);
+        setError(err?.response?.data?.message || err?.message || "Không tải được chi tiết ticket");
       } finally {
         if (!silent) setLoading(false);
         setRefreshing(false);
@@ -137,29 +142,21 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
     [ticketId]
   );
 
-  useEffect(() => {
-    loadTicket();
-  }, [loadTicket]);
+  useEffect(() => { loadTicket(); }, [loadTicket]);
 
-  const warranty = useMemo(() => ticket?.warranty || null, [ticket]);
   const warrantyEnabled = isWarrantyTicket(ticket);
+  const warranty = ticket?.warranty || null;
 
   const handleReply = useCallback(async () => {
     const message = String(reply || "").trim();
     if (!message || !ticketId || submitting) return;
-
     try {
       setSubmitting(true);
       const nextTicket = await replySupportTicketApi(ticketId, { message });
       setTicket(nextTicket || ticket);
       setReply("");
     } catch (err) {
-      const messageText =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Không gửi được phản hồi";
-      Alert.alert("Support", messageText);
+      Alert.alert("Support", err?.message || "Không gửi được phản hồi");
     } finally {
       setSubmitting(false);
     }
@@ -170,19 +167,14 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity
-              onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
-              activeOpacity={0.85}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="chevron-back" size={22} color="#111827" />
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+              <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Chi tiết hỗ trợ</Text>
           </View>
         </View>
-
         <View style={styles.centerWrap}>
-          <ActivityIndicator size="small" color="#2563EB" />
+          <ActivityIndicator size="small" color={PALETTE.navy} />
           <Text style={styles.mutedText}>Đang tải ticket...</Text>
         </View>
       </SafeAreaView>
@@ -194,19 +186,14 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity
-              onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
-              activeOpacity={0.85}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="chevron-back" size={22} color="#111827" />
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+              <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Chi tiết hỗ trợ</Text>
           </View>
         </View>
-
         <View style={styles.centerWrap}>
-          <Ionicons name="alert-circle-outline" size={40} color="#9CA3AF" />
+          <Ionicons name="alert-circle-outline" size={40} color={PALETTE.muted} />
           <Text style={styles.errorText}>{error || "Không tìm thấy ticket"}</Text>
           <TouchableOpacity style={styles.retryBtn} onPress={() => loadTicket()}>
             <Text style={styles.retryText}>Thử lại</Text>
@@ -220,12 +207,8 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
-            activeOpacity={0.85}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+            <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Chi tiết hỗ trợ</Text>
         </View>
@@ -234,52 +217,26 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              loadTicket({ silent: true });
-            }}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadTicket({ silent: true }); }} />}
       >
         <SectionCard title={ticket.subject || "Ticket"} icon="chatbubble-ellipses-outline">
           <View style={styles.badgeRow}>
             <MetaBadge
-              label={ticket.categoryMeta?.label || ticket.category || "Support"}
-              fg={ticket.categoryMeta?.fg}
-              bg={ticket.categoryMeta?.bg}
-            />
-            <MetaBadge
-              label={ticket.statusMeta?.label || ticket.status || "open"}
-              fg={ticket.statusMeta?.fg}
-              bg={ticket.statusMeta?.bg}
+              label={ticket.statusMeta?.label || ticket.status || "Open"}
+              fg={ticket.statusMeta?.fg || PALETTE.navy}
+              bg={ticket.statusMeta?.bg || PALETTE.navyTint}
             />
             <MetaBadge label={getPriorityLabel(ticket.priority)} fg="#4338CA" bg="#EEF2FF" />
           </View>
           <InfoRow label="Cập nhật" value={formatTime(ticket.lastMessageAt || ticket.updatedAt)} />
-          <InfoRow label="Tạo lúc" value={formatTime(ticket.createdAt)} />
           <InfoRow label="Email" value={ticket.email || "--"} />
         </SectionCard>
 
         {(ticket.order || ticket.store) && (
           <SectionCard title="Liên kết đơn hàng" icon="receipt-outline">
             <InfoRow label="Mã đơn" value={ticket.order?.paymentCode || ticket.order?.id || "--"} />
-            <InfoRow label="Trạng thái đơn" value={ticket.order?.status || "--"} />
-            <InfoRow label="Loại đơn" value={ticket.order?.orderType || "--"} />
-            <InfoRow
-              label="Cửa hàng xử lý"
-              value={
-                ticket.store?.name
-                  ? `${ticket.store.name}${ticket.store.code ? ` (${ticket.store.code})` : ""}`
-                  : "--"
-              }
-            />
-            <InfoRow
-              label="Khu vực"
-              value={[ticket.store?.district, ticket.store?.city].filter(Boolean).join(", ")}
-            />
+            <InfoRow label="Trạng thái" value={ticket.order?.status || "--"} />
+            <InfoRow label="Cửa hàng" value={ticket.store?.name || "--"} />
           </SectionCard>
         )}
 
@@ -287,31 +244,18 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
           <SectionCard title="Thông tin bảo hành" icon="shield-checkmark-outline">
             <InfoRow label="Mặt hàng" value={warranty?.itemName || "--"} />
             <InfoRow label="Tình trạng" value={getEligibilityLabel(warranty?.eligibility)} />
-            <InfoRow
-              label="Thời hạn"
-              value={
-                warranty?.warrantyMonths
-                  ? `${warranty.warrantyMonths} tháng`
-                  : "Không có"
-              }
-            />
-            <InfoRow label="Hết hạn" value={formatTime(warranty?.expiresAt)} />
-            <InfoRow label="Ghi chú duyệt" value={warranty?.decisionNote || "--"} />
-            <InfoRow label="Ghi chú bảo hành" value={warranty?.serviceNote || "--"} />
+            <InfoRow label="Thời hạn" value={warranty?.warrantyMonths ? `${warranty.warrantyMonths} tháng` : "Không có"} />
           </SectionCard>
         )}
 
         <SectionCard
-          title="Tin nhắn"
+          title="Hội thoại"
           icon="mail-open-outline"
-          right={<Text style={styles.subtleMeta}>{ticket.messages?.length || 0} tin</Text>}
+          right={<Text style={styles.subtleMeta}>{ticket.messages?.length || 0} tin nhắn</Text>}
         >
           {Array.isArray(ticket.messages) && ticket.messages.length > 0 ? (
             ticket.messages.map((item, index) => (
-              <MessageBubble
-                key={`${item?.createdAt || "message"}-${index}`}
-                item={item}
-              />
+              <MessageBubble key={index} item={item} />
             ))
           ) : (
             <Text style={styles.mutedText}>Chưa có nội dung hỏi đáp.</Text>
@@ -319,12 +263,9 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
         </SectionCard>
 
         <SectionCard title="Phản hồi" icon="create-outline">
-          <Text style={styles.mutedText}>
-            Gửi thêm thông tin để staff tiếp tục xử lý case này.
-          </Text>
           <TextInput
             style={styles.replyInput}
-            placeholder="Nhập nội dung phản hồi..."
+            placeholder="Nhập nội dung phản hồi cho Staff..."
             multiline
             textAlignVertical="top"
             value={reply}
@@ -347,192 +288,41 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
-  header: {
-    paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingBottom: 28,
-    gap: 14,
-  },
-  centerWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    gap: 10,
-  },
-  mutedText: {
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#6B7280",
-    lineHeight: 18,
-  },
-  errorText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#6B7280",
-    textAlign: "center",
-  },
-  retryBtn: {
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: "#EFF6FF",
-  },
-  retryText: {
-    color: "#2563EB",
-    fontWeight: "800",
-  },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#EEF2F7",
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 12,
-  },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
+  header: { paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
+  iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  content: { paddingHorizontal: 16, paddingBottom: 30, gap: 14 },
+  centerWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
+  mutedText: { fontSize: 12.5, fontWeight: "700", color: PALETTE.muted, lineHeight: 18 },
+  errorText: { fontSize: 13, fontWeight: "700", color: PALETTE.muted, textAlign: "center" },
+  retryBtn: { marginTop: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, backgroundColor: PALETTE.navyTint },
+  retryText: { color: PALETTE.navy, fontWeight: "800" },
+  card: { backgroundColor: PALETTE.white, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: PALETTE.border },
+  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   cardHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
-  cardTitle: {
-    fontSize: 14.5,
-    fontWeight: "900",
-    color: "#111827",
-  },
-  subtleMeta: {
-    fontSize: 11.5,
-    fontWeight: "700",
-    color: "#6B7280",
-  },
-  badgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 4,
-  },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  badgeText: {
-    fontSize: 11.5,
-    fontWeight: "900",
-  },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 14,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E5E7EB",
-  },
-  infoLabel: {
-    flex: 1,
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#6B7280",
-  },
-  infoValue: {
-    flex: 1,
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#111827",
-    textAlign: "right",
-  },
-  messageWrap: {
-    marginTop: 10,
-    alignItems: "flex-start",
-  },
-  messageWrapRight: {
-    alignItems: "flex-end",
-  },
-  messageBubble: {
-    maxWidth: "86%",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  messageBubbleUser: {
-    backgroundColor: "#F3F4F6",
-  },
-  messageBubbleStaff: {
-    backgroundColor: "#111827",
-  },
-  messageSender: {
-    fontSize: 11.5,
-    fontWeight: "900",
-    color: "#2563EB",
-  },
-  messageSenderStaff: {
-    color: "#93C5FD",
-  },
-  messageText: {
-    marginTop: 4,
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#111827",
-    lineHeight: 18,
-  },
-  messageTextStaff: {
-    color: "#FFFFFF",
-  },
-  messageTime: {
-    marginTop: 6,
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#6B7280",
-  },
-  messageTimeStaff: {
-    color: "#CBD5E1",
-  },
-  replyInput: {
-    minHeight: 110,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
-  },
-  submitBtn: {
-    marginTop: 12,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: "#2563EB",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  submitBtnDisabled: {
-    opacity: 0.6,
-  },
-  submitText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "900",
-  },
+  cardTitle: { fontSize: 14.5, fontWeight: "900", color: PALETTE.text },
+  subtleMeta: { fontSize: 11.5, fontWeight: "700", color: PALETTE.muted },
+  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
+  badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  badgeText: { fontSize: 11.5, fontWeight: "900" },
+  infoRow: { flexDirection: "row", justifyContent: "space-between", gap: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E5E7EB" },
+  infoLabel: { flex: 1, fontSize: 12.5, fontWeight: "700", color: PALETTE.muted },
+  infoValue: { flex: 1, fontSize: 12.5, fontWeight: "700", color: PALETTE.text, textAlign: "right" },
+  messageWrap: { marginTop: 10, alignItems: "flex-start" },
+  messageWrapRight: { alignItems: "flex-end" },
+  messageBubble: { maxWidth: "88%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12 },
+  messageBubbleUser: { backgroundColor: "#F3F4F6" },
+  messageBubbleStaff: { backgroundColor: PALETTE.navy },
+  messageSender: { fontSize: 11.5, fontWeight: "900", color: PALETTE.blue },
+  messageSenderStaff: { color: "#93C5FD" },
+  messageText: { marginTop: 4, fontSize: 13, fontWeight: "700", color: PALETTE.text, lineHeight: 19 },
+  messageTextStaff: { color: PALETTE.white },
+  messageTime: { marginTop: 6, fontSize: 10.5, fontWeight: "700", color: PALETTE.muted },
+  messageTimeStaff: { color: "#CBD5E1" },
+  replyInput: { minHeight: 120, marginTop: 12, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 16, padding: 14, fontSize: 13.5, fontWeight: "700", color: PALETTE.text, backgroundColor: "#FFFFFF" },
+  submitBtn: { marginTop: 12, height: 48, borderRadius: 16, backgroundColor: PALETTE.navy, alignItems: "center", justifyContent: "center" },
+  submitBtnDisabled: { opacity: 0.6 },
+  submitText: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
 });

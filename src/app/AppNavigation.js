@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore } from "../store/authStore";
 import { useCartStore } from "../store/cartStore";
 import { useSystemConfigStore } from "../store/systemConfigStore";
-// import { useFavoriteStore } from "../store/favoriteStore";
+import { useFavoriteStore } from "../store/favoriteStore";
 
 import LoginScreen from "../screens/LoginScreen";
 import MaintenanceScreen from "../screens/MaintenanceScreen";
@@ -29,7 +29,7 @@ import ProductDetailScreen from "../screens/ProductDetailScreen";
 import FavoritesScreen from "../screens/FavoritesScreen";
 import AddressBookScreen from "../screens/AddressBookScreen";
 import PrescriptionScreen from "../screens/PrescriptionScreen";
-import PaymentsScreen from "../screens/PaymentsScreen";
+// import PaymentsScreen from "../screens/PaymentsScreen";
 import SupportScreen from "../screens/SupportScreen";
 import SupportTicketDetailScreen from "../screens/SupportTicketDetailScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
@@ -109,7 +109,7 @@ function ProfileStackScreen() {
       <ProfileStack.Screen name="OrderDetail" component={OrderDetailScreen} />
       <ProfileStack.Screen name="AddressBook" component={AddressBookScreen} />
       <ProfileStack.Screen name="Prescription" component={PrescriptionScreen} />
-      <ProfileStack.Screen name="Payments" component={PaymentsScreen} />
+      {/* <ProfileStack.Screen name="Payments" component={PaymentsScreen} /> */}
       <ProfileStack.Screen name="Support" component={SupportScreen} />
       <ProfileStack.Screen
         name="SupportTicketDetail"
@@ -387,14 +387,14 @@ export default function AppNavigation() {
   }, [hydrateSystemConfig]);
 
   useEffect(() => {
-    installAppAlert();
-  }, []);
-
-  useEffect(() => {
     if (!isHydratingAuth) {
       setCartUser(userKey);
     }
   }, [isHydratingAuth, userKey, setCartUser]);
+
+  useEffect(() => {
+    installAppAlert();
+  }, []);
 
   if (isHydratingAuth || isHydratingCart || isHydratingRuntimeConfig) return null;
 
@@ -418,6 +418,11 @@ export default function AppNavigation() {
               <RootStack.Screen name="Login" component={LoginScreen} />
               <RootStack.Screen name="Register" component={RegisterScreen} />
               <RootStack.Screen name="CartFlow" component={CartStackScreen} />
+              <RootStack.Screen name="Support" component={SupportScreen} />
+              <RootStack.Screen
+                name="SupportTicketDetail"
+                component={SupportTicketDetailScreen}
+              />
             </>
           )}
         </RootStack.Navigator>

@@ -59,7 +59,7 @@ export default function RegisterScreen({ navigation }) {
       navigation.replace("Tabs");
     } catch (e) {
       setApiError(e?.response?.data?.message || "Đăng ký thất bại");
-      console.log("Register error:", e);
+      // console.log("Register error:", e);
     }
   };
 

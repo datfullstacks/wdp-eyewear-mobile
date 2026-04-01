@@ -23,7 +23,6 @@ export default function HeaderSearchActions({
   value,
   onChangeText,
   placeholder = "Tìm gọng kính, tròng kính, dịch vụ...",
-  onPressFav,
   onPressCart,
   onSubmit,
   containerStyle,
@@ -51,12 +50,12 @@ export default function HeaderSearchActions({
   return (
     <View style={[styles.row, containerStyle]}>
       <View style={styles.searchWrap}>
-        <Ionicons name="search-outline" size={18} color="#9AA4B2" />
+        <Ionicons name="search-outline" size={18} color={PALETTE.muted} />
         <TextInput
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="#9AA4B2"
+          placeholderTextColor={PALETTE.muted}
           style={[styles.searchInput, inputStyle]}
           returnKeyType="search"
           onSubmitEditing={() => onSubmit?.()}
@@ -64,23 +63,55 @@ export default function HeaderSearchActions({
       </View>
 
       <CartIconButton onPress={handlePressCart} />
-      <View>
-        <AntDesign name="comment" size={25} color={PALETTE.navy} />
-      </View>
+
+      <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}
+        onPress={() =>
+          navigation.navigate("Support", {
+            prefillCategory: "general",
+            lockCategory: false,
+            orderId: "",
+            orderCode: "",
+            orderItemId: "",
+            orderItemName: "",
+            draftSubject: "",
+          })
+        }>
+        <AntDesign name="comment" size={18} color={PALETTE.navy} />
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 10 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
   searchWrap: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
+    backgroundColor: PALETTE.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
     paddingHorizontal: 12,
-    height: 44,
   },
-  searchInput: { flex: 1, color: "#111827" },
+  searchInput: {
+    flex: 1,
+    color: PALETTE.text,
+    marginLeft: 8,
+    fontSize: 13,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
 });

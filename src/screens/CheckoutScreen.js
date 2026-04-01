@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { CART_TYPES } from "../store/cartStore";
@@ -34,6 +35,19 @@ import {
 import { validatePromotionApi } from "../services/promotionService";
 import { Ionicons, FontAwesome6 } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
+
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
 
 const SHIPPING_METHODS = [
   {
@@ -64,9 +78,9 @@ const extractApiErrorMessage = (error) => {
   const data = error?.response?.data || {};
   const errors = Array.isArray(data?.errors)
     ? data.errors
-        .map((item) => item?.msg)
-        .filter(Boolean)
-        .join("\n")
+      .map((item) => item?.msg)
+      .filter(Boolean)
+      .join("\n")
     : "";
 
   return errors || data?.message || data?.error || error?.message || "";
@@ -81,8 +95,8 @@ const normalizePercent = (value, fallback = 100) => {
 const getCartItemDepositPercent = (item) =>
   normalizePercent(
     item?.depositPercent ??
-      item?.preOrderConfig?.depositPercent ??
-      item?.product?.preOrder?.depositPercent,
+    item?.preOrderConfig?.depositPercent ??
+    item?.product?.preOrder?.depositPercent,
     item?.isPreorder ? 100 : 100,
   );
 
@@ -177,11 +191,11 @@ const normalizeAddressRecord = (raw = {}) => ({
 const hasLocationIds = (addr) =>
   Boolean(
     addr?.provinceId &&
-      addr?.districtId &&
-      addr?.wardCode &&
-      String(addr.provinceId).trim() &&
-      String(addr.districtId).trim() &&
-      String(addr.wardCode).trim(),
+    addr?.districtId &&
+    addr?.wardCode &&
+    String(addr.provinceId).trim() &&
+    String(addr.districtId).trim() &&
+    String(addr.wardCode).trim(),
   );
 
 export default function CheckoutScreen({ navigation, route }) {
@@ -277,7 +291,7 @@ export default function CheckoutScreen({ navigation, route }) {
     () => cartItems.some((it) => Boolean(it?.isPreorder)),
     [cartItems],
   );
-  
+
 
   const paymentMethods = useMemo(() => {
     return PAYMENT_METHODS.filter((method) => {
@@ -372,7 +386,7 @@ export default function CheckoutScreen({ navigation, route }) {
           setAddress(null);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         if (!active) return;
         setAddressLoading(false);
@@ -384,7 +398,7 @@ export default function CheckoutScreen({ navigation, route }) {
   }, [token]);
 
   useEffect(() => {
-    void refreshSystemConfig().catch(() => {});
+    void refreshSystemConfig().catch(() => { });
   }, [refreshSystemConfig]);
 
   useEffect(() => {
@@ -458,43 +472,62 @@ export default function CheckoutScreen({ navigation, route }) {
   const hydrateAddressDraft = async (addr) => {
     if (!addr) return { ...EMPTY_ADDRESS };
 
-    const provinceList =
-      provinces.length > 0 ? provinces : await getProvincesApi();
-    const matchedProvince =
-      provinceList.find((p) => String(p.id) === String(addr.provinceId)) ||
-      provinceList.find((p) => p.name === addr.province);
+    try {
+      const provinceList = Array.isArray(provinces) && provinces.length > 0
+        ? provinces
+        : await getProvincesApi();
+      const safeProvinceList = Array.isArray(provinceList) ? provinceList : [];
+      const matchedProvince =
+        safeProvinceList.find((p) => String(p.id) === String(addr.provinceId)) ||
+        safeProvinceList.find((p) => p.name === addr.province);
 
-    const districtList = matchedProvince?.id
-      ? await getDistrictsApi(matchedProvince.id)
-      : [];
+      const districtList = matchedProvince?.id
+        ? await getDistrictsApi(matchedProvince.id)
+        : [];
+      const safeDistrictList = Array.isArray(districtList) ? districtList : [];
 
-    const matchedDistrict =
-      districtList.find((d) => String(d.id) === String(addr.districtId)) ||
-      districtList.find((d) => d.name === addr.district);
+      const matchedDistrict =
+        safeDistrictList.find((d) => String(d.id) === String(addr.districtId)) ||
+        safeDistrictList.find((d) => d.name === addr.district);
 
-    const wardList = matchedDistrict?.id
-      ? await getWardsApi(matchedDistrict.id)
-      : [];
+      const wardList = matchedDistrict?.id
+        ? await getWardsApi(matchedDistrict.id)
+        : [];
+      const safeWardList = Array.isArray(wardList) ? wardList : [];
 
-    const matchedWard =
-      wardList.find((w) => String(w.code) === String(addr.wardCode)) ||
-      wardList.find((w) => w.name === addr.ward);
+      const matchedWard =
+        safeWardList.find((w) => String(w.code) === String(addr.wardCode)) ||
+        safeWardList.find((w) => w.name === addr.ward);
 
-    setDistricts(districtList);
-    setWards(wardList);
+      setDistricts(safeDistrictList);
+      setWards(safeWardList);
 
-    return {
-      ...EMPTY_ADDRESS,
-      ...addr,
-      _id: addr?._id || "",
-      isDefault: Boolean(addr?.isDefault),
-      provinceId: matchedProvince?.id || String(addr.provinceId || ""),
-      province: matchedProvince?.name || addr.province || "",
-      districtId: matchedDistrict?.id || String(addr.districtId || ""),
-      district: matchedDistrict?.name || addr.district || "",
-      wardCode: matchedWard?.code || addr.wardCode || "",
-      ward: matchedWard?.name || addr.ward || "",
-    };
+      return {
+        ...EMPTY_ADDRESS,
+        ...addr,
+        _id: addr?._id || "",
+        isDefault: Boolean(addr?.isDefault),
+        provinceId: matchedProvince?.id || String(addr.provinceId || ""),
+        province: matchedProvince?.name || addr.province || "",
+        districtId: matchedDistrict?.id || String(addr.districtId || ""),
+        district: matchedDistrict?.name || addr.district || "",
+        wardCode: matchedWard?.code || addr.wardCode || "",
+        ward: matchedWard?.name || addr.ward || "",
+      };
+    } catch {
+      setDistricts([]);
+      setWards([]);
+
+      return {
+        ...EMPTY_ADDRESS,
+        ...addr,
+        _id: addr?._id || "",
+        isDefault: Boolean(addr?.isDefault),
+        provinceId: addr?.provinceId ? String(addr.provinceId) : "",
+        districtId: addr?.districtId ? String(addr.districtId) : "",
+        wardCode: addr?.wardCode || "",
+      };
+    }
   };
 
   const resolveAddressForCheckout = async (addr) => {
@@ -547,11 +580,19 @@ export default function CheckoutScreen({ navigation, route }) {
   };
 
   const startEditAddress = async (preset) => {
-    const nextDraft = await hydrateAddressDraft(
-      preset ?? address ?? { ...EMPTY_ADDRESS },
-    );
-    setDraftAddress(nextDraft);
     setIsEditingAddress(true);
+
+    try {
+      const nextDraft = await hydrateAddressDraft(
+        preset ?? address ?? { ...EMPTY_ADDRESS },
+      );
+      setDraftAddress(nextDraft);
+    } catch {
+      setDraftAddress({
+        ...EMPTY_ADDRESS,
+        ...(preset ?? address ?? {}),
+      });
+    }
   };
 
   const cancelEditAddress = () => {
@@ -588,11 +629,11 @@ export default function CheckoutScreen({ navigation, route }) {
 
     const hasValue = Boolean(
       cleaned.fullName ||
-        cleaned.phone ||
-        cleaned.line1 ||
-        cleaned.ward ||
-        cleaned.district ||
-        cleaned.province,
+      cleaned.phone ||
+      cleaned.line1 ||
+      cleaned.ward ||
+      cleaned.district ||
+      cleaned.province,
     );
 
     if (!hasValue) {
@@ -634,13 +675,13 @@ export default function CheckoutScreen({ navigation, route }) {
           (isEditingExisting
             ? list.find((a) => String(a?._id) === String(cleaned._id))
             : list.find(
-                (a) =>
-                  a?.fullName === cleaned.fullName &&
-                  a?.phone === cleaned.phone &&
-                  a?.line1 === cleaned.line1 &&
-                  a?.district === cleaned.district &&
-                  a?.province === cleaned.province,
-              )) ||
+              (a) =>
+                a?.fullName === cleaned.fullName &&
+                a?.phone === cleaned.phone &&
+                a?.line1 === cleaned.line1 &&
+                a?.district === cleaned.district &&
+                a?.province === cleaned.province,
+            )) ||
           list[list.length - 1] ||
           cleaned;
 
@@ -715,27 +756,43 @@ export default function CheckoutScreen({ navigation, route }) {
 
   const hasAddress = Boolean(
     address?.fullName ||
-      address?.phone ||
-      address?.line1 ||
-      address?.ward ||
-      address?.district ||
-      address?.province,
+    address?.phone ||
+    address?.line1 ||
+    address?.ward ||
+    address?.district ||
+    address?.province,
   );
 
   const addressComplete = Boolean(
     address?.fullName &&
-      address?.phone &&
-      address?.line1 &&
-      address?.ward &&
-      address?.wardCode &&
-      address?.district &&
-      address?.districtId &&
-      address?.province &&
-      address?.provinceId,
+    address?.phone &&
+    address?.line1 &&
+    address?.ward &&
+    address?.wardCode &&
+    address?.district &&
+    address?.districtId &&
+    address?.province &&
+    address?.provinceId,
+  );
+
+  const shippingMethodReady = Boolean(
+    !addressComplete ||
+    (
+      !quoteLoading &&
+      quote &&
+      shippingOptions &&
+      selectedShippingOption &&
+      selectedShippingOption.available !== false &&
+      typeof selectedShippingOption.fee === "number"
+    )
   );
 
   const canSubmitOrder = Boolean(
-    addressComplete && quote && !quoteLoading && !quoteError,
+    addressComplete &&
+    quote &&
+    !quoteLoading &&
+    !quoteError &&
+    shippingMethodReady,
   );
 
   useEffect(() => {
@@ -780,10 +837,10 @@ export default function CheckoutScreen({ navigation, route }) {
       .catch((err) => {
         if (!active) return;
         const message = extractApiErrorMessage(err);
-        console.warn(
-          "checkout quote failed",
-          err?.response?.data || err?.message || err,
-        );
+        // console.warn(
+        //   "checkout quote failed",
+        //   err?.response?.data || err?.message || err,
+        // );
         if (appliedVoucherCode && /voucher/i.test(message || "")) {
           setAppliedVoucherCode("");
           setVoucherMeta(null);
@@ -925,19 +982,19 @@ export default function CheckoutScreen({ navigation, route }) {
       });
 
       if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.log("[Checkout] createCheckout prescription payload");
-        console.log(
-          JSON.stringify(
-            payload.items.map((item) => ({
-              productId: item.productId || item.product_id,
-              variantId: item.variantId || item.variant_id || null,
-              customization: item.customization || null,
-              prescription: item.customization?.prescription || null,
-            })),
-            null,
-            2,
-          )
-        );
+        // console.log("[Checkout] createCheckout prescription payload");
+        // console.log(
+        //   JSON.stringify(
+        //     payload.items.map((item) => ({
+        //       productId: item.productId || item.product_id,
+        //       variantId: item.variantId || item.variant_id || null,
+        //       customization: item.customization || null,
+        //       prescription: item.customization?.prescription || null,
+        //     })),
+        //     null,
+        //     2,
+        //   )
+        // );
       }
 
       const data = await createCheckout(payload);
@@ -952,12 +1009,12 @@ export default function CheckoutScreen({ navigation, route }) {
         orderPayload = await getOrderByIdApi(orderId, false);
       } catch (fetchOrderError) {
         if (typeof __DEV__ !== "undefined" && __DEV__) {
-          console.log(
-            "checkout order detail fetch failed",
-            fetchOrderError?.response?.data ||
-              fetchOrderError?.message ||
-              fetchOrderError,
-          );
+          // console.log(
+          //   "checkout order detail fetch failed",
+          //   fetchOrderError?.response?.data ||
+          //     fetchOrderError?.message ||
+          //     fetchOrderError,
+          // );
         }
       }
 
@@ -1004,9 +1061,9 @@ export default function CheckoutScreen({ navigation, route }) {
       const data = err?.response?.data || {};
       const errors = Array.isArray(data.errors)
         ? data.errors
-            .map((e) => e.msg)
-            .filter(Boolean)
-            .join("\n")
+          .map((e) => e.msg)
+          .filter(Boolean)
+          .join("\n")
         : null;
       const message = errors || data.message || data.error || err?.message;
       Alert.alert(
@@ -1047,9 +1104,9 @@ export default function CheckoutScreen({ navigation, route }) {
           <TouchableOpacity
             onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
             activeOpacity={0.85}
-            style={styles.iconBtn}
+            style={styles.backBtn}
           >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+            <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Thanh toán</Text>
         </View>
@@ -1071,10 +1128,19 @@ export default function CheckoutScreen({ navigation, route }) {
                 activeOpacity={0.85}
                 disabled={isEditingAddress}
                 onPress={() => startEditAddress(address)}
+                style={[
+                  styles.headerActionBtn,
+                  isEditingAddress && styles.headerActionBtnDisabled,
+                ]}
               >
+                <Ionicons
+                  name={hasAddress ? "create-outline" : "add-circle-outline"}
+                  size={15}
+                  color={isEditingAddress ? PALETTE.muted : PALETTE.navy}
+                />
                 <Text
                   style={[
-                    styles.linkText,
+                    styles.headerActionText,
                     isEditingAddress && styles.linkDisabled,
                   ]}
                 >
@@ -1082,7 +1148,7 @@ export default function CheckoutScreen({ navigation, route }) {
                     ? "Đang chỉnh sửa"
                     : hasAddress
                       ? "Sửa"
-                      : "Thêm"}
+                      : "Thêm địa chỉ"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1098,7 +1164,7 @@ export default function CheckoutScreen({ navigation, route }) {
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="Nhập họ và tên"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={PALETTE.muted}
                     value={draftAddress.fullName}
                     onChangeText={(value) =>
                       setDraftAddress((prev) => ({ ...prev, fullName: value }))
@@ -1111,7 +1177,7 @@ export default function CheckoutScreen({ navigation, route }) {
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="Nhập số điện thoại"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={PALETTE.muted}
                     keyboardType="phone-pad"
                     value={draftAddress.phone}
                     onChangeText={(value) =>
@@ -1125,7 +1191,7 @@ export default function CheckoutScreen({ navigation, route }) {
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="Nhập email"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={PALETTE.muted}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     value={draftAddress.email}
@@ -1140,7 +1206,7 @@ export default function CheckoutScreen({ navigation, route }) {
                   <TextInput
                     style={[styles.fieldInput, styles.fieldInputMultiline]}
                     placeholder="Số nhà, tên đường..."
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={PALETTE.muted}
                     multiline
                     textAlignVertical="top"
                     value={draftAddress.line1}
@@ -1155,7 +1221,7 @@ export default function CheckoutScreen({ navigation, route }) {
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="Hầm/tầng/phòng (tuỳ chọn)"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={PALETTE.muted}
                     value={draftAddress.line2}
                     onChangeText={(value) =>
                       setDraftAddress((prev) => ({ ...prev, line2: value }))
@@ -1534,7 +1600,7 @@ export default function CheckoutScreen({ navigation, route }) {
                 onChangeText={setVoucherInput}
                 placeholder="Nhập voucher"
                 autoCapitalize="characters"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={PALETTE.muted}
               />
               <TouchableOpacity
                 activeOpacity={0.9}
@@ -1567,7 +1633,7 @@ export default function CheckoutScreen({ navigation, route }) {
               style={styles.noteInput}
               multiline
               placeholder="VD: Hãy cẩn thận khi giao hàng..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={PALETTE.muted}
               value={userNote}
               onChangeText={setUserNote}
               textAlignVertical="top"
@@ -1649,7 +1715,7 @@ export default function CheckoutScreen({ navigation, route }) {
             onPress={checkoutOrder}
             disabled={isSubmitting || !checkoutItems.length || !canSubmitOrder}
           >
-            <FontAwesome6 name="money-bill-wave" size={16} color="white" />
+            <FontAwesome6 name="check-circle" size={16} color={PALETTE.white} />
             <Text style={styles.continueText}>
               {isSubmitting ? "Đang tạo đơn..." : "Tiếp tục"}
             </Text>
@@ -1679,19 +1745,18 @@ export default function CheckoutScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
-
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
   header: {
     paddingHorizontal: 12,
     paddingTop: 6,
     paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  iconBtn: {
+  headerTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
+  iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: PALETTE.white, borderWidth: 1, borderColor: PALETTE.border },
+  backBtn: {
     width: 36,
     height: 36,
     borderRadius: 12,
@@ -1705,7 +1770,7 @@ const styles = StyleSheet.create({
 
   card: {
     marginTop: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 18,
     padding: 14,
     shadowColor: "#000",
@@ -1720,42 +1785,62 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  sectionTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  linkText: { fontSize: 12.5, fontWeight: "800", color: "#2563EB" },
-  linkDisabled: { color: "#9CA3AF" },
+  sectionTitle: { fontSize: 14, fontWeight: "900", color: PALETTE.text },
+  linkText: { fontSize: 12.5, fontWeight: "800", color: PALETTE.navy },
+  linkDisabled: { color: PALETTE.muted },
+  headerActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.navy,
+    backgroundColor: PALETTE.navyTint,
+  },
+  headerActionBtnDisabled: {
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
+  },
+  headerActionText: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: PALETTE.navy,
+  },
 
   addressName: {
     marginTop: 10,
     fontSize: 14,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
   addressMeta: {
     marginTop: 6,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   addressEmpty: {
     marginTop: 10,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#9CA3AF",
+    color: PALETTE.muted,
   },
 
   savedAddressList: { marginTop: 14, gap: 10 },
-  savedAddressTitle: { fontSize: 12.5, fontWeight: "900", color: "#111827" },
+  savedAddressTitle: { fontSize: 12.5, fontWeight: "900", color: PALETTE.text },
   savedAddressItem: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
     padding: 12,
     gap: 6,
   },
   savedAddressItemActive: {
-    borderColor: "#2563EB",
-    backgroundColor: "#EFF6FF",
+    borderColor: PALETTE.navy,
+    backgroundColor: PALETTE.navyTint,
   },
   savedAddressHeader: {
     flexDirection: "row",
@@ -1767,7 +1852,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
   savedAddressBadges: {
     flexDirection: "row",
@@ -1777,36 +1862,38 @@ const styles = StyleSheet.create({
   },
   savedAddressBadge: {
     borderRadius: 999,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: PALETTE.goldSoft,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   savedAddressBadgeActive: {
-    backgroundColor: "#DBEAFE",
+    backgroundColor: PALETTE.navyTint,
+    borderWidth: 1,
+    borderColor: PALETTE.navy,
   },
   savedAddressBadgeText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#4B5563",
+    color: PALETTE.navy,
   },
   savedAddressBadgeTextActive: {
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
-  savedAddressMeta: { fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  savedAddressMeta: { fontSize: 12, fontWeight: "700", color: PALETTE.muted },
 
   addressForm: { marginTop: 10, gap: 12 },
   fieldGroup: { gap: 6 },
-  fieldLabel: { fontSize: 12.5, fontWeight: "800", color: "#6B7280" },
+  fieldLabel: { fontSize: 12.5, fontWeight: "800", color: PALETTE.muted },
   fieldInput: {
     height: 44,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     paddingHorizontal: 12,
     fontSize: 13,
     fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    color: PALETTE.text,
+    backgroundColor: PALETTE.white,
   },
   fieldInputMultiline: {
     height: 90,
@@ -1823,14 +1910,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   actionBtnGhost: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
   },
-  actionBtnPrimary: { backgroundColor: "#2563EB" },
+  actionBtnPrimary: { backgroundColor: PALETTE.navy },
   actionText: { fontSize: 13, fontWeight: "900" },
-  actionTextGhost: { color: "#111827" },
-  actionTextPrimary: { color: "#FFFFFF" },
+  actionTextGhost: { color: PALETTE.text },
+  actionTextPrimary: { color: PALETTE.white },
 
   addAddressBtn: {
     marginTop: 12,
@@ -1838,9 +1925,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: "#E9F1FF",
+    backgroundColor: PALETTE.navyTint,
   },
-  addAddressText: { fontSize: 12.5, fontWeight: "800", color: "#2563EB" },
+  addAddressText: { fontSize: 12.5, fontWeight: "800", color: PALETTE.navy },
 
   radioList: { marginTop: 10, gap: 10 },
   radioItem: {
@@ -1849,11 +1936,11 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
   },
   radioItemActive: {
-    borderColor: "#2563EB",
-    backgroundColor: "#EFF6FF",
+    borderColor: PALETTE.navy,
+    backgroundColor: PALETTE.navyTint,
   },
   radioItemDisabled: { opacity: 0.55 },
   radioDot: {
@@ -1861,16 +1948,16 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: "#2563EB",
+    borderColor: PALETTE.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  radioDotActive: { borderColor: "#2563EB" },
+  radioDotActive: { borderColor: PALETTE.navy },
   radioDotInner: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
   },
   radioInfo: { flex: 1, marginLeft: 10 },
   radioRow: {
@@ -1878,9 +1965,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  radioLabel: { fontSize: 13.5, fontWeight: "900", color: "#111827" },
-  radioPrice: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  radioEta: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#6B7280" },
+  radioLabel: { fontSize: 13.5, fontWeight: "900", color: PALETTE.text },
+  radioPrice: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
+  radioEta: { marginTop: 4, fontSize: 12, fontWeight: "700", color: PALETTE.muted },
   shippingNote: {
     marginTop: 4,
     fontSize: 11.5,
@@ -1894,19 +1981,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 10,
   },
-  noticeText: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
+  noticeText: { fontSize: 12.5, fontWeight: "700", color: PALETTE.muted },
 
   noteInput: {
     marginTop: 10,
     minHeight: 90,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     borderRadius: 12,
     padding: 12,
     fontSize: 13,
     fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    color: PALETTE.text,
+    backgroundColor: PALETTE.white,
   },
 
   voucherRow: {
@@ -1920,24 +2007,24 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     paddingHorizontal: 12,
     fontSize: 13,
     fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    color: PALETTE.text,
+    backgroundColor: PALETTE.white,
   },
   voucherBtn: {
     height: 44,
     minWidth: 88,
     borderRadius: 12,
     paddingHorizontal: 14,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
   },
   voucherBtnDisabled: { opacity: 0.7 },
-  voucherBtnText: { color: "#FFFFFF", fontSize: 12.5, fontWeight: "900" },
+  voucherBtnText: { color: PALETTE.white, fontSize: 12.5, fontWeight: "900" },
   voucherHint: {
     marginTop: 8,
     fontSize: 12,
@@ -1951,16 +2038,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 6,
   },
-  summaryLabel: { fontSize: 13, fontWeight: "800", color: "#6B7280" },
-  summaryValue: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  summaryDivider: { height: 1, backgroundColor: "#EEF2F7", marginVertical: 8 },
-  summaryTotalLabel: { fontSize: 14, fontWeight: "900", color: "#111827" },
+  summaryLabel: { fontSize: 13, fontWeight: "800", color: PALETTE.muted },
+  summaryValue: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
+  summaryDivider: { height: 1, backgroundColor: PALETTE.border, marginVertical: 8 },
+  summaryTotalLabel: { fontSize: 14, fontWeight: "900", color: PALETTE.text },
   summaryTotalValue: { fontSize: 14, fontWeight: "900", color: "#EF4444" },
   quoteHint: {
     marginTop: 8,
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   quoteError: {
     marginTop: 6,
@@ -1973,18 +2060,18 @@ const styles = StyleSheet.create({
     marginTop: 14,
     height: 48,
     borderRadius: 14,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
   },
   continueBtnDisabled: { opacity: 0.6 },
-  continueText: { fontSize: 14, fontWeight: "900", color: "#FFFFFF" },
+  continueText: { fontSize: 14, fontWeight: "900", color: PALETTE.white },
 
   pickerBox: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderColor: PALETTE.border,
+    backgroundColor: PALETTE.white,
     overflow: "hidden",
   },
 

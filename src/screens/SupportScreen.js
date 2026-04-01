@@ -19,6 +19,19 @@ import {
   SUPPORT_CATEGORY_META,
 } from "../services/supportService";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const CATEGORY_OPTIONS = [
   { key: "general", label: "Chung" },
   { key: "order", label: "Đơn hàng" },
@@ -78,13 +91,13 @@ function TicketCard({ item, onPress }) {
           <View
             style={[
               styles.metaBadge,
-              { backgroundColor: item?.categoryMeta?.bg || "#F3F4F6" },
+              { backgroundColor: item?.categoryMeta?.bg || PALETTE.navyTint },
             ]}
           >
             <Text
               style={[
                 styles.metaBadgeText,
-                { color: item?.categoryMeta?.fg || "#374151" },
+                { color: item?.categoryMeta?.fg || PALETTE.navy },
               ]}
             >
               {item?.categoryMeta?.label || item?.category || "Support"}
@@ -93,13 +106,13 @@ function TicketCard({ item, onPress }) {
           <View
             style={[
               styles.metaBadge,
-              { backgroundColor: item?.statusMeta?.bg || "#F3F4F6" },
+              { backgroundColor: item?.statusMeta?.bg || PALETTE.border },
             ]}
           >
             <Text
               style={[
                 styles.metaBadgeText,
-                { color: item?.statusMeta?.fg || "#374151" },
+                { color: item?.statusMeta?.fg || PALETTE.text },
               ]}
             >
               {item?.statusMeta?.label || item?.status || "open"}
@@ -133,7 +146,7 @@ function TicketCard({ item, onPress }) {
 
       <View style={styles.cardBottom}>
         <Text style={styles.time}>Cập nhật: {formatTime(item?.lastMessageAt || item?.updatedAt)}</Text>
-        <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+        <Ionicons name="chevron-forward" size={18} color={PALETTE.muted} />
       </View>
     </TouchableOpacity>
   );
@@ -296,7 +309,7 @@ export default function SupportScreen({ navigation, route }) {
     if (loading) {
       return (
         <View style={styles.emptyWrap}>
-          <ActivityIndicator size="small" color="#2563EB" />
+          <ActivityIndicator size="small" color={PALETTE.navy} />
           <Text style={styles.emptyText}>Đang tải ticket...</Text>
         </View>
       );
@@ -304,7 +317,7 @@ export default function SupportScreen({ navigation, route }) {
 
     return (
       <View style={styles.emptyWrap}>
-        <Ionicons name="chatbubble-ellipses-outline" size={42} color="#9CA3AF" />
+        <Ionicons name="chatbubble-ellipses-outline" size={42} color={PALETTE.muted} />
         <Text style={styles.emptyTitle}>Chưa có case hỗ trợ</Text>
         <Text style={styles.emptyText}>Case mới sẽ hiện ở đây sau khi gửi yêu cầu.</Text>
       </View>
@@ -318,9 +331,9 @@ export default function SupportScreen({ navigation, route }) {
           <TouchableOpacity
             onPress={() => (navigation?.canGoBack?.() ? navigation.goBack() : null)}
             activeOpacity={0.85}
-            style={styles.iconBtn}
+            style={styles.backBtn}
           >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+            <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Hỗ trợ & bảo hành</Text>
         </View>
@@ -419,6 +432,7 @@ export default function SupportScreen({ navigation, route }) {
               <TextInput
                 style={styles.input}
                 placeholder="Subject"
+                placeholderTextColor={PALETTE.muted}
                 value={subject}
                 onChangeText={setSubject}
               />
@@ -429,6 +443,7 @@ export default function SupportScreen({ navigation, route }) {
                     ? "Mô tả lỗi, tình trạng sản phẩm, và nhu cầu bảo hành..."
                     : "Mô tả vấn đề cần staff hỗ trợ..."
                 }
+                placeholderTextColor={PALETTE.muted}
                 multiline
                 textAlignVertical="top"
                 value={message}
@@ -492,7 +507,7 @@ export default function SupportScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
   header: {
     paddingHorizontal: 12,
     paddingTop: 6,
@@ -501,13 +516,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   iconBtn: {
     width: 36,
     height: 36,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -517,9 +542,9 @@ const styles = StyleSheet.create({
   formCard: {
     padding: 14,
     borderRadius: 18,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderWidth: 1,
-    borderColor: "#EEF2F7",
+    borderColor: PALETTE.border,
     marginBottom: 14,
   },
   formHeading: {
@@ -528,33 +553,33 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 12,
   },
-  formTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
+  formTitle: { fontSize: 14, fontWeight: "900", color: PALETTE.text },
   formSubTitle: {
     marginTop: 4,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   contextCard: {
     marginBottom: 12,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: PALETTE.navyTint,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: PALETTE.border,
   },
-  contextTitle: { fontSize: 12.5, fontWeight: "900", color: "#111827" },
+  contextTitle: { fontSize: 12.5, fontWeight: "900", color: PALETTE.text },
   contextText: {
     marginTop: 6,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#334155",
+    color: PALETTE.text,
   },
   contextHint: {
     marginTop: 8,
     fontSize: 12,
     fontWeight: "700",
-    color: "#64748B",
+    color: PALETTE.muted,
     lineHeight: 17,
   },
   optionGroup: { marginBottom: 10 },
@@ -562,7 +587,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontSize: 12,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
   optionRow: {
     flexDirection: "row",
@@ -573,29 +598,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
   optionChipActive: {
-    backgroundColor: "#EFF6FF",
+    backgroundColor: PALETTE.navyTint,
+    borderColor: PALETTE.navy,
   },
   optionChipText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   optionChipTextActive: {
-    color: "#2563EB",
+    color: PALETTE.navy,
   },
   input: {
     height: 44,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     borderRadius: 12,
     paddingHorizontal: 12,
     fontSize: 13,
     fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    color: PALETTE.text,
+    backgroundColor: PALETTE.white,
     marginBottom: 8,
   },
   inputMulti: {
@@ -607,11 +635,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     height: 44,
     borderRadius: 12,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
     alignItems: "center",
     justifyContent: "center",
   },
-  submitText: { color: "#FFFFFF", fontWeight: "900", fontSize: 13 },
+  submitText: { color: PALETTE.white, fontWeight: "900", fontSize: 13 },
   filterWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -622,26 +650,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.white,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
   filterChipActive: {
-    backgroundColor: "#111827",
+    backgroundColor: PALETTE.navy,
+    borderColor: PALETTE.navy,
   },
   filterChipText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   filterChipTextActive: {
-    color: "#FFFFFF",
+    color: PALETTE.white,
   },
   card: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 18,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#EEF2F7",
+    borderColor: PALETTE.border,
   },
   cardTop: {
     flexDirection: "row",
@@ -653,7 +684,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
     lineHeight: 19,
   },
   metaBadges: {
@@ -673,14 +704,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#4B5563",
+    color: PALETTE.muted,
     lineHeight: 18,
   },
   secondaryText: {
     marginTop: 6,
     fontSize: 12,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   cardBottom: {
     marginTop: 10,
@@ -693,7 +724,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#9CA3AF",
+    color: PALETTE.muted,
   },
   emptyWrap: {
     paddingTop: 44,
@@ -703,12 +734,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 14,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
   emptyText: {
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
     textAlign: "center",
   },
 });

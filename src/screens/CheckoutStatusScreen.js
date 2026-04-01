@@ -9,6 +9,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,18 +21,31 @@ import {
   refreshCartBadgeQty,
 } from "../services/cartService";
 
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
+};
+
 const PAYMENT_STATUS_META = {
   PENDING_QR: {
     label: "Chờ thanh toán",
     desc: "Vui lòng quét mã QR để đặt cọc.",
-    color: "#B45309",
-    bg: "#FFF7ED",
+    color: PALETTE.gold,
+    bg: PALETTE.goldSoft,
   },
   PENDING_COD: {
     label: "Thanh toán khi nhận hàng",
     desc: "Thanh toán phần còn lại khi nhận hàng (COD).",
-    color: "#1D4ED8",
-    bg: "#EFF6FF",
+    color: PALETTE.navy,
+    bg: PALETTE.navyTint,
   },
   PAID: {
     label: "Đã thanh toán",
@@ -48,14 +62,14 @@ const PAYMENT_STATUS_META = {
   EXPIRED: {
     label: "QR hết hạn",
     desc: "Mã QR đã hết hạn. Vui lòng tạo lại.",
-    color: "#6B7280",
-    bg: "#F3F4F6",
+    color: PALETTE.muted,
+    bg: PALETTE.border,
   },
   REFUNDED: {
     label: "Đã hoàn tiền",
     desc: "Giao dịch đã được hoàn tiền.",
-    color: "#1D4ED8",
-    bg: "#EFF6FF",
+    color: PALETTE.navy,
+    bg: PALETTE.navyTint,
   },
 };
 
@@ -63,20 +77,20 @@ const REFUND_STATUS_META = {
   requested: {
     label: "Đã gửi yêu cầu",
     desc: "Yêu cầu hoàn tiền đã được ghi nhận và đang chờ sale tiếp nhận.",
-    color: "#B45309",
-    bg: "#FFF7ED",
+    color: PALETTE.gold,
+    bg: PALETTE.goldSoft,
   },
   reviewing: {
     label: "Đang review",
     desc: "Sale đang kiểm tra thông tin hoàn tiền của bạn.",
-    color: "#1D4ED8",
-    bg: "#EFF6FF",
+    color: PALETTE.navy,
+    bg: PALETTE.navyTint,
   },
   waiting_customer_info: {
     label: "Cần bổ sung",
     desc: "Vui lòng bổ sung thêm thông tin/chứng từ cho yêu cầu hoàn tiền.",
-    color: "#B45309",
-    bg: "#FFF7ED",
+    color: PALETTE.gold,
+    bg: PALETTE.goldSoft,
   },
   escalated_to_manager: {
     label: "Chờ manager",
@@ -93,20 +107,20 @@ const REFUND_STATUS_META = {
   return_pending: {
     label: "Chờ trả hàng",
     desc: "Case cần xác nhận hàng hoàn trước khi tiếp tục chuyển khoản.",
-    color: "#B45309",
-    bg: "#FFF7ED",
+    color: PALETTE.gold,
+    bg: PALETTE.goldSoft,
   },
   return_received: {
     label: "Đã nhận hàng hoàn",
     desc: "Hàng hoàn đã được xác nhận. Sale sẽ tiếp tục xử lý hoàn tiền.",
-    color: "#1D4ED8",
-    bg: "#EFF6FF",
+    color: PALETTE.navy,
+    bg: PALETTE.navyTint,
   },
   processing: {
     label: "Đang hoàn tiền",
     desc: "Sale đang xử lý giao dịch hoàn tiền cho bạn.",
-    color: "#1D4ED8",
-    bg: "#EFF6FF",
+    color: PALETTE.navy,
+    bg: PALETTE.navyTint,
   },
   completed: {
     label: "Hoàn tất",
@@ -349,7 +363,7 @@ const normalizeRefundBreakdown = (
   );
   const total = Number(
     value?.total ??
-      itemAmount + shippingFeeAmount + returnShippingFeeAmount,
+    itemAmount + shippingFeeAmount + returnShippingFeeAmount,
   );
 
   return {
@@ -428,8 +442,8 @@ const normalizeRefund = (refund, { total = 0, shippingFee = 0 } = {}) => {
     bankAccount: refund?.bankAccount || null,
     evidence: Array.isArray(refund?.evidence)
       ? refund.evidence
-          .map((entry) => String(entry || "").trim())
-          .filter(Boolean)
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean)
       : [],
     history: Array.isArray(refund?.history)
       ? refund.history.map(normalizeRefundHistoryEntry)
@@ -866,10 +880,10 @@ export default function CheckoutStatusScreen({ navigation, route }) {
         }
       } catch (error) {
         if (typeof __DEV__ !== "undefined" && __DEV__) {
-          console.log(
-            "order polling failed",
-            error?.response?.data || error?.message || error
-          );
+          // console.log(
+          //   "order polling failed",
+          //   error?.response?.data || error?.message || error
+          // );
         }
       }
     };
@@ -888,6 +902,9 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
   const isPaymentSettled =
     paymentStatus === "PAID" || paymentStatus === "REFUNDED";
+  const isCodCheckout =
+    String(order.payment.method || "").trim().toUpperCase() === "COD";
+  const shouldShowSuccessActions = isPaymentSettled || isCodCheckout;
   const shouldClearCartAfterCheckout =
     paymentStatus === "PAID" || paymentStatus === "PENDING_COD";
 
@@ -970,14 +987,14 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           await clearCartApi(apiCartType);
         } catch (error) {
           if (typeof __DEV__ !== "undefined" && __DEV__) {
-            console.log(
-              "clear cart after checkout success failed",
-              error?.response?.data || error?.message || error,
-            );
+            // console.log(
+            //   "clear cart after checkout success failed",
+            //   error?.response?.data || error?.message || error,
+            // );
           }
         } finally {
           clearCart(cartType);
-          await refreshCartBadgeQty().catch(() => {});
+          await refreshCartBadgeQty().catch(() => { });
         }
       })();
     }
@@ -1114,17 +1131,17 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Không tìm thấy đơn hàng</Text>
             <Text style={styles.mutedText}>
-              Man hinh nay can duoc mo tu checkout hoac tu mot don hang hop le.
+              Màn hình này cần được mở từ checkout hoặc từ một đơn hàng hợp lệ.
             </Text>
 
             <View style={styles.actionRow}>
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionBtnGhost]}
                 activeOpacity={0.85}
-                onPress={handleContinueShopping}
+                onPress={isCodCheckout ? handleBackToHome : handleContinueShopping}
               >
                 <Text style={[styles.actionText, styles.actionTextGhost]}>
-                  Mua tiếp
+                  {isCodCheckout ? "Về trang chủ" : "Mua tiếp"}
                 </Text>
               </TouchableOpacity>
 
@@ -1134,7 +1151,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 onPress={handleViewOrderDetail}
               >
                 <Text style={[styles.actionText, styles.actionTextPrimary]}>
-                  Xem don hang
+                  Xem đơn hàng
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1305,14 +1322,14 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 disabled={isCancelling}
                 onPress={handleCancelPayment}
               >
-                  <Ionicons name="close-circle-outline" size={16} color="#B91C1C" />
-                  <Text style={styles.cancelBtnText}>
-                    {isCancelling
-                      ? "Đang hủy..."
-                      : canCancelWithRefund
-                        ? "Hủy đơn và hoàn tiền"
-                        : "Hủy thanh toán"}
-                  </Text>
+                <Ionicons name="close-circle-outline" size={16} color="#B91C1C" />
+                <Text style={styles.cancelBtnText}>
+                  {isCancelling
+                    ? "Đang hủy..."
+                    : canCancelWithRefund
+                      ? "Hủy đơn và hoàn tiền"
+                      : "Hủy thanh toán"}
+                </Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -1381,12 +1398,15 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           </View>
         </View>
 
-        {isPaymentSettled ? (
+        {shouldShowSuccessActions ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Thanh toán thành công!</Text>
+            <Text style={styles.sectionTitle}>
+              {isCodCheckout ? "Đặt hàng thành công!" : "Thanh toán thành công!"}
+            </Text>
             <Text style={styles.mutedText}>
-              Đơn hàng đã được ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết
-              đơn.
+              {isCodCheckout
+                ? "Đơn hàng COD đã được ghi nhận. Bạn có thể về trang chủ hoặc xem chi tiết đơn."
+                : "Đơn hàng đã được ghi nhận. Bạn có thể mua tiếp hoặc xem chi tiết đơn."}
             </Text>
 
             <View style={styles.actionRow}>
@@ -1443,13 +1463,13 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <View
               style={[
                 styles.statusPill,
-                { backgroundColor: refundMeta?.bg || "#EFF6FF" },
+                { backgroundColor: refundMeta?.bg || PALETTE.navyTint },
               ]}
             >
               <Text
                 style={[
                   styles.statusText,
-                  { color: refundMeta?.color || "#1D4ED8" },
+                  { color: refundMeta?.color || PALETTE.navy },
                 ]}
               >
                 {refundMeta?.label || "Đang xử lý"}
@@ -1533,8 +1553,8 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             ) : null}
 
             {order.refund.requiresReturn ||
-            order.refund.returnShipmentCode ||
-            order.refund.inspectionStatus !== "not_required" ? (
+              order.refund.returnShipmentCode ||
+              order.refund.inspectionStatus !== "not_required" ? (
               <View style={styles.refundSubCard}>
                 <Text style={styles.refundSubTitle}>Thông tin return / QC</Text>
                 <Text style={styles.refundSubText}>
@@ -1577,7 +1597,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.totals.payLater > 0 ? (
               <Text style={styles.refundNote}>
-                Refund hien tai chi ap dung tren tien coc/tien da thanh toan.
+                Refund hiện tại chỉ áp dụng trên tiền cọc/tiền đã thanh toán.
               </Text>
             ) : null}
 
@@ -1589,13 +1609,13 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             {order.refund.evidence?.length ? (
               <View style={styles.refundTimeline}>
-                <Text style={styles.refundSubTitle}>Bang chung da gui</Text>
+                <Text style={styles.refundSubTitle}>Bằng chứng đã gửi</Text>
                 <View style={styles.refundEvidenceRow}>
                   {order.refund.evidence.slice(0, 4).map((url, index) => (
                     <TouchableOpacity
                       key={`${url}-${index}`}
                       activeOpacity={0.85}
-                      onPress={() => Linking.openURL(url).catch(() => {})}
+                      onPress={() => Linking.openURL(url).catch(() => { })}
                     >
                       <Image
                         source={{ uri: url }}
@@ -1676,8 +1696,8 @@ export default function CheckoutStatusScreen({ navigation, route }) {
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Yêu cầu hoàn tiền</Text>
             <Text style={styles.mutedText}>
-              Neu don hang co van de, ban co the gui yeu cau refund de sale tiep
-              nhan va xu ly.
+              Nếu đơn hàng có vấn đề, bạn có thể gửi yêu cầu refund để sale tiếp
+              nhận và xử lý.
             </Text>
 
             <TouchableOpacity
@@ -1769,7 +1789,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
 
   header: {
     paddingHorizontal: 12,
@@ -1792,7 +1812,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingBottom: 20 },
 
   card: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
@@ -1801,20 +1821,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
   },
 
-  title: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  title: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
   subText: {
     marginTop: 6,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   descText: {
     marginTop: 8,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 
   statusPill: {
@@ -1826,38 +1848,38 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 12, fontWeight: "900" },
 
-  sectionTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
+  sectionTitle: { fontSize: 14, fontWeight: "900", color: PALETTE.text },
   mutedText: {
     marginTop: 6,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
   refundNote: {
     marginTop: 10,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#4B5563",
+    color: PALETTE.muted,
     lineHeight: 18,
   },
   refundSubCard: {
     marginTop: 12,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: PALETTE.navyTint,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: PALETTE.border,
   },
   refundSubTitle: {
     fontSize: 12.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
   refundSubText: {
     marginTop: 6,
     fontSize: 12,
     fontWeight: "700",
-    color: "#475569",
+    color: PALETTE.muted,
     lineHeight: 17,
   },
   refundTimeline: {
@@ -1873,33 +1895,33 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 12,
-    backgroundColor: "#E2E8F0",
+    backgroundColor: PALETTE.border,
   },
   refundTimelineItem: {
     marginTop: 10,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: PALETTE.navyTint,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: PALETTE.border,
   },
   refundTimelineTitle: {
     flex: 1,
     fontSize: 12.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
   refundTimelineTime: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: "#64748B",
+    color: PALETTE.muted,
     textAlign: "right",
   },
   refundTimelineMeta: {
     marginTop: 6,
     fontSize: 12,
     fontWeight: "700",
-    color: "#475569",
+    color: PALETTE.muted,
     lineHeight: 17,
   },
 
@@ -1907,7 +1929,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginVertical: 14,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: PALETTE.navyTint,
     borderRadius: 12,
     padding: 14,
   },
@@ -1919,12 +1941,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  metaLabel: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
+  metaLabel: { fontSize: 12.5, fontWeight: "700", color: PALETTE.muted },
   metaValue: {
     flex: 1,
     fontSize: 12.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
     textAlign: "right",
   },
 
@@ -1932,7 +1954,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#EEF2F7",
+    borderTopColor: PALETTE.border,
   },
 
   actionRow: { marginTop: 12, flexDirection: "row", gap: 10 },
@@ -1945,15 +1967,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   actionBtnGhost: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
   },
-  actionBtnPrimary: { backgroundColor: "#2563EB" },
+  actionBtnPrimary: { backgroundColor: PALETTE.navy },
 
   actionText: { fontSize: 13, fontWeight: "900" },
-  actionTextGhost: { color: "#111827" },
-  actionTextPrimary: { color: "#FFFFFF" },
+  actionTextGhost: { color: PALETTE.text },
+  actionTextPrimary: { color: PALETTE.white },
 
   cancelBtn: {
     backgroundColor: "#FEE2E2",
@@ -1968,20 +1990,20 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  divider: { height: 1, backgroundColor: "#EEF2F7", marginVertical: 10 },
-  totalLabel: { fontSize: 13.5, fontWeight: "900", color: "#111827" },
+  divider: { height: 1, backgroundColor: PALETTE.border, marginVertical: 10 },
+  totalLabel: { fontSize: 13.5, fontWeight: "900", color: PALETTE.text },
   totalValue: { fontSize: 14, fontWeight: "900", color: "#EF4444" },
 
   addressName: {
     marginTop: 8,
     fontSize: 13.5,
     fontWeight: "900",
-    color: "#111827",
+    color: PALETTE.text,
   },
   addressMeta: {
     marginTop: 6,
     fontSize: 12.5,
     fontWeight: "700",
-    color: "#6B7280",
+    color: PALETTE.muted,
   },
 });

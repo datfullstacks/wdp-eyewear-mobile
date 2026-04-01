@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 
@@ -29,10 +29,21 @@ import { uploadFileApi } from "../services/uploadService";
 import {
   REFUND_BANK_OPTIONS,
   findRefundBankByCode,
-  findRefundBankByName,
   normalizeRefundAccountNumber,
   isRefundAccountNumberFormatValid,
 } from "../data/refundBanks";
+
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  bg: "#F6F7FB",
+  white: "#FFFFFF",
+  text: "#111827",
+  muted: "#6B7280",
+  border: "#E5E7EB",
+  error: "#DC2626",
+};
 
 const REFUND_REASON_OPTIONS = [
   { code: "wrong_item", label: "Giao sai sản phẩm" },
@@ -44,666 +55,157 @@ const REFUND_REASON_OPTIONS = [
 ];
 
 function formatVND(value) {
-  return new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + "đ";
-}
-
-function resolveOrderId(explicitOrderId, order) {
-  return (
-    explicitOrderId ||
-    order?._id ||
-    order?.id ||
-    order?.orderId ||
-    order?.code ||
-    null
-  );
-}
-
-function normalizeRefundStatus(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function toNumber(value) {
-  const normalized = String(value ?? "")
-    .trim()
-    .replace(/[^\d]/g, "");
-  return normalized ? Number(normalized) : 0;
-}
-
-function toPositiveNumber(value) {
-  const amount = Number(value || 0);
-  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+  return `${new Intl.NumberFormat("vi-VN").format(Number(value || 0))}đ`;
 }
 
 function inferReasonCode(reason) {
   const normalizedReason = String(reason || "").trim().toLowerCase();
-  if (!normalizedReason) {
-    return REFUND_REASON_OPTIONS[0].code;
-  }
-
-  const matchedOption = REFUND_REASON_OPTIONS.find((option) => {
-    return option.label.trim().toLowerCase() === normalizedReason;
-  });
-
+  if (!normalizedReason) return REFUND_REASON_OPTIONS[0].code;
+  const matchedOption = REFUND_REASON_OPTIONS.find(
+    (option) => option.label.trim().toLowerCase() === normalizedReason
+  );
   return matchedOption?.code || "other";
 }
 
-function getRefundPaidAmount(order) {
-  return Math.max(0, Number(order?.paidAmount || 0));
-}
-
-function normalizeOrderStatusKey(order) {
-  return String(order?.status || "")
-    .trim()
-    .toLowerCase();
-}
-
-function canCustomerCreateRefundRequest(order) {
-  return (
-    getRefundPaidAmount(order) > 0 &&
-    ["pending", "confirmed", "processing", "cancelled", "delivered", "returned"].includes(
-      normalizeOrderStatusKey(order),
-    )
-  );
-}
-
-function canCustomerCancelPaidOrder(order) {
-  return (
-    getRefundPaidAmount(order) > 0 &&
-    ["pending", "confirmed", "processing"].includes(normalizeOrderStatusKey(order))
-  );
-}
-
-function getRefundEligibilityMessage(order) {
-  if (getRefundPaidAmount(order) <= 0) {
-    return "Đơn hàng này chưa có khoản thanh toán có thể hoàn.";
-  }
-
-  return "Yêu cầu refund chỉ áp dụng cho đơn đã thanh toán đang chờ xác nhận, đã hủy, đã giao hoặc đã trả.";
-}
-
-function getCancelOrderEligibilityMessage(order) {
-  if (getRefundPaidAmount(order) <= 0) {
-    return "Đơn hàng này chưa có khoản thanh toán có thể hoàn.";
-  }
-
-  return "Chỉ có thể hủy đơn đã thanh toán khi đơn còn ở trạng thái chờ xác nhận.";
-}
-
-function getRefundShippingFeeLimit(order) {
-  const shippingCollectionTiming = String(
-    order?.shippingCollectionTiming ||
-      order?.breakdown?.shippingCollectionTiming ||
-      "upfront",
-  )
-    .trim()
-    .toLowerCase();
-
-  if (shippingCollectionTiming !== "upfront") {
-    return 0;
-  }
-
-  return Math.min(
-    Math.max(0, Number(order?.shippingFee ?? order?.breakdown?.shippingFee ?? 0)),
-    getRefundPaidAmount(order),
-  );
-}
-
-function getDefaultRefundableItemAmount(order) {
-  return Math.max(
-    0,
-    getRefundPaidAmount(order) - getRefundShippingFeeLimit(order),
-  );
-}
-
-function clampRefundBreakdown(order, breakdown = {}) {
-  const shippingFeeAmount = Math.min(
-    Math.max(0, Number(breakdown.shippingFeeAmount || 0)),
-    getRefundShippingFeeLimit(order),
-  );
-  const paidAmount = getRefundPaidAmount(order);
-  const maxItemAmount = Math.max(0, paidAmount - shippingFeeAmount);
-  const itemAmount = Math.min(
-    Math.max(0, Number(breakdown.itemAmount || 0)),
-    maxItemAmount,
-  );
-  const returnShippingFeeAmount = Math.max(
-    0,
-    Number(breakdown.returnShippingFeeAmount || 0),
-  );
-
-  return {
-    itemAmount,
-    shippingFeeAmount,
-    returnShippingFeeAmount,
-    total: itemAmount + shippingFeeAmount + returnShippingFeeAmount,
-  };
-}
-
-function buildOrderSummary(order) {
-  const breakdown = order?.breakdown || {};
-  const shippingFee = Number(breakdown.shippingFee ?? order?.shippingFee ?? 0);
-  const total = Number(breakdown.total ?? order?.total ?? 0);
-  const subtotal = Number(breakdown.subtotal ?? order?.subtotal ?? total);
-  const discountAmount = Number(
-    breakdown.discountAmount ?? order?.discountAmount ?? order?.discount ?? 0,
-  );
-  const paidAmount = getRefundPaidAmount(order);
-  const unpaidAmount = Math.max(0, total - paidAmount);
-  const refundStatus = normalizeRefundStatus(order?.refund?.status);
-
-  return {
-    id: order?.code || order?.orderId || order?._id || order?.id || "--",
-    orderStatus: normalizeOrderStatusKey(order),
-    subtotal,
-    discountAmount,
-    shippingFee,
-    total,
-    paidAmount,
-    unpaidAmount,
-    payNowTotal: Number(breakdown.payNow ?? order?.payNowTotal ?? 0),
-    payLaterTotal: Number(breakdown.payLater ?? order?.payLaterTotal ?? 0),
-    shippingCollectionTiming: String(
-      breakdown.shippingCollectionTiming ||
-        order?.shippingCollectionTiming ||
-        "upfront",
-    )
-      .trim()
-      .toLowerCase(),
-    refundStatus,
-    refundContactNote: String(order?.refund?.contactNote || "").trim(),
-    refundDecisionNote: String(order?.refund?.decisionNote || "").trim(),
-    refundReason: String(order?.refund?.reason || "").trim(),
-    refundRequiresReturn: Boolean(order?.refund?.requiresReturn),
-    refundBankAccount: order?.refund?.bankAccount || null,
-    requestedBreakdown: clampRefundBreakdown(
-      order,
-      order?.refund?.requestedBreakdown || {
-        itemAmount: getDefaultRefundableItemAmount(order),
-        shippingFeeAmount: 0,
-        returnShippingFeeAmount: 0,
-      },
-    ),
-  };
-}
-
-function buildRequestedBreakdown(
-  order,
-  itemAmountSeed,
-  requestShippingFee,
-  returnShippingFee,
-) {
-  const shippingFeeAmount = requestShippingFee ? getRefundShippingFeeLimit(order) : 0;
-  const paidAmount = getRefundPaidAmount(order);
-  const maxItemAmount = Math.max(0, paidAmount - shippingFeeAmount);
-  const fallbackItemAmount = getDefaultRefundableItemAmount(order);
-  const itemAmount = Math.min(
-    Math.max(0, Number(itemAmountSeed || fallbackItemAmount)),
-    maxItemAmount,
-  );
-  const normalizedReturnShippingFee = Math.max(
-    0,
-    Number(returnShippingFee || 0),
-  );
-
-  return {
-    itemAmount,
-    shippingFeeAmount,
-    returnShippingFeeAmount: normalizedReturnShippingFee,
-    total: itemAmount + shippingFeeAmount + normalizedReturnShippingFee,
-  };
-}
-
-function hasRefundAccountConfig(bankAccount) {
-  return Boolean(
-    bankAccount &&
-      (
-        String(bankAccount.bankCode || "").trim() ||
-        String(bankAccount.bankName || "").trim()
-      ) &&
-      String(bankAccount.accountNumber || "").trim() &&
-      String(bankAccount.accountHolder || "").trim(),
-  );
-}
-
-function toBankFormState(bankAccount = null) {
-  const resolvedBank =
-    findRefundBankByCode(bankAccount?.bankCode) ||
-    findRefundBankByName(bankAccount?.bankName);
-
-  return {
-    bankCode: resolvedBank?.code || "",
-    bankName: resolvedBank?.name || String(bankAccount?.bankName || "").trim(),
-    accountNumber: normalizeRefundAccountNumber(bankAccount?.accountNumber || ""),
-    accountHolder: String(bankAccount?.accountHolder || "").trim(),
-    bankNote: String(bankAccount?.note || "").trim(),
-  };
-}
-
-function buildInitialFormState(order, savedRefundAccount = null) {
-  const summary = buildOrderSummary(order);
-  const currentBreakdown = summary.requestedBreakdown;
-  const bankState = toBankFormState(
-    summary.refundBankAccount || savedRefundAccount || null,
-  );
-
-  return {
-    reasonCode: inferReasonCode(summary.refundReason),
-    reasonDetail: summary.refundReason || "",
-    requestShippingFee: Number(currentBreakdown.shippingFeeAmount || 0) > 0,
-    requiresReturn: summary.refundRequiresReturn,
-    returnShippingFeeText:
-      currentBreakdown.returnShippingFeeAmount > 0
-        ? String(currentBreakdown.returnShippingFeeAmount)
-        : "",
-    itemAmountSeed:
-      currentBreakdown.itemAmount > 0
-        ? Number(currentBreakdown.itemAmount)
-        : getDefaultRefundableItemAmount(order),
-    bankCode: bankState.bankCode,
-    bankName: bankState.bankName,
-    accountNumber: bankState.accountNumber,
-    accountHolder: bankState.accountHolder,
-    bankNote: bankState.bankNote,
-    evidence:
-      Array.isArray(order?.refund?.evidence) &&
-      order.refund.evidence.length > 0
-        ? order.refund.evidence
-            .map((value) => String(value || "").trim())
-            .filter(Boolean)
-        : [],
-    note: "",
-  };
-}
-
-function ToggleRow({ label, value, onToggle, helper, disabled = false }) {
-  return (
-    <View style={styles.toggleRow}>
-      <View style={styles.toggleTextWrap}>
-        <Text style={styles.fieldLabel}>{label}</Text>
-        {helper ? <Text style={styles.helperText}>{helper}</Text> : null}
-      </View>
-
-      <TouchableOpacity
-        activeOpacity={disabled ? 1 : 0.85}
-        style={[
-          styles.togglePill,
-          value && styles.togglePillActive,
-          disabled && styles.togglePillDisabled,
-        ]}
-        disabled={disabled}
-        onPress={onToggle}
-      >
-        <Text
-          style={[
-            styles.togglePillText,
-            value && styles.togglePillTextActive,
-            disabled && styles.togglePillTextDisabled,
-          ]}
-        >
-          {value ? "Bat" : "Tat"}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 export default function RefundRequestScreen({ navigation, route }) {
+  const insets = useSafeAreaInsets();
   const initialOrder = route?.params?.order || null;
   const explicitOrderId = route?.params?.orderId || null;
-  const requestedAction = normalizeRefundStatus(route?.params?.refundAction);
+  const requestedAction = String(route?.params?.refundAction || "").toLowerCase();
   const isCancelOrderMode = requestedAction === "cancel_order";
 
   const [order, setOrder] = useState(initialOrder);
   const [loading, setLoading] = useState(!initialOrder);
   const [submitting, setSubmitting] = useState(false);
-  const [formSeedKey, setFormSeedKey] = useState("");
-  const [bankModePrompted, setBankModePrompted] = useState(false);
-  const [savedRefundAccount, setSavedRefundAccount] = useState(null);
-  const [useSavedRefundAccount, setUseSavedRefundAccount] = useState(false);
-  const [customBankDraft, setCustomBankDraft] = useState(null);
-  const [saveAsDefaultRefundAccount, setSaveAsDefaultRefundAccount] =
-    useState(false);
-
-  const [reasonCode, setReasonCode] = useState(REFUND_REASON_OPTIONS[0].code);
-  const [reasonDetail, setReasonDetail] = useState("");
-  const [requestShippingFee, setRequestShippingFee] = useState(false);
-  const [requiresReturn, setRequiresReturn] = useState(false);
-  const [returnShippingFeeText, setReturnShippingFeeText] = useState("");
-  const [itemAmountSeed, setItemAmountSeed] = useState(0);
   const [bankCode, setBankCode] = useState("");
-  const [bankName, setBankName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
-  const [bankNote, setBankNote] = useState("");
+  const [reasonCode, setReasonCode] = useState(REFUND_REASON_OPTIONS[0].code);
+  const [reasonDetail, setReasonDetail] = useState("");
   const [evidence, setEvidence] = useState([]);
-  const [note, setNote] = useState("");
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [saveAsDefaultRefundAccount, setSaveAsDefaultRefundAccount] = useState(false);
+  const [note, setNote] = useState("");
 
   const orderId = useMemo(
-    () => resolveOrderId(explicitOrderId, order || initialOrder),
-    [explicitOrderId, initialOrder, order],
+    () => explicitOrderId || order?._id || order?.id,
+    [explicitOrderId, order]
   );
-
-  useEffect(() => {
-    if (!orderId) {
-      setLoading(false);
-      return;
-    }
-
-    let mounted = true;
-
-    const loadOrder = async () => {
-      try {
-        setLoading(true);
-        const latestOrder = await getOrderByIdApi(orderId, false);
-        if (mounted && latestOrder) {
-          setOrder(latestOrder);
-        }
-      } catch (error) {
-        if (mounted) {
-          const message =
-            error?.response?.data?.message ||
-            error?.message ||
-            "Không tải được thông tin đơn hàng";
-          Alert.alert("Refund", message);
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadOrder();
-
-    return () => {
-      mounted = false;
-    };
-  }, [orderId]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadRefundAccount = async () => {
-      try {
-        const account = await getMyRefundAccountApi();
-        if (mounted) {
-          setSavedRefundAccount(account || null);
-        }
-      } catch {
-        if (mounted) {
-          setSavedRefundAccount(null);
-        }
-      }
-    };
-
-    void loadRefundAccount();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const summary = useMemo(() => buildOrderSummary(order), [order]);
-  const isWaitingCustomerInfo = summary.refundStatus === "waiting_customer_info";
-  const isCustomerUpdateMode =
-    requestedAction === "customer_submit_info" || isWaitingCustomerInfo;
-  const canCancelPaidOrder = useMemo(
-    () => canCustomerCancelPaidOrder(order),
-    [order],
-  );
-  const canCreateRefund = useMemo(
-    () => canCustomerCreateRefundRequest(order),
-    [order],
-  );
-  const canSubmitRefundForm = isCancelOrderMode
-    ? canCancelPaidOrder
-    : canCreateRefund;
-  const refundEligibilityMessage = useMemo(
-    () =>
-      isCancelOrderMode
-        ? getCancelOrderEligibilityMessage(order)
-        : getRefundEligibilityMessage(order),
-    [isCancelOrderMode, order],
-  );
-  const returnShippingFee = useMemo(
-    () => toNumber(returnShippingFeeText),
-    [returnShippingFeeText],
-  );
-  const refundableShippingFee = useMemo(
-    () => getRefundShippingFeeLimit(order),
-    [order],
-  );
-  const requestedBreakdown = useMemo(
-    () =>
-      buildRequestedBreakdown(
-        order,
-        itemAmountSeed,
-        requestShippingFee,
-        returnShippingFee,
-      ),
-    [order, itemAmountSeed, requestShippingFee, returnShippingFee],
-  );
-  const selectedReason =
-    REFUND_REASON_OPTIONS.find((option) => option.code === reasonCode) ||
-    REFUND_REASON_OPTIONS[0];
-
-  const hasExistingRefund =
-    summary.refundStatus &&
-    !["none", "completed", "rejected"].includes(summary.refundStatus);
-  const hasBlockingActiveRefund = hasExistingRefund && !isCustomerUpdateMode;
-  const hasSavedRefundAccount = useMemo(
-    () => hasRefundAccountConfig(savedRefundAccount),
-    [savedRefundAccount],
-  );
-  const shippingFeeHelper =
-    refundableShippingFee > 0
-      ? "Bật khi lỗi đến từ hệ thống, giao sai hàng hoặc giao hỏng."
-      : "Phí ship hiện chưa thu ở đợt đã thanh toán nên không thể refund trong lúc này.";
 
   useEffect(() => {
     if (!orderId) return;
 
-    const refundUpdatedAt =
-      order?.refund?.requestedAt ||
-      order?.refund?.approvedAt ||
-      order?.refund?.processedAt ||
-      "";
-    const nextSeedKey = [
-      orderId,
-      summary.refundStatus,
-      refundUpdatedAt,
-      summary.paidAmount,
-      summary.total,
-      savedRefundAccount?.bankCode || "",
-      savedRefundAccount?.accountNumber || "",
-      savedRefundAccount?.accountHolder || "",
-    ].join("|");
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [latestOrder, savedAccount] = await Promise.all([
+          getOrderByIdApi(orderId, false),
+          getMyRefundAccountApi().catch(() => null),
+        ]);
 
-    if (nextSeedKey === formSeedKey) {
-      return;
-    }
+        if (latestOrder) {
+          setOrder(latestOrder);
+          const nextReasonCode =
+            inferReasonCode(latestOrder?.refund?.reasonCode || latestOrder?.refund?.reason);
+          setReasonCode(nextReasonCode);
+          setReasonDetail(String(latestOrder?.refund?.reason || "").trim());
+          setEvidence(
+            Array.isArray(latestOrder?.refund?.evidence)
+              ? latestOrder.refund.evidence.filter(Boolean)
+              : []
+          );
+          setNote(String(latestOrder?.refund?.note || latestOrder?.refund?.contactNote || "").trim());
+        }
 
-    const nextState = buildInitialFormState(order, savedRefundAccount);
-    const shouldUseSavedRefundAccount =
-      !summary.refundBankAccount && hasRefundAccountConfig(savedRefundAccount);
-
-    setReasonCode(
-      isCancelOrderMode &&
-        !summary.refundReason &&
-        !isCustomerUpdateMode
-        ? "order_cancelled"
-        : nextState.reasonCode,
-    );
-    setReasonDetail(nextState.reasonDetail);
-    setRequestShippingFee(nextState.requestShippingFee);
-    setRequiresReturn(nextState.requiresReturn);
-    setReturnShippingFeeText(nextState.returnShippingFeeText);
-    setItemAmountSeed(nextState.itemAmountSeed);
-    setBankCode(nextState.bankCode);
-    setBankName(nextState.bankName);
-    setAccountNumber(nextState.accountNumber);
-    setAccountHolder(nextState.accountHolder);
-    setBankNote(nextState.bankNote);
-    setEvidence(nextState.evidence);
-    setNote(nextState.note);
-    setUseSavedRefundAccount(shouldUseSavedRefundAccount);
-    setCustomBankDraft(null);
-    setSaveAsDefaultRefundAccount(false);
-    setFormSeedKey(nextSeedKey);
-  }, [
-    formSeedKey,
-    isCancelOrderMode,
-    isCustomerUpdateMode,
-    order,
-    orderId,
-    savedRefundAccount,
-    summary.refundBankAccount,
-    summary.refundReason,
-    summary.paidAmount,
-    summary.refundStatus,
-    summary.total,
-  ]);
-
-  const applyBankFormState = (bankAccount) => {
-    const nextBankState = toBankFormState(bankAccount);
-    setBankCode(nextBankState.bankCode);
-    setBankName(nextBankState.bankName);
-    setAccountNumber(nextBankState.accountNumber);
-    setAccountHolder(nextBankState.accountHolder);
-    setBankNote(nextBankState.bankNote);
-  };
-
-  const handleSelectSavedRefundAccount = (nextUseSavedAccount) => {
-    if (!hasSavedRefundAccount) return;
-
-    if (nextUseSavedAccount) {
-      setCustomBankDraft({
-        bankCode,
-        bankName,
-        accountNumber,
-        accountHolder,
-        bankNote,
-      });
-      applyBankFormState(savedRefundAccount);
-      setUseSavedRefundAccount(true);
-      setSaveAsDefaultRefundAccount(false);
-      return;
-    }
-
-    applyBankFormState(
-      customBankDraft || {
-        bankCode: "",
-        bankName: "",
-        accountNumber: "",
-        accountHolder: "",
-        note: "",
-      },
-    );
-    setUseSavedRefundAccount(false);
-  };
-
-  useEffect(() => {
-    if (
-      !isCancelOrderMode ||
-      !hasSavedRefundAccount ||
-      bankModePrompted ||
-      loading
-    ) {
-      return;
-    }
-
-    setBankModePrompted(true);
-    Alert.alert(
-      "Tài khoản hoàn tiền",
-      "Bạn muốn dùng tài khoản mặc định đã lưu hay nhập thông tin khác cho lần hủy đơn này?",
-      [
-        {
-          text: "Thông tin khác",
-          onPress: () => handleSelectSavedRefundAccount(false),
-        },
-        {
-          text: "Dùng mặc định",
-          onPress: () => handleSelectSavedRefundAccount(true),
-        },
-      ],
-      { cancelable: false },
-    );
-  }, [
-    bankModePrompted,
-    hasSavedRefundAccount,
-    isCancelOrderMode,
-    loading,
-  ]);
-
-  const handleSubmit = async () => {
-    if (submitting) return;
-
-    if (!orderId) {
-      Alert.alert("Refund", "Không tìm thấy mã đơn hàng.");
-      return;
-    }
-
-    if (hasBlockingActiveRefund) {
-      Alert.alert("Refund", "Đơn hàng này đã có yêu cầu hoàn tiền đang xử lý.");
-      return;
-    }
-
-    if (isCustomerUpdateMode && !isWaitingCustomerInfo) {
-      Alert.alert(
-        isCancelOrderMode ? "Hủy đơn" : "Refund",
-        "Case refund hiện không ở trạng thái chờ bổ sung thông tin.",
-      );
-      return;
-    }
-
-    if (!isCustomerUpdateMode && !canSubmitRefundForm) {
-      Alert.alert("Refund", refundEligibilityMessage);
-      return;
-    }
-
-    if (!bankCode.trim() || !accountNumber.trim() || !accountHolder.trim()) {
-      Alert.alert(
-        isCancelOrderMode ? "Hủy đơn" : "Refund",
-        "Vui lòng chọn ngân hàng, nhập số tài khoản và chủ tài khoản.",
-      );
-      return;
-    }
-
-    const selectedBank = findRefundBankByCode(bankCode);
-    if (!selectedBank) {
-      Alert.alert("Refund", "Ngân hàng đã chọn không hợp lệ.");
-      return;
-    }
-
-    const normalizedAccountNumber = normalizeRefundAccountNumber(accountNumber);
-    if (!isRefundAccountNumberFormatValid(normalizedAccountNumber)) {
-      Alert.alert("Refund", "Số tài khoản phải gồm 8 đến 19 chữ số.");
-      return;
-    }
-
-    const payload = {
-      reason: reasonDetail.trim() || selectedReason.label,
-      reasonCode,
-      note: note.trim(),
-      evidence,
-      bankAccount: {
-        bankCode: selectedBank.code,
-        bankName: selectedBank.name,
-        accountNumber: normalizedAccountNumber,
-        accountHolder: accountHolder.trim(),
-        note: bankNote.trim(),
-      },
+        if (savedAccount) {
+          setBankCode(savedAccount.bankCode || "");
+          setAccountNumber(savedAccount.accountNumber || "");
+          setAccountHolder(savedAccount.accountHolder || "");
+        }
+      } catch {
+        Alert.alert("Lỗi", "Không tải được thông tin đơn hàng");
+      } finally {
+        setLoading(false);
+      }
     };
 
+    void loadData();
+  }, [orderId]);
+
+  const summary = useMemo(() => {
+    if (!order) {
+      return {
+        id: "--",
+        total: 0,
+        paidAmount: 0,
+        shippingFee: 0,
+        unpaidAmount: 0,
+        refundStatus: "",
+      };
+    }
+
+    return {
+      id: order?.paymentCode || order?.code || "--",
+      total: order?.total || 0,
+      paidAmount: order?.paidAmount || 0,
+      shippingFee: order?.shippingFee || 0,
+      unpaidAmount: Math.max(0, Number(order?.total || 0) - Number(order?.paidAmount || 0)),
+      refundStatus: String(order?.refund?.status || "").toLowerCase(),
+    };
+  }, [order]);
+
+  const isCustomerUpdateMode =
+    requestedAction === "customer_submit_info" ||
+    summary.refundStatus === "waiting_customer_info";
+
+  const submitLabel = isCancelOrderMode
+    ? "Xác nhận hủy đơn"
+    : isCustomerUpdateMode
+      ? "Gửi bổ sung thông tin"
+      : "Gửi yêu cầu hoàn tiền";
+
+  const screenTitle = isCancelOrderMode
+    ? "Hủy đơn hàng"
+    : isCustomerUpdateMode
+      ? "Bổ sung thông tin hoàn tiền"
+      : "Yêu cầu hoàn tiền";
+
+  const handleSubmit = async () => {
+    if (!orderId) {
+      Alert.alert("Thông báo", "Thiếu mã đơn hàng.");
+      return;
+    }
+
+    if (!bankCode || !accountNumber || !accountHolder) {
+      Alert.alert("Thông báo", "Vui lòng nhập đầy đủ thông tin tài khoản ngân hàng");
+      return;
+    }
+
+    if (!isRefundAccountNumberFormatValid(accountNumber)) {
+      Alert.alert("Thông báo", "Số tài khoản ngân hàng không hợp lệ.");
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      setSubmitting(true);
+      const selectedBank = findRefundBankByCode(bankCode);
+      const payload = {
+        reason:
+          reasonDetail.trim() ||
+          REFUND_REASON_OPTIONS.find((item) => item.code === reasonCode)?.label,
+        reasonCode,
+        evidence,
+        bankAccount: {
+          bankCode,
+          bankName: selectedBank?.name,
+          accountNumber,
+          accountHolder,
+        },
+        note,
+      };
 
       if (isCustomerUpdateMode) {
-        await updateRefundApi(orderId, {
-          action: "customer_submit_info",
-          ...payload,
-        });
+        await updateRefundApi(orderId, { action: "customer_submit_info", ...payload });
       } else if (isCancelOrderMode) {
         await cancelOrderApi(orderId, payload);
       } else {
@@ -711,33 +213,14 @@ export default function RefundRequestScreen({ navigation, route }) {
       }
 
       if (saveAsDefaultRefundAccount) {
-        try {
-          await upsertMyRefundAccountApi(payload.bankAccount);
-          setSavedRefundAccount(payload.bankAccount);
-        } catch {}
+        await upsertMyRefundAccountApi(payload.bankAccount).catch(() => null);
       }
 
-      Alert.alert(
-        "Refund",
-        isCustomerUpdateMode
-          ? "Đã gửi bổ sung thông tin hoàn tiền. Sale sẽ tiếp tục xem xét hồ sơ."
-          : "Đã gửi yêu cầu hoàn tiền. Sale sẽ tiếp nhận và cập nhật trạng thái sớm.",
-        [
-          {
-            text: "OK",
-            onPress: () =>
-              navigation?.canGoBack?.() ? navigation.goBack() : null,
-          },
-        ],
-      );
+      Alert.alert("Thành công", "Yêu cầu của bạn đã được gửi đi.", [
+        { text: "OK", onPress: () => navigation.goBack() },
+      ]);
     } catch (error) {
-      const message =
-        error?.response?.data?.message ||
-        error?.message ||
-        (isCustomerUpdateMode
-          ? "Không cập nhật được thông tin refund"
-          : "Không tạo được yêu cầu hoàn tiền");
-      Alert.alert("Refund", message);
+      Alert.alert("Lỗi", error?.response?.data?.message || "Không thể gửi yêu cầu");
     } finally {
       setSubmitting(false);
     }
@@ -746,360 +229,233 @@ export default function RefundRequestScreen({ navigation, route }) {
   const handlePickEvidence = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Refund", "Vui lòng cấp quyền truy cập thư viện ảnh.");
+      Alert.alert("Lỗi", "Cần quyền truy cập thư viện ảnh");
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
+    if (result.canceled || !result.assets?.[0]) return;
 
-    if (result.canceled) {
-      return;
-    }
-
-    const asset = result.assets?.[0];
-    if (!asset?.uri) {
-      return;
-    }
-
+    setUploadingEvidence(true);
     try {
-      setUploadingEvidence(true);
       const uploaded = await uploadFileApi(
         {
-          uri: asset.uri,
-          name: asset.fileName || `refund-evidence-${Date.now()}.jpg`,
-          type: asset.mimeType || "image/jpeg",
+          uri: result.assets[0].uri,
+          name: `refund-${Date.now()}.jpg`,
+          type: "image/jpeg",
         },
-        {
-          folder: "refund-evidence",
-        },
+        { folder: "refund-evidence" }
       );
-      setEvidence((current) => {
-        const next = [...current, String(uploaded.url || "").trim()].filter(Boolean);
-        return Array.from(new Set(next)).slice(0, 6);
-      });
-    } catch (error) {
-      const message =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Không tải ảnh chứng từ lên được";
-      Alert.alert("Refund", message);
+      setEvidence((prev) => [...prev, uploaded.url]);
+    } catch {
+      Alert.alert("Lỗi", "Không thể tải ảnh lên");
     } finally {
       setUploadingEvidence(false);
     }
-  };
-
-  const handleRemoveEvidence = (url) => {
-    setEvidence((current) => current.filter((item) => item !== url));
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() =>
-              navigation?.canGoBack?.() ? navigation.goBack() : null
-            }
-            activeOpacity={0.85}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="chevron-back" size={22} color="#111827" />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
+            <Ionicons name="chevron-back" size={22} color={PALETTE.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>
-              {isCustomerUpdateMode
-              ? "Bổ sung thông tin hoàn tiền"
-              : "Yêu cầu hoàn tiền"}
-          </Text>
+          <Text style={styles.headerTitle}>{screenTitle}</Text>
         </View>
       </View>
 
       {loading ? (
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="small" color="#2563EB" />
+          <ActivityIndicator color={PALETTE.navy} />
         </View>
       ) : (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
-            <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Mã đơn</Text>
-              <Text style={styles.metaValue}>{summary.id}</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Tiền hàng</Text>
-              <Text style={styles.metaValue}>
-                {formatVND(Math.max(summary.total - summary.shippingFee, 0))}
-              </Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Phí giao hàng</Text>
-              <Text style={styles.metaValue}>{formatVND(summary.shippingFee)}</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Đã thanh toán</Text>
-              <Text style={styles.metaValue}>{formatVND(summary.paidAmount)}</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Chưa thu</Text>
-              <Text style={styles.metaValue}>{formatVND(summary.unpaidAmount)}</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.metaLabel}>Tổng đơn</Text>
-              <Text style={styles.metaValueStrong}>{formatVND(summary.total)}</Text>
-            </View>
-
-            {summary.payLaterTotal > 0 ? (
-              <Text style={styles.noticeText}>
-                Refund hiện tại chỉ áp dụng trên tiền cọc/tiền đã thanh toán.
-              </Text>
-            ) : null}
-          </View>
-
-          {isCustomerUpdateMode &&
-          (summary.refundContactNote || summary.refundDecisionNote) ? (
-            <View style={[styles.card, styles.noticeCard]}>
-              <Text style={styles.sectionTitle}>Sale cần bổ sung</Text>
-              {summary.refundDecisionNote ? (
-                <Text style={styles.noticeText}>{summary.refundDecisionNote}</Text>
-              ) : null}
-              {summary.refundContactNote ? (
-                <Text style={styles.noticeText}>{summary.refundContactNote}</Text>
-              ) : null}
-            </View>
-          ) : null}
-
-          {!isCustomerUpdateMode && !canSubmitRefundForm ? (
+        <>
+          <ScrollView
+            contentContainerStyle={[
+              styles.content,
+              { paddingBottom: 8 },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Chưa thể tạo refund</Text>
-              <Text style={styles.helperText}>{refundEligibilityMessage}</Text>
-            </View>
-          ) : hasBlockingActiveRefund ? (
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Đơn đã có refund</Text>
-              <Text style={styles.helperText}>
-                Đơn hàng này đã có yêu cầu hoàn tiền đang xử lý. Vui lòng quay
-                lại màn hình chi tiết đơn để theo dõi trạng thái.
-              </Text>
-            </View>
-          ) : (
-            <>
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Cách xử lý yêu cầu</Text>
-                <Text style={styles.helperText}>
-                  Sale sẽ tiếp nhận hồ sơ, xác minh thông tin và xác nhận số tiền hoàn phù hợp theo chính sách.
-                </Text>
-                <Text style={styles.helperText}>
-                  Nếu cần thêm chứng từ hoặc thông tin tài khoản, hệ thống sẽ gửi yêu cầu bổ sung ngay trên đơn hàng.
-                </Text>
+              <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
+              <View style={styles.rowBetween}>
+                <Text style={styles.metaLabel}>Mã đơn</Text>
+                <Text style={styles.metaValue}>{summary.id}</Text>
               </View>
-
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>
-                  {isCustomerUpdateMode
-                    ? "Cập nhật lý do và thông tin"
-                    : "Lý do hoàn tiền"}
-                </Text>
-                <View style={styles.reasonGrid}>
-                  {REFUND_REASON_OPTIONS.map((option) => {
-                    const active = option.code === reasonCode;
-
-                    return (
-                      <TouchableOpacity
-                        key={option.code}
-                        activeOpacity={0.85}
-                        style={[
-                          styles.reasonChip,
-                          active && styles.reasonChipActive,
-                        ]}
-                        onPress={() => setReasonCode(option.code)}
-                      >
-                        <Text
-                          style={[
-                            styles.reasonChipText,
-                            active && styles.reasonChipTextActive,
-                          ]}
-                        >
-                          {option.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+              <View style={styles.rowBetween}>
+                <Text style={styles.metaLabel}>Đã thanh toán</Text>
+                <Text style={styles.metaValueStrong}>{formatVND(summary.paidAmount)}</Text>
+              </View>
+              <View style={styles.rowBetween}>
+                <Text style={styles.metaLabel}>Tổng đơn</Text>
+                <Text style={styles.metaValue}>{formatVND(summary.total)}</Text>
+              </View>
+              {summary.unpaidAmount > 0 ? (
+                <View style={styles.rowBetween}>
+                  <Text style={styles.metaLabel}>Chưa thanh toán</Text>
+                  <Text style={styles.metaValue}>{formatVND(summary.unpaidAmount)}</Text>
                 </View>
+              ) : null}
+            </View>
 
-                <Text style={styles.fieldLabel}>Mô tả chi tiết</Text>
-                <TextInput
-                  style={[styles.input, styles.textarea]}
-                  placeholder="Mô tả vấn đề, tình trạng sản phẩm hoặc lý do cần refund..."
-                  multiline
-                  textAlignVertical="top"
-                  value={reasonDetail}
-                  onChangeText={setReasonDetail}
-                />
-              </View>
-
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Tài khoản nhận tiền</Text>
-                <Text style={styles.fieldLabel}>Ngân hàng</Text>
-                <View style={styles.pickerBox}>
-                  <Picker
-                    selectedValue={bankCode}
-                    onValueChange={(value) => {
-                      const selectedBank = findRefundBankByCode(value);
-                      setBankCode(String(value || ""));
-                      setBankName(selectedBank?.name || "");
-                    }}
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Lý do hoàn tiền</Text>
+              <View style={styles.reasonGrid}>
+                {REFUND_REASON_OPTIONS.map((option) => (
+                  <TouchableOpacity
+                    key={option.code}
+                    onPress={() => setReasonCode(option.code)}
+                    style={[
+                      styles.reasonChip,
+                      reasonCode === option.code && styles.reasonChipActive,
+                    ]}
                   >
-                    <Picker.Item label="Chọn ngân hàng" value="" />
-                    {REFUND_BANK_OPTIONS.map((bank) => (
-                      <Picker.Item
-                        key={bank.code}
-                        label={bank.name}
-                        value={bank.code}
-                      />
-                    ))}
-                  </Picker>
-                </View>
-                <Text style={styles.helperText}>
-                  Chọn đúng ngân hàng nhận refund. Hệ thống sẽ lưu theo mã ngân hàng đã chọn.
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Số tài khoản"
-                  keyboardType="numeric"
-                  value={accountNumber}
-                  onChangeText={(value) =>
-                    setAccountNumber(normalizeRefundAccountNumber(value))
-                  }
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Chủ tài khoản"
-                  value={accountHolder}
-                  onChangeText={setAccountHolder}
-                />
-                <TextInput
-                  style={[styles.input, styles.textarea]}
-                  placeholder="Ghi chú tài khoản (nếu có)"
-                  multiline
-                  textAlignVertical="top"
-                  value={bankNote}
-                  onChangeText={setBankNote}
-                />
-                <ToggleRow
-                  label="Lưu làm tài khoản hoàn tiền mặc định"
-                  helper="Dùng lại cho các yêu cầu hoàn tiền sau."
-                  value={saveAsDefaultRefundAccount}
-                  onToggle={() =>
-                    setSaveAsDefaultRefundAccount((value) => !value)
-                  }
-                />
+                    <Text
+                      style={[
+                        styles.reasonChipText,
+                        reasonCode === option.code && styles.reasonChipTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
+              <TextInput
+                style={[styles.input, styles.textarea]}
+                placeholder="Mô tả chi tiết lý do..."
+                placeholderTextColor={PALETTE.muted}
+                multiline
+                value={reasonDetail}
+                onChangeText={setReasonDetail}
+              />
+              <TextInput
+                style={[styles.input, styles.textareaSmall]}
+                placeholder="Ghi chú thêm cho bộ phận xử lý..."
+                placeholderTextColor={PALETTE.muted}
+                multiline
+                value={note}
+                onChangeText={setNote}
+              />
+            </View>
 
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Ảnh chứng từ / bằng chứng</Text>
-                <Text style={styles.helperText}>
-                  Thêm ảnh nếu cần chứng minh giao sai, sản phẩm lỗi, hàng hỏng
-                  hoặc nội dung sale đang yêu cầu.
-                </Text>
-
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  style={[
-                    styles.uploadBtn,
-                    uploadingEvidence && styles.submitBtnDisabled,
-                  ]}
-                  onPress={handlePickEvidence}
-                  disabled={uploadingEvidence || evidence.length >= 6}
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Tài khoản nhận tiền</Text>
+              <Text style={styles.fieldLabel}>Ngân hàng</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={bankCode}
+                  onValueChange={(itemValue) => setBankCode(itemValue)}
+                  style={styles.picker}
+                  dropdownIconColor={PALETTE.muted}
+                  mode="dropdown"
                 >
-                  <Ionicons
-                    name="cloud-upload-outline"
-                    size={16}
-                    color="#2563EB"
-                  />
-                  <Text style={styles.uploadBtnText}>
-                    {uploadingEvidence
-                      ? "Đang upload..."
-                      : evidence.length >= 6
-                        ? "Đã đạt giới hạn 6 ảnh"
-                        : "Chọn ảnh chứng từ"}
-                  </Text>
-                </TouchableOpacity>
-
-                {evidence.length > 0 ? (
-                  <View style={styles.evidenceGrid}>
-                    {evidence.map((url, index) => (
-                      <View key={`${url}-${index}`} style={styles.evidenceItem}>
-                        <Image source={{ uri: url }} style={styles.evidenceImage} />
-                        <TouchableOpacity
-                          activeOpacity={0.85}
-                          style={styles.removeEvidenceBtn}
-                          onPress={() => handleRemoveEvidence(url)}
-                        >
-                          <Ionicons name="close" size={14} color="#FFFFFF" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
+                  <Picker.Item label="Chọn ngân hàng" value="" color={PALETTE.muted} />
+                  {REFUND_BANK_OPTIONS.map((bank) => (
+                    <Picker.Item key={bank.code} label={bank.name} value={bank.code} />
+                  ))}
+                </Picker>
               </View>
 
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>
-                  {isCustomerUpdateMode ? "Nội dung bổ sung" : "Ghi chú thêm"}
-                </Text>
-                <TextInput
-                  style={[styles.input, styles.textarea]}
-                  placeholder={
-                    isCustomerUpdateMode
-                      ? "Bổ sung thêm thông tin/chứng từ cho sale..."
-                      : "Thêm mô tả cho sale nếu cần..."
-                  }
-                  multiline
-                  textAlignVertical="top"
-                  value={note}
-                  onChangeText={setNote}
-                />
-              </View>
+              <TextInput
+                style={styles.input}
+                placeholder="Số tài khoản"
+                placeholderTextColor={PALETTE.muted}
+                keyboardType="numeric"
+                value={accountNumber}
+                onChangeText={(value) => setAccountNumber(normalizeRefundAccountNumber(value))}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Chủ tài khoản (VIET HOA KHONG DAU)"
+                placeholderTextColor={PALETTE.muted}
+                value={accountHolder}
+                onChangeText={setAccountHolder}
+                autoCapitalize="characters"
+              />
 
               <TouchableOpacity
-                activeOpacity={0.9}
-                style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-                onPress={handleSubmit}
-                disabled={submitting}
+                style={styles.toggleRow}
+                onPress={() => setSaveAsDefaultRefundAccount((prev) => !prev)}
               >
-                <Text style={styles.submitText}>
-                  {submitting
-                    ? "Đang gửi..."
-                    : isCustomerUpdateMode
-                      ? "Gửi bổ sung thông tin"
-                      : "Gửi yêu cầu hoàn tiền"}
+                <Ionicons
+                  name={saveAsDefaultRefundAccount ? "checkbox" : "square-outline"}
+                  size={20}
+                  color={PALETTE.navy}
+                />
+                <Text style={styles.toggleText}>Lưu làm tài khoản mặc định</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Ảnh chứng từ / bằng chứng</Text>
+              <TouchableOpacity
+                style={styles.uploadBtn}
+                onPress={handlePickEvidence}
+                disabled={uploadingEvidence}
+              >
+                <Ionicons name="cloud-upload-outline" size={18} color={PALETTE.navy} />
+                <Text style={styles.uploadBtnText}>
+                  {uploadingEvidence ? "Đang tải lên..." : "Chọn ảnh chứng từ"}
                 </Text>
               </TouchableOpacity>
-            </>
-          )}
-        </ScrollView>
+
+              <View style={styles.evidenceGrid}>
+                {evidence.map((url, index) => (
+                  <View key={`${url}-${index}`} style={styles.evidenceItem}>
+                    <Image source={{ uri: url }} style={styles.evidenceImage} />
+                    <TouchableOpacity
+                      style={styles.removeEvidenceBtn}
+                      onPress={() => setEvidence((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      <Ionicons name="close" size={14} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 10, 18) }]}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => navigation.goBack()}
+              disabled={submitting}
+            >
+              <Text style={styles.cancelText}>Hủy</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+              onPress={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.submitText}>{submitLabel}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </>
       )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
   header: {
     paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 10,
+    paddingTop: 4,
+    paddingBottom: 6,
     flexDirection: "row",
     alignItems: "center",
   },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
+  headerTitle: { flex: 1, fontSize: 16, fontWeight: "900", color: PALETTE.text },
   iconBtn: {
     width: 36,
     height: 36,
@@ -1108,203 +464,148 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { paddingHorizontal: 16, paddingBottom: 24 },
+  content: { paddingHorizontal: 16, paddingTop: 4 },
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 14,
+    backgroundColor: PALETTE.white,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 12,
-  },
-  noticeCard: {
     borderWidth: 1,
-    borderColor: "#FCD34D",
-    backgroundColor: "#FFFBEB",
+    borderColor: PALETTE.border,
   },
-  sectionTitle: { fontSize: 14, fontWeight: "900", color: "#111827" },
-  fieldLabel: {
-    marginTop: 12,
-    fontSize: 12.5,
-    fontWeight: "800",
-    color: "#374151",
+  sectionTitle: { fontSize: 15, fontWeight: "900", color: PALETTE.text, marginBottom: 8 },
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+    marginVertical: 6,
   },
-  helperText: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6B7280",
-    lineHeight: 18,
-  },
-  noticeText: {
-    marginTop: 8,
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#4B5563",
-    lineHeight: 18,
-  },
-  input: {
-    marginTop: 8,
-    height: 42,
+  metaLabel: { flex: 1, fontSize: 13, fontWeight: "700", color: PALETTE.muted },
+  metaValue: { fontSize: 13, fontWeight: "800", color: PALETTE.text },
+  metaValueStrong: { fontSize: 14, fontWeight: "900", color: PALETTE.navy },
+  fieldLabel: { fontSize: 13, fontWeight: "900", color: PALETTE.text, marginBottom: 6 },
+  pickerContainer: {
+    backgroundColor: PALETTE.bg,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
-  },
-  pickerBox: {
+    borderColor: PALETTE.border,
     marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
     overflow: "hidden",
   },
+  picker: {
+    height: 50,
+    width: "100%",
+    color: PALETTE.text,
+  },
+  input: {
+    backgroundColor: PALETTE.bg,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 48,
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: "800",
+    color: PALETTE.text,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
   textarea: {
-    height: 96,
+    height: 100,
     paddingTop: 12,
     paddingBottom: 12,
+    textAlignVertical: "top",
+  },
+  textareaSmall: {
+    height: 88,
+    paddingTop: 12,
+    paddingBottom: 12,
+    textAlignVertical: "top",
   },
   reasonGrid: {
-    marginTop: 12,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+    marginVertical: 10,
   },
   reasonChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-  },
-  reasonChipActive: {
-    backgroundColor: "#DBEAFE",
-  },
-  reasonChipText: {
-    fontSize: 12.5,
-    fontWeight: "800",
-    color: "#4B5563",
-  },
-  reasonChipTextActive: {
-    color: "#1D4ED8",
-  },
-  toggleRow: {
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  toggleTextWrap: {
-    flex: 1,
-  },
-  togglePill: {
-    minWidth: 64,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-  },
-  togglePillActive: {
-    backgroundColor: "#DBEAFE",
-  },
-  togglePillDisabled: {
-    opacity: 0.6,
-  },
-  togglePillText: {
-    fontSize: 12.5,
-    fontWeight: "900",
-    color: "#4B5563",
-  },
-  togglePillTextActive: {
-    color: "#1D4ED8",
-  },
-  togglePillTextDisabled: {
-    color: "#6B7280",
-  },
-  rowBetween: {
-    marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  metaLabel: { fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
-  metaValue: {
-    flex: 1,
-    fontSize: 12.5,
-    fontWeight: "800",
-    color: "#111827",
-    textAlign: "right",
-  },
-  metaValueStrong: {
-    flex: 1,
-    fontSize: 13.5,
-    fontWeight: "900",
-    color: "#111827",
-    textAlign: "right",
-  },
-  divider: { height: 1, backgroundColor: "#EEF2F7", marginVertical: 10 },
-  totalLabel: { fontSize: 13.5, fontWeight: "900", color: "#111827" },
-  totalValue: { fontSize: 14, fontWeight: "900", color: "#DC2626" },
-  uploadBtn: {
-    marginTop: 12,
-    height: 42,
     borderRadius: 12,
+    backgroundColor: PALETTE.bg,
     borderWidth: 1,
-    borderColor: "#BFDBFE",
-    backgroundColor: "#EFF6FF",
+    borderColor: "transparent",
+  },
+  reasonChipActive: {
+    backgroundColor: PALETTE.navyTint,
+    borderColor: PALETTE.navy,
+  },
+  reasonChipText: { fontSize: 12, fontWeight: "800", color: PALETTE.muted },
+  reasonChipTextActive: { color: PALETTE.navy },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 15 },
+  toggleText: { fontSize: 13, fontWeight: "800", color: PALETTE.text, flex: 1 },
+  uploadBtn: {
+    backgroundColor: PALETTE.navyTint,
+    borderRadius: 14,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: PALETTE.navy,
+    borderStyle: "dashed",
+    paddingHorizontal: 12,
   },
-  uploadBtnText: {
-    fontSize: 12.5,
-    fontWeight: "900",
-    color: "#2563EB",
-  },
-  evidenceGrid: {
-    marginTop: 12,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  evidenceItem: {
-    position: "relative",
-  },
+  uploadBtnText: { color: PALETTE.navy, fontWeight: "900", fontSize: 13 },
+  evidenceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 15 },
+  evidenceItem: { position: "relative" },
   evidenceImage: {
-    width: 84,
-    height: 84,
+    width: 80,
+    height: 80,
     borderRadius: 12,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: PALETTE.border,
   },
   removeEvidenceBtn: {
     position: "absolute",
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#DC2626",
+    top: -5,
+    right: -5,
+    backgroundColor: PALETTE.error,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
     alignItems: "center",
     justifyContent: "center",
   },
-  submitBtn: {
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    backgroundColor: PALETTE.bg,
+    borderTopWidth: 1,
+    borderTopColor: PALETTE.border,
+    flexDirection: "row",
+    gap: 12,
+  },
+  cancelBtn: {
+    width: 96,
     height: 48,
-    borderRadius: 14,
-    backgroundColor: "#2563EB",
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 4,
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
   },
-  submitBtnDisabled: {
-    opacity: 0.7,
+  cancelText: { color: "#B91C1C", fontSize: 14, fontWeight: "900" },
+  submitBtn: {
+    flex: 1,
+    backgroundColor: PALETTE.navy,
+    borderRadius: 16,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  submitText: {
-    color: "#FFFFFF",
-    fontSize: 13.5,
-    fontWeight: "900",
-  },
+  submitBtnDisabled: { opacity: 0.6 },
+  submitText: { color: "#FFF", fontSize: 14, fontWeight: "900" },
 });

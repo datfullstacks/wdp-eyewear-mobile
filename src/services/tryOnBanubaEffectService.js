@@ -64,18 +64,18 @@ const normalizeRuntimePrefabConfig = (prefabConfig) => {
     };
   }
 
-  console.log(
-    "[TryOn Native] Adjusting runtime prefab config for Banuba-safe GLTF defaults",
-    JSON.stringify({
-      originalRotation: prefabConfig.rotation,
-      originalScale: prefabConfig.scale,
-      originalUsePhysics: prefabConfig.usePhysics,
-      resolvedRotation,
-      resolvedScale,
-      resolvedUsePhysics,
-      disabledPhysicsWithoutColliders: shouldDisablePhysicsWithoutColliders,
-    })
-  );
+  // console.log(
+  //   "[TryOn Native] Adjusting runtime prefab config for Banuba-safe GLTF defaults",
+  //   JSON.stringify({
+  //     originalRotation: prefabConfig.rotation,
+  //     originalScale: prefabConfig.scale,
+  //     originalUsePhysics: prefabConfig.usePhysics,
+  //     resolvedRotation,
+  //     resolvedScale,
+  //     resolvedUsePhysics,
+  //     disabledPhysicsWithoutColliders: shouldDisablePhysicsWithoutColliders,
+  //   })
+  // );
 
   return {
     ...prefabConfig,
@@ -244,7 +244,7 @@ export async function prepareBanubaRuntimeEffect({
         to: effectModelUri,
       });
     } catch (error) {
-      console.warn(`[TryOn Native] Runtime effect copy failed: ${error?.message || error}`);
+      // console.warn(`[TryOn Native] Runtime effect copy failed: ${error?.message || error}`);
       return {
         effectPath: existingEffectPath,
         resourcePaths,

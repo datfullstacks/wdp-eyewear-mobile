@@ -98,7 +98,7 @@ function RowItem({
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={[styles.rowTitle, danger && { color: PALETTE.navy , color: tileColor}]}>
+        <Text style={[styles.rowTitle, danger && { color: PALETTE.navy, color: tileColor }]}>
           {title}
         </Text>
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
@@ -155,7 +155,7 @@ function ProfileHeader({ navigation, right }) {
         <Text style={styles.headerTitle}>Tài khoản</Text>
       </View>
 
-      {right ?? <View style={styles.iconBtn} />}
+      {/* {right ?? <View style={styles.iconBtn} />} */}
     </View>
   );
 }
@@ -300,7 +300,7 @@ export default function ProfileScreen({ navigation }) {
         orderReview,
       }));
     } catch (err) {
-      console.log("loadStats error:", err);
+      // console.log("loadStats error:", err);
     }
   }, [token]);
 
@@ -412,14 +412,14 @@ export default function ProfileScreen({ navigation }) {
 
       <ProfileHeader
         navigation={navigation}
-        right={
-          <Pressable
-            onPress={() => console.log("Edit profile")}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="create-outline" size={20} color={PALETTE.navy} />
-          </Pressable>
-        }
+      // right={
+      //   <Pressable
+      //     onPress={() => console.log("Edit profile")}
+      //     style={styles.iconBtn}
+      //   >
+      //     <Ionicons name="create-outline" size={20} color={PALETTE.navy} />
+      //   </Pressable>
+      // }
       />
 
       <ScrollView
@@ -572,7 +572,7 @@ export default function ProfileScreen({ navigation }) {
               <Text style={[styles.statValue, { color: STAT_ACCENTS.rx.fg }]}>
                 {stats.prescription}
               </Text>
-              <Text style={styles.statLabel}>Rx</Text>
+              <Text style={styles.statLabel}>Đơn kính</Text>
             </Pressable>
           </View>
         </Card>
@@ -598,7 +598,7 @@ export default function ProfileScreen({ navigation }) {
           <Divider />
           <RowItem
             icon="reader-outline"
-            title="Kê đơn"
+            title="Đơn kính"
             subtitle="PD, Rx, lens preferences"
             rightText="Xem chi tiết"
             onPress={() => navigation.navigate("Prescription")}
@@ -632,14 +632,6 @@ export default function ProfileScreen({ navigation }) {
 
         {settingsExpanded ? (
           <Card style={{ paddingVertical: 6, marginBottom: 18 }}>
-            <RowItem
-              icon="card-outline"
-              title="Thanh toán"
-              subtitle="Thẻ và thanh toán"
-              onPress={() => navigation.navigate("Payments")}
-              accent={SETTING_ACCENTS.payments}
-            />
-            <Divider />
             <RowItem
               icon="chatbubble-ellipses-outline"
               title="Hỗ trợ"
@@ -802,7 +794,7 @@ const styles = StyleSheet.create({
     minWidth: 20,
     height: 20,
     borderRadius: 999,
-    backgroundColor: PALETTE.gold,
+    backgroundColor: "#EF4444",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 5,

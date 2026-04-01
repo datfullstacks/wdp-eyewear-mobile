@@ -207,7 +207,7 @@ export default function TryOnARScreen({ navigation, route }) {
         message: resultMessage,
       });
     } catch (error) {
-      console.warn("[TryOn Native] Launch failed", error);
+      // console.warn("[TryOn Native] Launch failed", error);
       setNativeLaunchState({
         status: "failed",
         message: error?.message || "Không mở được phiên AR.",
@@ -297,7 +297,7 @@ export default function TryOnARScreen({ navigation, route }) {
 
           <View style={styles.heroStatsRow}>
             <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatLabel}>Model sẵn sàng</Text>
+              <Text style={styles.heroStatLabel}>Mẫu sẵn sàng</Text>
               <Text style={styles.heroStatValue}>
                 {readyModelCount}/{models.length || 0}
               </Text>
@@ -314,7 +314,7 @@ export default function TryOnARScreen({ navigation, route }) {
         {models.length > 0 ? (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Chọn model thử</Text>
+              <Text style={styles.sectionTitle}>Chọn mẫu thử</Text>
               <Text style={styles.sectionMeta}>{readyModelCount}/{models.length} sẵn sàng</Text>
             </View>
 
@@ -404,10 +404,10 @@ export default function TryOnARScreen({ navigation, route }) {
             )}
             <Text style={styles.primaryBtnText}>
               {isLaunching
-                ? "Đang mở Try-On..."
+                ? "Đang thử kính..."
                 : activeTryOn?.ready
-                  ? "Mở lại Try-On"
-                  : "Model chưa sẵn sàng"}
+                  ? "Đang thử kính"
+                  : "Mẫu chưa sẵn sàng"}
             </Text>
           </TouchableOpacity>
         </View>

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
 import {
   addMyPrescriptionApi,
   deleteMyPrescriptionApi,
@@ -25,6 +25,19 @@ const EMPTY_FORM = {
   note: "",
   rightEye: { sphere: "", cyl: "", axis: "", add: "" },
   leftEye: { sphere: "", cyl: "", axis: "", add: "" },
+};
+
+const PALETTE = {
+  navy: "#0c2c5c",
+  navySoft: "#17365D",
+  navyTint: "#EEF3F8",
+  gold: "#ddad32",
+  goldSoft: "#F5E9C8",
+  white: "#FFFFFF",
+  bg: "#F7F8FA",
+  text: "#162033",
+  muted: "#6B7280",
+  border: "#E3E8EF",
 };
 
 function normalizeFormFromPrescription(item = {}) {
@@ -54,11 +67,11 @@ function PrescriptionCard({ item, onSetDefault, onDelete, onEdit }) {
         <Text style={styles.cardName}>{item?.name || "--"}</Text>
         {item?.isDefault ? (
           <View style={styles.defaultBadge}>
-            <Text style={styles.defaultBadgeText}>Mặt định</Text>
+            <Text style={styles.defaultBadgeText}>Mặc định</Text>
           </View>
         ) : (
           <TouchableOpacity activeOpacity={0.85} onPress={() => onSetDefault(item?._id)}>
-            <Text style={styles.linkText}>Thiết lập mặt định</Text>
+            <Text style={styles.linkText}>Thiết lập mặc định</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -73,10 +86,20 @@ function PrescriptionCard({ item, onSetDefault, onDelete, onEdit }) {
       {!!item?.note ? <Text style={styles.meta}>Ghi chú: {item.note}</Text> : null}
 
       <View style={styles.actions}>
-        <TouchableOpacity activeOpacity={0.85} onPress={() => onEdit(item)}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => onEdit(item)}
+          style={[styles.actionBtn, styles.editBtn]}
+        >
+          <Feather name="edit" size={16} color={PALETTE.navy} />
           <Text style={styles.linkText}>Sửa</Text>
         </TouchableOpacity>
-        <TouchableOpacity activeOpacity={0.85} onPress={() => onDelete(item?._id)}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => onDelete(item?._id)}
+          style={[styles.actionBtn, styles.deleteBtn]}
+        >
+          <MaterialIcons name="delete-outline" size={18} color="#DC2626" />
           <Text style={styles.deleteText}>Xóa</Text>
         </TouchableOpacity>
       </View>
@@ -88,6 +111,7 @@ export default function PrescriptionScreen({ navigation }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState("");
 
@@ -96,7 +120,7 @@ export default function PrescriptionScreen({ navigation }) {
       const data = await getMyPrescriptionsApi();
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Không tải được prescription";
+      const message = err?.response?.data?.message || err?.message || "Không tải được đơn kính";
       Alert.alert("Prescription", message);
     } finally {
       setLoading(false);
@@ -107,26 +131,37 @@ export default function PrescriptionScreen({ navigation }) {
     loadData();
   }, [loadData]);
 
+  const resetForm = () => {
+    setEditingId("");
+    setForm(EMPTY_FORM);
+  };
+
+  const startCreate = () => {
+    resetForm();
+    setShowForm(true);
+  };
+
   const submit = async () => {
     if (submitting) return;
     if (!form.name.trim()) {
-      Alert.alert("Prescription", "Name is required.");
+      Alert.alert("Prescription", "Họ và tên là bắt buộc.");
       return;
     }
 
     try {
       setSubmitting(true);
+      const payload = { ...form };
       const data = editingId
-        ? await updateMyPrescriptionApi(editingId, form)
-        : await addMyPrescriptionApi(form);
+        ? await updateMyPrescriptionApi(editingId, payload)
+        : await addMyPrescriptionApi(payload);
       setItems(Array.isArray(data) ? data : []);
-      setForm(EMPTY_FORM);
-      setEditingId("");
+      resetForm();
+      setShowForm(false);
     } catch (err) {
       const message =
         err?.response?.data?.message ||
         err?.message ||
-        (editingId ? "Không cập nhật được prescription" : "Không tạo được prescription");
+        (editingId ? "Không cập nhật được đơn kính" : "Không tạo được đơn kính");
       Alert.alert("Prescription", message);
     } finally {
       setSubmitting(false);
@@ -136,11 +171,12 @@ export default function PrescriptionScreen({ navigation }) {
   const startEdit = (item) => {
     setEditingId(String(item?._id || ""));
     setForm(normalizeFormFromPrescription(item));
+    setShowForm(true);
   };
 
   const cancelEdit = () => {
-    setEditingId("");
-    setForm(EMPTY_FORM);
+    resetForm();
+    setShowForm(false);
   };
 
   const onSetDefault = async (id) => {
@@ -148,13 +184,13 @@ export default function PrescriptionScreen({ navigation }) {
       const data = await setDefaultMyPrescriptionApi(id);
       setItems(Array.isArray(data) ? data : []);
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || "Không thiết lập mặt định được";
+      const message = err?.response?.data?.message || err?.message || "Không thiết lập mặc định được";
       Alert.alert("Prescription", message);
     }
   };
 
   const onDelete = async (id) => {
-    Alert.alert("Prescription", "Xóa prescription này?", [
+    Alert.alert("Prescription", "Xóa đơn kính này?", [
       { text: "Hủy", style: "cancel" },
       {
         text: "Xóa",
@@ -163,14 +199,186 @@ export default function PrescriptionScreen({ navigation }) {
           try {
             const data = await deleteMyPrescriptionApi(id);
             setItems(Array.isArray(data) ? data : []);
+
+            if (editingId === String(id)) {
+              resetForm();
+              setShowForm(false);
+            }
           } catch (err) {
-            const message = err?.response?.data?.message || err?.message || "Khong xoa duoc prescription";
+            const message = err?.response?.data?.message || err?.message || "Không xóa được đơn kính";
             Alert.alert("Prescription", message);
           }
         },
       },
     ]);
   };
+
+  const renderHeader = () => (
+    <View style={styles.topBlock}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        style={styles.addNewBtn}
+        onPress={() => {
+          if (showForm) {
+            resetForm();
+            setShowForm(false);
+          } else {
+            startCreate();
+          }
+        }}
+      >
+        <Ionicons
+          name={showForm ? "remove-circle-outline" : "add-circle-outline"}
+          size={18}
+          color={PALETTE.navy}
+        />
+        <Text style={styles.addNewBtnText}>
+          {showForm ? "Ẩn form đơn kính" : "Thêm đơn kính mới"}
+        </Text>
+      </TouchableOpacity>
+
+      {showForm ? (
+        <View style={styles.formCard}>
+          <View style={styles.formHeader}>
+            <Text style={styles.formTitle}>
+              {editingId ? "Cập nhật đơn kính" : "Thêm đơn kính"}
+            </Text>
+            {editingId ? (
+              <TouchableOpacity activeOpacity={0.85} onPress={cancelEdit}>
+                <Text style={styles.linkText}>Hủy sửa</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Họ và tên *"
+            placeholderTextColor="#9CA3AF"
+            value={form.name}
+            onChangeText={(v) => setForm((p) => ({ ...p, name: v }))}
+          />
+
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.quarter]}
+              placeholder="OD SPH"
+              placeholderTextColor="#9CA3AF"
+              value={form.rightEye.sphere}
+              onChangeText={(v) =>
+                setForm((p) => ({ ...p, rightEye: { ...p.rightEye, sphere: v } }))
+              }
+            />
+            <TextInput
+              style={[styles.input, styles.quarter]}
+              placeholder="OD CYL"
+              placeholderTextColor="#9CA3AF"
+              value={form.rightEye.cyl}
+              onChangeText={(v) =>
+                setForm((p) => ({ ...p, rightEye: { ...p.rightEye, cyl: v } }))
+              }
+            />
+            <TextInput
+              style={[styles.input, styles.quarter]}
+              placeholder="OD AXIS"
+              placeholderTextColor="#9CA3AF"
+              value={form.rightEye.axis}
+              onChangeText={(v) =>
+                setForm((p) => ({ ...p, rightEye: { ...p.rightEye, axis: v } }))
+              }
+            />
+            <TextInput
+              style={[styles.input, styles.third]}
+              placeholder="OD ADD"
+              placeholderTextColor="#9CA3AF"
+              value={form.rightEye.add}
+              onChangeText={(v) =>
+                setForm((p) => ({ ...p, rightEye: { ...p.rightEye, add: v } }))
+              }
+            />
+          </View>
+
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.quarter]}
+              placeholder="OS SPH"
+              placeholderTextColor="#9CA3AF"
+              value={form.leftEye.sphere}
+              onChangeText={(v) =>
+                setForm((p) => ({ ...p, leftEye: { ...p.leftEye, sphere: v } }))
+              }
+            />
+            <TextInput
+              style={[styles.input, styles.quarter]}
+              placeholder="OS CYL"
+              placeholderTextColor="#9CA3AF"
+              value={form.leftEye.cyl}
+              onChangeText={(v) =>
+                setForm((p) => ({ ...p, leftEye: { ...p.leftEye, cyl: v } }))
+              }
+            />
+            <TextInput
+              style={[styles.input, styles.quarter]}
+              placeholder="OS AXIS"
+              placeholderTextColor="#9CA3AF"
+              value={form.leftEye.axis}
+              onChangeText={(v) =>
+                setForm((p) => ({ ...p, leftEye: { ...p.leftEye, axis: v } }))
+              }
+            />
+            <TextInput
+              style={[styles.input, styles.quarter]}
+              placeholder="OS ADD"
+              placeholderTextColor="#9CA3AF"
+              value={form.leftEye.add}
+              onChangeText={(v) =>
+                setForm((p) => ({ ...p, leftEye: { ...p.leftEye, add: v } }))
+              }
+            />
+          </View>
+
+          <TextInput
+            style={styles.input}
+            placeholder="PD"
+            placeholderTextColor="#9CA3AF"
+            value={form.pd}
+            onChangeText={(v) => setForm((p) => ({ ...p, pd: v }))}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Ghi chú"
+            placeholderTextColor="#9CA3AF"
+            value={form.note}
+            onChangeText={(v) => setForm((p) => ({ ...p, note: v }))}
+          />
+
+          <Text style={styles.helperText}>
+            Điền trực tiếp các thông số đơn kính vào form rồi lưu.
+          </Text>
+
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
+            onPress={submit}
+            disabled={submitting}
+          >
+            <Ionicons
+              name={editingId ? "save-outline" : "checkmark-circle-outline"}
+              size={18}
+              color="#FFFFFF"
+            />
+            <Text style={styles.submitText}>
+              {submitting
+                ? "Đang lưu..."
+                : editingId
+                  ? "Cập nhật đơn kính"
+                  : "Lưu đơn kính"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -183,121 +391,8 @@ export default function PrescriptionScreen({ navigation }) {
           >
             <Ionicons name="chevron-back" size={22} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Prescription của tôi</Text>
+          <Text style={styles.headerTitle}>Đơn kính của tôi</Text>
         </View>
-      </View>
-
-      <View style={styles.formCard}>
-        <View style={styles.formHeader}>
-          <Text style={styles.formTitle}>
-            {editingId ? "Chỉnh sửa prescription" : "Thêm prescription"}
-          </Text>
-          {editingId ? (
-            <TouchableOpacity activeOpacity={0.85} onPress={cancelEdit}>
-              <Text style={styles.linkText}>Hủy sửa</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-        <TextInput
-          style={styles.input}
-          placeholder="Name *"
-          value={form.name}
-          onChangeText={(v) => setForm((p) => ({ ...p, name: v }))}
-        />
-        <View style={styles.row}>
-          <TextInput
-            style={[styles.input, styles.quarter]}
-            placeholder="OD SPH"
-            value={form.rightEye.sphere}
-            onChangeText={(v) =>
-              setForm((p) => ({ ...p, rightEye: { ...p.rightEye, sphere: v } }))
-            }
-          />
-          <TextInput
-            style={[styles.input, styles.quarter]}
-            placeholder="OD CYL"
-            value={form.rightEye.cyl}
-            onChangeText={(v) =>
-              setForm((p) => ({ ...p, rightEye: { ...p.rightEye, cyl: v } }))
-            }
-          />
-          <TextInput
-            style={[styles.input, styles.quarter]}
-            placeholder="OD AXIS"
-            value={form.rightEye.axis}
-            onChangeText={(v) =>
-              setForm((p) => ({ ...p, rightEye: { ...p.rightEye, axis: v } }))
-            }
-          />
-          <TextInput
-            style={[styles.input, styles.third]}
-            placeholder="OD ADD"
-            value={form.rightEye.add}
-            onChangeText={(v) =>
-              setForm((p) => ({ ...p, rightEye: { ...p.rightEye, add: v } }))
-            }
-          />
-        </View>
-        <View style={styles.row}>
-          <TextInput
-            style={[styles.input, styles.quarter]}
-            placeholder="OS SPH"
-            value={form.leftEye.sphere}
-            onChangeText={(v) =>
-              setForm((p) => ({ ...p, leftEye: { ...p.leftEye, sphere: v } }))
-            }
-          />
-          <TextInput
-            style={[styles.input, styles.quarter]}
-            placeholder="OS CYL"
-            value={form.leftEye.cyl}
-            onChangeText={(v) =>
-              setForm((p) => ({ ...p, leftEye: { ...p.leftEye, cyl: v } }))
-            }
-          />
-          <TextInput
-            style={[styles.input, styles.quarter]}
-            placeholder="OS AXIS"
-            value={form.leftEye.axis}
-            onChangeText={(v) =>
-              setForm((p) => ({ ...p, leftEye: { ...p.leftEye, axis: v } }))
-            }
-          />
-          <TextInput
-            style={[styles.input, styles.quarter]}
-            placeholder="OS ADD"
-            value={form.leftEye.add}
-            onChangeText={(v) =>
-              setForm((p) => ({ ...p, leftEye: { ...p.leftEye, add: v } }))
-            }
-          />
-        </View>
-        <TextInput
-          style={styles.input}
-          placeholder="PD"
-          value={form.pd}
-          onChangeText={(v) => setForm((p) => ({ ...p, pd: v }))}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Note"
-          value={form.note}
-          onChangeText={(v) => setForm((p) => ({ ...p, note: v }))}
-        />
-        <TouchableOpacity
-          activeOpacity={0.9}
-          style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
-          onPress={submit}
-          disabled={submitting}
-        >
-          <Text style={styles.submitText}>
-            {submitting
-              ? "Đang lưu..."
-              : editingId
-                ? "Cập nhật prescription"
-                : "Lưu prescription"}
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -309,6 +404,7 @@ export default function PrescriptionScreen({ navigation }) {
           data={items}
           keyExtractor={(item) => String(item?._id)}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={renderHeader()}
           renderItem={({ item }) => (
             <PrescriptionCard
               item={item}
@@ -319,9 +415,10 @@ export default function PrescriptionScreen({ navigation }) {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>Không có prescription</Text>
+              <Text style={styles.emptyText}>Không có đơn kính</Text>
             </View>
           }
+          showsVerticalScrollIndicator={false}
         />
       )}
     </SafeAreaView>
@@ -329,7 +426,7 @@ export default function PrescriptionScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F6F7FB" },
+  safe: { flex: 1, backgroundColor: PALETTE.bg },
   header: {
     paddingHorizontal: 12,
     paddingTop: 6,
@@ -338,14 +435,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
-  iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontSize: 16, fontWeight: "900", color: PALETTE.text },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  listContent: { paddingHorizontal: 16, paddingBottom: 16 },
+  topBlock: { paddingBottom: 8 },
+  addNewBtn: {
+    marginBottom: 10,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: PALETTE.navyTint,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: PALETTE.navy,
+  },
+  addNewBtnText: {
+    color: PALETTE.navy,
+    fontSize: 13,
+    fontWeight: "900",
+  },
   formCard: {
-    marginHorizontal: 16,
     marginBottom: 12,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
   },
   formHeader: {
     flexDirection: "row",
@@ -354,47 +476,83 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
-  formTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  formTitle: { fontSize: 13, fontWeight: "900", color: PALETTE.text },
   input: {
     height: 42,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: PALETTE.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     fontSize: 13,
     fontWeight: "700",
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
+    color: PALETTE.text,
+    backgroundColor: PALETTE.white,
     marginBottom: 8,
   },
   row: { flexDirection: "row", gap: 8 },
   third: { flex: 1 },
   quarter: { flex: 1 },
+  helperText: {
+    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: "700",
+    color: PALETTE.muted,
+    lineHeight: 18,
+  },
   submitBtn: {
     marginTop: 4,
     height: 42,
     borderRadius: 10,
-    backgroundColor: "#2563EB",
+    backgroundColor: PALETTE.navy,
+    flexDirection: "row",
+    gap: 6,
     alignItems: "center",
     justifyContent: "center",
   },
   submitText: { color: "#FFFFFF", fontWeight: "900" },
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  listContent: { paddingHorizontal: 16, paddingBottom: 16 },
   card: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: PALETTE.white,
     borderRadius: 14,
     padding: 12,
     marginBottom: 10,
   },
-  cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  cardName: { fontSize: 13.5, fontWeight: "900", color: "#111827", flex: 1 },
-  defaultBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: "#ECFDF5" },
+  cardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  cardName: { fontSize: 13.5, fontWeight: "900", color: PALETTE.text, flex: 1 },
+  defaultBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#ECFDF5",
+  },
   defaultBadgeText: { color: "#15803D", fontWeight: "900", fontSize: 11 },
-  linkText: { color: "#2563EB", fontWeight: "900", fontSize: 12 },
-  meta: { marginTop: 4, fontSize: 12.5, fontWeight: "700", color: "#6B7280" },
-  actions: { marginTop: 10, flexDirection: "row", justifyContent: "flex-end", gap: 12 },
+  linkText: { color: PALETTE.navy, fontWeight: "900", fontSize: 12 },
+  meta: { marginTop: 4, fontSize: 12.5, fontWeight: "700", color: PALETTE.muted },
+  actions: { marginTop: 10, flexDirection: "row", justifyContent: "flex-end", gap: 10 },
+  actionBtn: {
+    minWidth: 84,
+    height: 36,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+  },
+  editBtn: {
+    backgroundColor: PALETTE.navyTint,
+    borderColor: PALETTE.border,
+  },
+  deleteBtn: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
   deleteText: { color: "#DC2626", fontWeight: "900", fontSize: 12.5 },
   empty: { paddingTop: 20, alignItems: "center" },
-  emptyText: { color: "#6B7280", fontWeight: "700" },
+  emptyText: { color: PALETTE.muted, fontWeight: "700" },
 });

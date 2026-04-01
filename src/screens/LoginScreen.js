@@ -50,13 +50,13 @@ export default function LoginScreen({ navigation }) {
     if (error) throw error;
     return { session: data.session, access_token };
   }, []);
-  
+
   const handleGoogleSignIn = useCallback(async () => {
     try {
       setApiError("");
       setGoogleLoading(true);
 
-      console.log("redirectTo =", redirectTo);
+      // console.log("redirectTo =", redirectTo);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -90,7 +90,7 @@ export default function LoginScreen({ navigation }) {
       setApiError(
         e?.response?.data?.message || e?.message || "Đăng nhập Google thất bại"
       );
-      console.log("Google sign-in error", e);
+      // console.log("Google sign-in error", e);
     } finally {
       setGoogleLoading(false);
     }
@@ -119,7 +119,7 @@ export default function LoginScreen({ navigation }) {
       navigation.replace("Tabs");
     } catch (e) {
       setApiError(e?.response?.data?.message || "Đăng nhập thất bại");
-      console.log("Login error", e);
+      // console.log("Login error", e);
     }
   };
 

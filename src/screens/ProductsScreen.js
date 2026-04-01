@@ -68,7 +68,6 @@ function Chip({ label, onRemove }) {
           <View style={{borderWidth: 1, borderColor: "#ffc0c0", borderRadius: 50, padding: 2, backgroundColor: "#ffe5e5"}}>
             <Ionicons name="close" size={14} color="red" />
           </View>
-
         </TouchableOpacity>
       )}
     </View>
@@ -153,6 +152,10 @@ export default function ProductsScreen({ navigation }) {
   useEffect(() => {
     const params = route?.params || {};
 
+    if (Object.prototype.hasOwnProperty.call(params, "q")) {
+      setQuery(String(params.q || ""));
+    }
+
     if (params.autoApplyFilter) {
       setTypeFrame(false);
       setTypeLens(false);
@@ -178,10 +181,6 @@ export default function ProductsScreen({ navigation }) {
           break;
         default:
           break;
-      }
-
-      if (params.q) {
-        setQuery(params.q);
       }
     }
   }, [route?.params]);
@@ -485,19 +484,30 @@ export default function ProductsScreen({ navigation }) {
                   </Text>
                 </View>
 
-                <TouchableOpacity
-                  style={[styles.pillBtn, styles.storePillBtn]}
-                  activeOpacity={0.85}
-                  onPress={() => setStoreOpen(true)}
-                >
-                  <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
-                  <Text style={styles.pillBtnText} numberOfLines={1}>
-                    {selectedStoreLabel}
-                  </Text>
-                </TouchableOpacity>
+                {/* Đã cập nhật: Nút Sắp xếp & Bộ lọc được dời lên đây thay vì nút chọn Cửa hàng */}
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  <TouchableOpacity
+                    style={styles.pillBtn}
+                    activeOpacity={0.85}
+                    onPress={() => setSortOpen(true)}
+                  >
+                    <Ionicons name="swap-vertical-outline" size={16} color={PALETTE.navy} />
+                    <Text style={styles.pillBtnText}>Sắp xếp</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.pillBtn}
+                    activeOpacity={0.85}
+                    onPress={() => setFilterOpen(true)}
+                  >
+                    <Ionicons name="options-outline" size={16} color={PALETTE.navy} />
+                    <Text style={styles.pillBtnText}>Bộ lọc</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 
+            {/* Đã cập nhật: Nút Cửa hàng được dời xuống ScrollView bên dưới */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -506,19 +516,12 @@ export default function ProductsScreen({ navigation }) {
               <TouchableOpacity
                 style={styles.pillBtn}
                 activeOpacity={0.85}
-                onPress={() => setSortOpen(true)}
+                onPress={() => setStoreOpen(true)}
               >
-                <Ionicons name="swap-vertical-outline" size={16} color={PALETTE.navy} />
-                <Text style={styles.pillBtnText}>Sắp xếp</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.pillBtn}
-                activeOpacity={0.85}
-                onPress={() => setFilterOpen(true)}
-              >
-                <Ionicons name="options-outline" size={16} color={PALETTE.navy} />
-                <Text style={styles.pillBtnText}>Bộ lọc</Text>
+                <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
+                <Text style={styles.pillBtnText} numberOfLines={1}>
+                  {selectedStoreLabel}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
 
@@ -816,6 +819,9 @@ export default function ProductsScreen({ navigation }) {
                 { id: "beige", name: "Be", hex: "#D6C9B4" },
                 { id: "gold", name: "Vàng", hex: "#C9A227" },
                 { id: "silver", name: "Bạc", hex: "#9CA3AF" },
+                { id: "red", name: "Đỏ", hex: "#B91C1C" },
+                { id: "blue", name: "Xanh dương", hex: "#1E40AF" },
+                { id: "green", name: "Xanh lá", hex: "#047857" },
               ].map((color) => {
                 const active = colorFilters.includes(color.id);
                 return (
