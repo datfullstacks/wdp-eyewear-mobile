@@ -265,6 +265,74 @@ function normalizeStr(value) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function normalizeOrderDisplayStatus(raw) {
+  const baseStatus = normalizeStr(raw?.rawStatus || raw?.status);
+  const opsStage = normalizeStr(raw?.opsStage);
+  const shipmentStatus = normalizeStr(raw?.shipment?.latestStatus);
+
+  if (
+    ["cancelled", "canceled"].includes(baseStatus) ||
+    ["cancelled", "canceled"].includes(opsStage) ||
+    ["cancel", "cancelled"].includes(shipmentStatus)
+  ) {
+    return "cancelled";
+  }
+
+  if (
+    baseStatus === "returned" ||
+    opsStage === "returned" ||
+    shipmentStatus === "returned"
+  ) {
+    return "returned";
+  }
+
+  if (
+    ["delivered", "completed"].includes(baseStatus) ||
+    ["delivered", "closed"].includes(opsStage) ||
+    shipmentStatus === "delivered"
+  ) {
+    return "delivered";
+  }
+
+  if (
+    [
+      "shipment_created",
+      "handover_to_carrier",
+      "in_transit",
+      "delivery_failed",
+      "waiting_redelivery",
+      "return_pending",
+      "return_in_transit",
+      "exception_hold",
+    ].includes(opsStage) ||
+    [
+      "ready_to_pick",
+      "picking",
+      "money_collect_picking",
+      "picked",
+      "storing",
+      "sorting",
+      "transporting",
+      "delivering",
+      "money_collect_delivering",
+      "delivery_fail",
+      "waiting_to_return",
+      "return",
+      "return_transporting",
+      "return_sorting",
+      "returning",
+      "damage",
+      "lost",
+      "exception",
+      "return_fail",
+    ].includes(shipmentStatus)
+  ) {
+    return "shipped";
+  }
+
+  return raw?.status ?? "pending";
+}
+
 function enrichVariantWithProduct(item, product) {
   const colors = Array.isArray(product?.colors) ? product.colors : [];
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
@@ -441,7 +509,8 @@ function normalizeOrderForList(raw, options = {}) {
     _id: raw?._id ?? raw?.id ?? null,
     id: raw?._id ?? raw?.id ?? null,
     paymentCode: raw?.paymentCode ?? raw?.payment?.code ?? "",
-    status: raw?.status ?? "pending",
+    status: normalizeOrderDisplayStatus(raw),
+    rawStatus: raw?.rawStatus ?? raw?.status ?? "",
     paymentStatus: raw?.paymentStatus ?? raw?.payment?.status ?? "",
     createdAt: raw?.createdAt ?? null,
     updatedAt: raw?.updatedAt ?? null,
@@ -489,6 +558,8 @@ export async function getOrderByIdApi(orderId, enrichProducts = true) {
 
   const order = {
     ...raw,
+    status: normalizeOrderDisplayStatus(raw),
+    rawStatus: raw?.rawStatus ?? raw?.status ?? "",
     promotionApplied: raw?.promotionApplied ?? null,
     items: Array.isArray(raw?.items) ? raw.items.map(normalizeOrderItemDetail) : [],
   };

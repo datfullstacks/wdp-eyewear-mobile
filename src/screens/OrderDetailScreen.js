@@ -107,6 +107,9 @@ function normalizeStatusText(value) {
     returned: "Hoàn hàng",
     picking: "Đang lấy hàng",
     waiting_lab: "Chờ vào gia công tròng",
+    waiting_arrival: "Chờ hàng pre-order về",
+    arrived: "Hàng đã về",
+    stocked: "Đã nhập kho",
     lens_processing: "Đang cắt mài tròng",
     lens_fitting: "Đang lắp tròng vào gọng",
     qc_check: "Đang QC sau gia công",
@@ -219,6 +222,13 @@ function normalizeOrderProgressStatus(status, opsStage, orderTypeKey = "ready") 
     return orderTypeKey === "preorder" ? "AWAITING_STOCK" : "PACKING";
   }
   if (
+    normalizedOps === "waiting_arrival" ||
+    normalizedOps === "arrived" ||
+    normalizedOps === "stocked"
+  ) {
+    return orderTypeKey === "preorder" ? "AWAITING_STOCK" : "PACKING";
+  }
+  if (
     normalizedOps === "waiting_lab" ||
     normalizedOps === "lens_processing" ||
     normalizedOps === "lens_fitting" ||
@@ -228,13 +238,28 @@ function normalizeOrderProgressStatus(status, opsStage, orderTypeKey = "ready") 
   ) {
     return "PACKING";
   }
+  if (
+    normalizedOps === "ready_to_ship" ||
+    normalizedOps === "shipment_created" ||
+    normalizedOps === "handover_to_carrier" ||
+    normalizedOps === "in_transit" ||
+    normalizedOps === "delivery_failed" ||
+    normalizedOps === "waiting_redelivery" ||
+    normalizedOps === "return_pending" ||
+    normalizedOps === "return_in_transit" ||
+    normalizedOps === "exception_hold"
+  ) {
+    return "SHIPPING";
+  }
   if (normalizedOps === "shipped" || normalizedOps === "shipping") return "SHIPPING";
   if (normalizedOps === "delivered") return "DELIVERED";
+  if (normalizedOps === "returned") return "SHIPPING";
 
   if (normalized === "pending" || normalized === "confirmed") return "CONFIRMED";
   if (normalized === "processing") return "PACKING";
   if (normalized === "shipped") return "SHIPPING";
   if (normalized === "delivered") return "DELIVERED";
+  if (normalized === "returned") return "SHIPPING";
   if (normalized === "cancelled" || normalized === "canceled") return "CANCELLED";
 
   return "CONFIRMED";
