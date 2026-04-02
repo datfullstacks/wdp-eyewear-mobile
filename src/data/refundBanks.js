@@ -1,6 +1,6 @@
 const BANK_LOGOS_BY_CODE = {
   VCB: require("../assets/banks/vietcombank.png"),
-  BIDV: require("../assets/banks/bidv.png"),
+  BIDV: require("../assets/banks/Bidv.png"),
   CTG: require("../assets/banks/viettinbank.png"),
   TCB: require("../assets/banks/techcombank.png"),
   MBB: require("../assets/banks/MB-Bank.png"),
