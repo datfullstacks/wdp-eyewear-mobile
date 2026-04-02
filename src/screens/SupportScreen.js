@@ -13,11 +13,17 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import SupportAttachmentSection from "../components/SupportAttachmentSection";
 import {
   createSupportTicketApi,
   getSupportTicketsApi,
-  SUPPORT_CATEGORY_META,
 } from "../services/supportService";
+import {
+  buildSupportAttachmentPayload,
+  pickAndUploadSupportAttachmentAsync,
+  requiresSupportEvidence,
+  SUPPORT_ATTACHMENT_MAX_ITEMS,
+} from "../services/supportMediaService";
 
 const PALETTE = {
   navy: "#0c2c5c",
@@ -45,12 +51,6 @@ const FILTER_OPTIONS = [
   { key: "order", label: "Đơn hàng" },
   { key: "refund", label: "Hoàn tiền" },
   { key: "warranty", label: "Bảo hành" },
-];
-
-const PRIORITY_OPTIONS = [
-  { key: "normal", label: "Bình thường" },
-  { key: "high", label: "Ưu tiên cao" },
-  { key: "low", label: "Ưu tiên thấp" },
 ];
 
 function formatTime(value) {
@@ -137,13 +137,6 @@ function TicketCard({ item, onPress }) {
         <Text style={styles.secondaryText}>Đơn: {item.order.paymentCode}</Text>
       ) : null}
 
-      {item?.store?.name ? (
-        <Text style={styles.secondaryText}>
-          Cửa hàng: {item.store.name}
-          {item.store.code ? ` (${item.store.code})` : ""}
-        </Text>
-      ) : null}
-
       <View style={styles.cardBottom}>
         <Text style={styles.time}>Cập nhật: {formatTime(item?.lastMessageAt || item?.updatedAt)}</Text>
         <Ionicons name="chevron-forward" size={18} color={PALETTE.muted} />
@@ -175,7 +168,6 @@ export default function SupportScreen({ navigation, route }) {
     initialCategory === "warranty" ? "warranty" : "all"
   );
   const [category, setCategory] = useState(initialCategory);
-  const [priority, setPriority] = useState("normal");
   const [subject, setSubject] = useState(
     draftSubject ||
       buildDefaultSubject({
@@ -185,6 +177,8 @@ export default function SupportScreen({ navigation, route }) {
       })
   );
   const [message, setMessage] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
 
   useEffect(() => {
     setCategory(initialCategory);
@@ -198,6 +192,7 @@ export default function SupportScreen({ navigation, route }) {
         })
     );
     setMessage("");
+    setAttachments([]);
   }, [
     draftSubject,
     initialCategory,
@@ -207,9 +202,12 @@ export default function SupportScreen({ navigation, route }) {
     prefillOrderItemId,
   ]);
 
-  const selectedCategoryMeta = SUPPORT_CATEGORY_META[category] || SUPPORT_CATEGORY_META.general;
   const hasOrderContext = Boolean(prefillOrderId);
   const isWarrantyDraft = category === "warranty" && hasOrderContext && prefillOrderItemId;
+  const needsEvidence = requiresSupportEvidence({
+    category,
+    orderId: prefillOrderId,
+  });
 
   const loadData = useCallback(
     async ({ silent = false } = {}) => {
@@ -242,14 +240,55 @@ export default function SupportScreen({ navigation, route }) {
     }, [loadData])
   );
 
+  const handleAddAttachment = useCallback(async () => {
+    if (uploadingAttachments || attachments.length >= SUPPORT_ATTACHMENT_MAX_ITEMS) {
+      return;
+    }
+
+    try {
+      setUploadingAttachments(true);
+      const uploaded = await pickAndUploadSupportAttachmentAsync({
+        folder: "support-evidence",
+      });
+      if (!uploaded) return;
+
+      setAttachments((prev) => {
+        const next = [...prev, uploaded];
+        return next.slice(0, SUPPORT_ATTACHMENT_MAX_ITEMS);
+      });
+    } catch (err) {
+      Alert.alert(
+        "Hỗ trợ",
+        err?.message || "Không thể tải ảnh hoặc video lên.",
+      );
+    } finally {
+      setUploadingAttachments(false);
+    }
+  }, [attachments.length, uploadingAttachments]);
+
+  const handleRemoveAttachment = useCallback((attachment) => {
+    setAttachments((prev) => prev.filter((item) => item?.url !== attachment?.url));
+  }, []);
+
   const onCreate = async () => {
     if (submitting) return;
 
     const nextSubject = String(subject || "").trim();
     const nextMessage = String(message || "").trim();
+    const attachmentPayload = attachments
+      .map(buildSupportAttachmentPayload)
+      .filter(Boolean);
 
     if (!nextSubject || !nextMessage) {
       Alert.alert("Hỗ trợ", "Tiêu đề và nội dung là bắt buộc.");
+      return;
+    }
+
+    if (needsEvidence && attachmentPayload.length === 0) {
+      Alert.alert(
+        "Hỗ trợ sau mua",
+        "Vui lòng gửi ít nhất 1 ảnh hoặc video để chứng minh lỗi của đơn hàng.",
+      );
       return;
     }
 
@@ -267,14 +306,15 @@ export default function SupportScreen({ navigation, route }) {
         subject: nextSubject,
         message: nextMessage,
         category,
-        priority,
         ...(prefillOrderId ? { orderId: prefillOrderId } : {}),
         ...(category === "warranty" && prefillOrderItemId
           ? { orderItemId: prefillOrderItemId }
           : {}),
+        attachments: attachmentPayload,
       });
 
       setMessage("");
+      setAttachments([]);
       if (!lockCategory) {
         setCategory("general");
         setSubject("");
@@ -406,29 +446,6 @@ export default function SupportScreen({ navigation, route }) {
                 </View>
               ) : null}
 
-              <View style={styles.optionGroup}>
-                <Text style={styles.optionLabel}>Mức ưu tiên</Text>
-                <View style={styles.optionRow}>
-                  {PRIORITY_OPTIONS.map((option) => {
-                    const active = priority === option.key;
-                    return (
-                      <TouchableOpacity
-                        key={option.key}
-                        style={[styles.optionChip, active && styles.optionChipActive]}
-                        activeOpacity={0.85}
-                        onPress={() => setPriority(option.key)}
-                      >
-                        <Text
-                          style={[styles.optionChipText, active && styles.optionChipTextActive]}
-                        >
-                          {option.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
               <TextInput
                 style={styles.input}
                 placeholder="Tiêu đề"
@@ -448,6 +465,20 @@ export default function SupportScreen({ navigation, route }) {
                 textAlignVertical="top"
                 value={message}
                 onChangeText={setMessage}
+              />
+              <SupportAttachmentSection
+                title="Hình ảnh / video chứng minh"
+                helperText={
+                  needsEvidence
+                    ? "Hỗ trợ sau mua cần ít nhất 1 ảnh hoặc video để chứng minh lỗi của đơn hàng."
+                    : "Bạn có thể đính kèm ảnh hoặc video để nhân viên xử lý nhanh hơn."
+                }
+                emptyText="Chưa có ảnh hoặc video nào được chọn."
+                attachments={attachments}
+                editable
+                uploading={uploadingAttachments}
+                onAdd={handleAddAttachment}
+                onRemove={handleRemoveAttachment}
               />
               <TouchableOpacity
                 activeOpacity={0.9}
