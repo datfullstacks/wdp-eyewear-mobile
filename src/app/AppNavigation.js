@@ -161,6 +161,7 @@ function MainTabs({ navigation }) {
   const token = useAuthStore((s) => s.token);
   const insets = useSafeAreaInsets();
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+  const refreshSupportUnread = useSupportInboxStore((s) => s.refreshUnreadFromApi);
 
   const loadUnreadNotifications = useCallback(async () => {
     if (!token) {
@@ -182,10 +183,16 @@ function MainTabs({ navigation }) {
     loadUnreadNotifications();
   }, [loadUnreadNotifications]);
 
+  useEffect(() => {
+    if (!token) return;
+    void refreshSupportUnread().catch(() => {});
+  }, [token, refreshSupportUnread]);
+
   useFocusEffect(
     useCallback(() => {
       loadUnreadNotifications();
-    }, [loadUnreadNotifications])
+      void refreshSupportUnread().catch(() => {});
+    }, [loadUnreadNotifications, refreshSupportUnread])
   );
 
   useEffect(() => {
@@ -202,8 +209,10 @@ function MainTabs({ navigation }) {
 
       socket = connectRealtime(token, {
         onMessage: (payload) => {
-          if (!isNotificationRealtimeEvent(payload)) return;
-          void loadUnreadNotifications();
+          if (isNotificationRealtimeEvent(payload)) {
+            void loadUnreadNotifications();
+          }
+          void refreshSupportUnread().catch(() => {});
         },
         onClose: () => {
           if (isDisposed) return;
@@ -221,7 +230,7 @@ function MainTabs({ navigation }) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socket) socket.close();
     };
-  }, [token, loadUnreadNotifications]);
+  }, [token, loadUnreadNotifications, refreshSupportUnread]);
 
   return (
     <Tab.Navigator
@@ -379,6 +388,7 @@ export default function AppNavigation() {
   const setCartUser = useCartStore((s) => s.setUser);
   const isHydratingCart = useCartStore((s) => s.isHydrating);
   const setSupportInboxUser = useSupportInboxStore((s) => s.setUser);
+  const refreshSupportUnread = useSupportInboxStore((s) => s.refreshUnreadFromApi);
 
   useEffect(() => {
     hydrateAuth();
@@ -392,8 +402,11 @@ export default function AppNavigation() {
     if (!isHydratingAuth) {
       setCartUser(userKey);
       setSupportInboxUser(userKey);
+      if (userKey) {
+        void refreshSupportUnread().catch(() => {});
+      }
     }
-  }, [isHydratingAuth, userKey, setCartUser, setSupportInboxUser]);
+  }, [isHydratingAuth, userKey, setCartUser, setSupportInboxUser, refreshSupportUnread]);
 
   useEffect(() => {
     installAppAlert();

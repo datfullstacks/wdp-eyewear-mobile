@@ -29,14 +29,12 @@ import HomeBanner from "../components/HomeBanner";
 import HomeFooter from "../components/HomeFooter";
 import ProductCard from "../components/ProductCard";
 import { useProducts } from "../hooks/useProducts";
-import { useStores } from "../hooks/useStores";
 import {
   getMyAddressesApi,
   setDefaultMyAddressApi,
   getMyFavoriteIdsApi,
 } from "../services/userService";
 import { useAuthStore } from "../store/authStore";
-import { useStoreNetworkStore } from "../store/storeNetworkStore";
 
 const { width } = Dimensions.get("window");
 const GAP = 12;
@@ -409,16 +407,8 @@ export default function HomeScreen({ navigation }) {
   const [addresses, setAddresses] = useState([]);
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressModalVisible, setAddressModalVisible] = useState(false);
-  const [storeModalVisible, setStoreModalVisible] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
-  const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
-  const hydrateStoreSelection = useStoreNetworkStore((s) => s.hydrate);
-  const setSelectedStoreId = useStoreNetworkStore((s) => s.setSelectedStoreId);
-  const ensureDefaultStore = useStoreNetworkStore((s) => s.ensureDefaultStore);
-  const { stores } = useStores();
-  const { products } = useProducts({
-    storeId: selectedStoreId || undefined,
-  });
+  const { products } = useProducts();
   const [currentSeason, setCurrentSeason] = useState(getCurrentSeason());
 
   const [settingDefaultId, setSettingDefaultId] = useState(null);
@@ -426,15 +416,6 @@ export default function HomeScreen({ navigation }) {
   const slideAnim = useRef(new Animated.Value(50)).current;
 
   const [favoriteIds, setFavoriteIds] = useState([]);
-
-  useEffect(() => {
-    void hydrateStoreSelection();
-  }, [hydrateStoreSelection]);
-
-  useEffect(() => {
-    if (!stores.length) return;
-    void ensureDefaultStore(stores);
-  }, [ensureDefaultStore, stores]);
 
   useEffect(() => {
     Animated.parallel([
@@ -480,11 +461,6 @@ export default function HomeScreen({ navigation }) {
     () => getSeasonalProducts(products, currentSeason),
     [products, currentSeason]
   );
-
-  const selectedStoreLabel = useMemo(() => {
-    const selectedStore = stores.find((store) => store.id === selectedStoreId);
-    return selectedStore?.name || "Tất cả cửa hàng";
-  }, [selectedStoreId, stores]);
 
   const loadAddress = useCallback(async () => {
     setAddressLoading(true);
@@ -656,20 +632,6 @@ export default function HomeScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.headerRow1}>
-              <TouchableOpacity
-                onPress={() => setStoreModalVisible(true)}
-                style={styles.locationRow}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
-                <Text style={styles.locationText} numberOfLines={1}>
-                  Cửa hàng: {selectedStoreLabel}
-                </Text>
-                <Ionicons name="chevron-down" size={14} color={PALETTE.muted} />
-              </TouchableOpacity>
-            </View>
-
             <HeaderSearchActions
               value={query}
               onChangeText={setQuery}
@@ -815,80 +777,6 @@ export default function HomeScreen({ navigation }) {
           </View>
         </ScrollView>
       </Animated.View>
-
-      <Modal
-        visible={storeModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setStoreModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Cửa hàng đang xem</Text>
-              <TouchableOpacity onPress={() => setStoreModalVisible(false)}>
-                <Ionicons name="close" size={20} color={PALETTE.navy} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView contentContainerStyle={styles.addressList}>
-              <TouchableOpacity
-                style={styles.storeItem}
-                activeOpacity={0.8}
-                onPress={() => {
-                  void setSelectedStoreId(null);
-                  setStoreModalVisible(false);
-                }}
-              >
-                <Ionicons
-                  name={!selectedStoreId ? "radio-button-on" : "radio-button-off"}
-                  size={18}
-                  color={!selectedStoreId ? PALETTE.navy : PALETTE.muted}
-                  style={styles.storeSelectIcon}
-                />
-                <View style={styles.storeInfo}>
-                  <Text style={styles.storeTitle}>Tất cả cửa hàng</Text>
-                </View>
-              </TouchableOpacity>
-
-              {stores.map((store) => {
-                const selected = selectedStoreId === store.id;
-                const label = [store.addressLine1, store.district, store.city]
-                  .filter(Boolean)
-                  .join(", ");
-                return (
-                  <TouchableOpacity
-                    key={store.id}
-                    style={styles.storeItem}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      void setSelectedStoreId(store.id);
-                      setStoreModalVisible(false);
-                    }}
-                  >
-                    <Ionicons
-                      name={selected ? "radio-button-on" : "radio-button-off"}
-                      size={18}
-                      color={selected ? PALETTE.navy : PALETTE.muted}
-                      style={styles.storeSelectIcon}
-                    />
-                    <View style={styles.storeInfo}>
-                      <Text style={styles.storeTitle}>
-                        {store.name} ({store.code})
-                      </Text>
-                      {label ? (
-                        <Text style={styles.storeMeta}>
-                          {label}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {store.isDefault ? <Text style={styles.defaultBadge}>Mặc định</Text> : null}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         visible={addressModalVisible}
@@ -1221,34 +1109,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: PALETTE.text,
-  },
-  storeItem: {
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: PALETTE.border,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  storeSelectIcon: {
-    marginTop: 3,
-  },
-  storeInfo: {
-    flex: 1,
-    minWidth: 0,
-    paddingRight: 8,
-  },
-  storeTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: PALETTE.text,
-    lineHeight: 20,
-  },
-  storeMeta: {
-    marginTop: 4,
-    fontSize: 12,
-    lineHeight: 18,
-    color: PALETTE.muted,
   },
   defaultBadge: {
     backgroundColor: PALETTE.gold,

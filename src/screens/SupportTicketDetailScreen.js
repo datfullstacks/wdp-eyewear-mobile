@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,11 +12,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import SupportAttachmentSection from "../components/SupportAttachmentSection";
 import {
   getSupportTicketByIdApi,
   isWarrantyTicket,
   replySupportTicketApi,
 } from "../services/supportService";
+import {
+  buildSupportAttachmentPayload,
+  pickAndUploadSupportAttachmentAsync,
+  SUPPORT_ATTACHMENT_MAX_ITEMS,
+} from "../services/supportMediaService";
 import { useSupportInboxStore } from "../store/supportInboxStore";
 
 const PALETTE = {
@@ -36,13 +42,6 @@ function formatTime(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString("vi-VN", { hour12: false });
-}
-
-function getPriorityLabel(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "high") return "Ưu tiên cao";
-  if (normalized === "low") return "Ưu tiên thấp";
-  return "Bình thường";
 }
 
 function getEligibilityLabel(value) {
@@ -101,6 +100,9 @@ function MessageBubble({ item }) {
         <Text style={[styles.messageText, isStaff && styles.messageTextStaff]}>
           {item?.message || "--"}
         </Text>
+        {Array.isArray(item?.attachments) && item.attachments.length > 0 ? (
+          <SupportAttachmentSection attachments={item.attachments} compact emptyText="" />
+        ) : null}
         <Text style={[styles.messageTime, isStaff && styles.messageTimeStaff]}>
           {formatTime(item?.createdAt)}
         </Text>
@@ -119,6 +121,8 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [reply, setReply] = useState("");
+  const [replyAttachments, setReplyAttachments] = useState([]);
+  const [uploadingReplyAttachments, setUploadingReplyAttachments] = useState(false);
   const [error, setError] = useState("");
 
   const loadTicket = useCallback(
@@ -153,20 +157,61 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
   const warrantyEnabled = isWarrantyTicket(ticket);
   const warranty = ticket?.warranty || null;
 
+  const handleAddReplyAttachment = useCallback(async () => {
+    if (
+      uploadingReplyAttachments ||
+      replyAttachments.length >= SUPPORT_ATTACHMENT_MAX_ITEMS
+    ) {
+      return;
+    }
+
+    try {
+      setUploadingReplyAttachments(true);
+      const uploaded = await pickAndUploadSupportAttachmentAsync({
+        folder: "support-replies",
+      });
+      if (!uploaded) return;
+
+      setReplyAttachments((prev) => {
+        const next = [...prev, uploaded];
+        return next.slice(0, SUPPORT_ATTACHMENT_MAX_ITEMS);
+      });
+    } catch (err) {
+      Alert.alert(
+        "Hỗ trợ",
+        err?.message || "Không thể tải ảnh hoặc video lên.",
+      );
+    } finally {
+      setUploadingReplyAttachments(false);
+    }
+  }, [replyAttachments.length, uploadingReplyAttachments]);
+
+  const handleRemoveReplyAttachment = useCallback((attachment) => {
+    setReplyAttachments((prev) =>
+      prev.filter((item) => item?.url !== attachment?.url),
+    );
+  }, []);
+
   const handleReply = useCallback(async () => {
     const message = String(reply || "").trim();
     if (!message || !ticketId || submitting) return;
     try {
       setSubmitting(true);
-      const nextTicket = await replySupportTicketApi(ticketId, { message });
+      const nextTicket = await replySupportTicketApi(ticketId, {
+        message,
+        attachments: replyAttachments
+          .map(buildSupportAttachmentPayload)
+          .filter(Boolean),
+      });
       setTicket(nextTicket || ticket);
       setReply("");
+      setReplyAttachments([]);
     } catch (err) {
       Alert.alert("Hỗ trợ", err?.message || "Không gửi được phản hồi");
     } finally {
       setSubmitting(false);
     }
-  }, [reply, submitting, ticketId, ticket]);
+  }, [reply, replyAttachments, submitting, ticketId, ticket]);
 
   if (loading) {
     return (
@@ -232,17 +277,15 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
               fg={ticket.statusMeta?.fg || PALETTE.navy}
               bg={ticket.statusMeta?.bg || PALETTE.navyTint}
             />
-            <MetaBadge label={getPriorityLabel(ticket.priority)} fg="#4338CA" bg="#EEF2FF" />
           </View>
           <InfoRow label="Cập nhật" value={formatTime(ticket.lastMessageAt || ticket.updatedAt)} />
           <InfoRow label="Email" value={ticket.email || "--"} />
         </SectionCard>
 
-        {(ticket.order || ticket.store) && (
+        {ticket.order && (
           <SectionCard title="Liên kết đơn hàng" icon="receipt-outline">
             <InfoRow label="Mã đơn" value={ticket.order?.paymentCode || ticket.order?.id || "--"} />
             <InfoRow label="Trạng thái" value={ticket.order?.status || "--"} />
-            <InfoRow label="Cửa hàng" value={ticket.store?.name || "--"} />
           </SectionCard>
         )}
 
@@ -276,6 +319,16 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
             textAlignVertical="top"
             value={reply}
             onChangeText={setReply}
+          />
+          <SupportAttachmentSection
+            title="Bằng chứng bổ sung"
+            helperText="Bạn có thể gửi thêm ảnh hoặc video để bổ sung bằng chứng cho yêu cầu này."
+            emptyText="Chưa có ảnh hoặc video nào được chọn."
+            attachments={replyAttachments}
+            editable
+            uploading={uploadingReplyAttachments}
+            onAdd={handleAddReplyAttachment}
+            onRemove={handleRemoveReplyAttachment}
           />
           <TouchableOpacity
             style={[styles.submitBtn, (!String(reply || "").trim() || submitting) && styles.submitBtnDisabled]}

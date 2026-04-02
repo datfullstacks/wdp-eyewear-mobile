@@ -353,24 +353,6 @@ function ProductRow({ item, onPreviewRxPhoto }) {
   );
 }
 
-function normalizeOrderStore(store) {
-  if (!store || typeof store !== "object") return null;
-
-  const id = String(store?._id || store?.id || "").trim();
-  if (!id) return null;
-
-  return {
-    id,
-    name: String(store?.name || "").trim(),
-    code: String(store?.code || "").trim(),
-    city: String(store?.city || "").trim(),
-    district: String(store?.district || "").trim(),
-    openingHours: String(store?.openingHours || "").trim(),
-    supportsTryOn: Boolean(store?.supportsTryOn),
-    supportsPickup: store?.supportsPickup !== false,
-  };
-}
-
 function buildOrderSupportSubject(order, item = null) {
   if (item?.name) {
     return `Bảo hành ${item.name}`;
@@ -478,7 +460,6 @@ export default function OrderDetailScreen({ navigation, route }) {
     );
   }, [orderItems]);
 
-  const orderStore = useMemo(() => normalizeOrderStore(order?.storeId), [order]);
   const canRequestWarranty = statusKey === "delivered";
   const warrantyItems = useMemo(() => {
     if (!canRequestWarranty) return [];
@@ -1081,25 +1062,6 @@ export default function OrderDetailScreen({ navigation, route }) {
           Theo dõi hỗ trợ, hoàn tiền, và bảo hành của đơn này từ cùng một nơi.
         </Text>
 
-        {!!orderStore && (
-          <View style={styles.afterSalesStoreBox}>
-            <Text style={styles.afterSalesStoreTitle}>
-              Cửa hàng xử lý:{" "}
-              {orderStore.name
-                ? `${orderStore.name}${orderStore.code ? ` (${orderStore.code})` : ""}`
-                : "--"}
-            </Text>
-            <Text style={styles.afterSalesStoreMeta}>
-              {[orderStore.district, orderStore.city].filter(Boolean).join(", ") || "--"}
-            </Text>
-            {orderStore.openingHours ? (
-              <Text style={styles.afterSalesStoreMeta}>
-                Giờ mở cửa: {orderStore.openingHours}
-              </Text>
-            ) : null}
-          </View>
-        )}
-
         <TouchableOpacity
           style={styles.secondaryActionBtn}
           onPress={openOrderSupport}
@@ -1648,29 +1610,6 @@ const styles = StyleSheet.create({
     color: PALETTE.white,
     fontSize: 13,
     fontWeight: "900",
-  },
-
-  afterSalesStoreBox: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: PALETTE.navyTint,
-    borderWidth: 1,
-    borderColor: PALETTE.border,
-  },
-
-  afterSalesStoreTitle: {
-    fontSize: 12.5,
-    fontWeight: "900",
-    color: PALETTE.text,
-  },
-
-  afterSalesStoreMeta: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: "700",
-    color: PALETTE.muted,
-    lineHeight: 17,
   },
 
   afterSalesList: {

@@ -1,10 +1,11 @@
-﻿import React from "react";
+import React, { useCallback } from "react";
 import { View, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons, AntDesign } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 
 import CartIconButton from "./CartIconButton";
 import { useAuthStore } from "../store/authStore";
+import { useSupportInboxStore } from "../store/supportInboxStore";
 
 const PALETTE = {
   navy: "#0c2c5c",
@@ -30,6 +31,16 @@ export default function HeaderSearchActions({
 }) {
   const navigation = useNavigation();
   const token = useAuthStore((s) => s.token);
+  const hasUnreadSupport = useSupportInboxStore((s) => s.unreadTicketIds.length > 0);
+  const refreshSupportUnread = useSupportInboxStore((s) => s.refreshUnreadFromApi);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!token) return undefined;
+      void refreshSupportUnread().catch(() => {});
+      return undefined;
+    }, [token, refreshSupportUnread])
+  );
 
   const requireLogin = (after) => {
     Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để sử dụng tính năng này.", [
@@ -64,7 +75,9 @@ export default function HeaderSearchActions({
 
       <CartIconButton onPress={handlePressCart} />
 
-      <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}
+      <TouchableOpacity
+        style={styles.iconBtn}
+        activeOpacity={0.7}
         onPress={() =>
           navigation.navigate("Support", {
             prefillCategory: "general",
@@ -75,8 +88,12 @@ export default function HeaderSearchActions({
             orderItemName: "",
             draftSubject: "",
           })
-        }>
-        <AntDesign name="comment" size={18} color={PALETTE.navy} />
+        }
+      >
+        <View style={styles.iconWrap}>
+          <AntDesign name="comment" size={18} color={PALETTE.navy} />
+          {hasUnreadSupport ? <View style={styles.unreadDot} /> : null}
+        </View>
       </TouchableOpacity>
     </View>
   );
@@ -86,7 +103,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 8,
   },
   searchWrap: {
     flex: 1,
@@ -113,5 +130,23 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.white,
     borderWidth: 1,
     borderColor: PALETTE.border,
+  },
+  iconWrap: {
+    position: "relative",
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unreadDot: {
+    position: "absolute",
+    top: -1,
+    right: -2,
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
   },
 });

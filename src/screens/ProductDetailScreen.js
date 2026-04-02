@@ -28,7 +28,6 @@ import {
   removeMyFavoriteApi,
 } from "../services/userService";
 import { useProducts } from "../hooks/useProducts";
-import { useStores } from "../hooks/useStores";
 import {
   fetchProductById,
   getProductCatalogType,
@@ -49,7 +48,7 @@ import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
 import { uploadFileApi } from "../services/uploadService";
 import { useAuthStore } from "../store/authStore";
-import { useStoreNetworkStore } from "../store/storeNetworkStore";
+import { useSupportInboxStore } from "../store/supportInboxStore";
 import { useSystemConfigStore } from "../store/systemConfigStore";
 import ProductModelViewer from "../components/ProductModelViewer";
 import { startNativeTryOnSession } from "../services/nativeTryOnService";
@@ -576,13 +575,10 @@ export default function ProductDetailScreen({ navigation, route }) {
     (s) => s.config?.payments?.codEnabled !== false,
   );
   const refreshSystemConfig = useSystemConfigStore((s) => s.refresh);
-  const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
-  const setSelectedStoreId = useStoreNetworkStore((s) => s.setSelectedStoreId);
   const passedItem = route?.params?.item;
   const passedId = route?.params?.id || route?.params?.productId;
 
   const { products } = useProducts();
-  const { stores } = useStores();
   const [specsOpen, setSpecsOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState("");
@@ -612,21 +608,6 @@ export default function ProductDetailScreen({ navigation, route }) {
   const isLensRxProduct = productRequiresLensRxFlow(product);
   const supportsTryOn = productSupportsTryOn(product);
   const supportsLensPairing = productSupportsLensPairing(product);
-
-  const handleSelectStore = useCallback(
-    async (store) => {
-      const nextStoreId = toIdString(store?.id);
-      if (!nextStoreId || nextStoreId === selectedStoreId) return;
-
-      await setSelectedStoreId(nextStoreId);
-      Toast.show({
-        type: "success",
-        text1: "Đã đổi cửa hàng",
-        text2: `Đang xem theo ${store?.name || "cửa hàng đã chọn"}.`,
-      });
-    },
-    [selectedStoreId, setSelectedStoreId]
-  );
 
   const apiId = useMemo(() => {
     return passedItem?.apiId || passedItem?._id || passedId || null;
@@ -730,7 +711,6 @@ export default function ProductDetailScreen({ navigation, route }) {
 
   const [open, setOpen] = useState({
     desc: false,
-    stores: true,
     sizeGuide: false,
     reviews: false,
     qa: false,
@@ -1521,15 +1501,6 @@ export default function ProductDetailScreen({ navigation, route }) {
           splitPaymentEnabled={runtimeSplitPaymentEnabled}
         />
 
-        <StoreAvailabilityCard
-          storeScope={product.storeScope}
-          selectedStoreId={selectedStoreId}
-          stores={stores}
-          onSelectStore={handleSelectStore}
-          open={open.stores}
-          onToggle={() => onToggleAccordion("stores")}
-        />
-
         {canShowTryOnCard ? (
           <TryOnCard
             tryOn={product.tryOn}
@@ -1662,6 +1633,8 @@ export default function ProductDetailScreen({ navigation, route }) {
 /* -------------------- Components -------------------- */
 
 function HeaderBar({ navigation, title, isPreorderMode }) {
+  const hasUnreadSupport = useSupportInboxStore((s) => s.unreadTicketIds.length > 0);
+
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
@@ -1703,7 +1676,10 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
             })
           }
         >
-          <AntDesign name="comment" size={18} color={PALETTE.navy} />
+          <View style={styles.headerIconWrap}>
+            <AntDesign name="comment" size={18} color={PALETTE.navy} />
+            {hasUnreadSupport ? <View style={styles.headerUnreadDot} /> : null}
+          </View>
         </Pressable>
       </View>
     </View>
@@ -2492,170 +2468,6 @@ function TryOnCard({ tryOn, onOpenTryOn, canOpen, modelCount = 0, isLaunching = 
   );
 }
 
-function StoreAvailabilityCard({
-  storeScope,
-  selectedStoreId,
-  stores = [],
-  onSelectStore,
-  open = false,
-  onToggle,
-}) {
-  const mode = String(storeScope?.mode || "all").trim().toLowerCase();
-  const scopedStores = Array.isArray(storeScope?.stores) ? storeScope.stores : [];
-  const availableStores =
-    mode === "all"
-      ? (Array.isArray(stores) ? stores : []).filter((store) => toIdString(store?.id))
-      : scopedStores;
-  const selectedStore =
-    availableStores.find((store) => store.id === selectedStoreId) ||
-    scopedStores.find((store) => store.id === selectedStoreId) ||
-    null;
-  const canSwitchStore = availableStores.length > 0 && typeof onSelectStore === "function";
-
-  return (
-    <View style={styles.accWrap}>
-      <TouchableOpacity activeOpacity={0.85} onPress={onToggle} style={styles.accHeader}>
-        <Text style={styles.accTitle}>Cửa hàng</Text>
-        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={PALETTE.muted} />
-      </TouchableOpacity>
-
-      {open ? (
-        <View style={styles.accBody}>
-          {mode === "all" ? (
-            <>
-              <Text style={styles.mutedText}>
-                Sản phẩm này đang được mở bán theo mô hình tất cả cửa hàng đang hoạt động.
-              </Text>
-
-              {selectedStore ? (
-                <View style={styles.storeHintBox}>
-                  <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
-                  <Text style={styles.storeHintText}>
-                    Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
-                  </Text>
-                </View>
-              ) : null}
-
-              {availableStores.length > 0 ? (
-                <View style={{ gap: 10, marginTop: selectedStore ? 12 : 8 }}>
-                  {availableStores.map((store) => (
-                    <TouchableOpacity
-                      key={store.id}
-                      activeOpacity={0.88}
-                      onPress={() => onSelectStore?.(store)}
-                      style={[
-                        styles.storeCardRow,
-                        selectedStoreId === store.id && styles.storeCardRowActive,
-                      ]}
-                    >
-                      <View style={styles.storeCardContent}>
-                        <Text style={styles.storeCardTitle}>
-                          {store.name} ({store.code})
-                        </Text>
-                        <Text style={styles.storeCardMeta}>
-                          {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
-                        </Text>
-                        <Text style={styles.storeCardMeta}>
-                          Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
-                        </Text>
-                      </View>
-                      {selectedStoreId === store.id ? (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={18}
-                          color={PALETTE.navy}
-                          style={styles.storeCardStatusIcon}
-                        />
-                      ) : canSwitchStore ? (
-                        <Ionicons
-                          name="chevron-forward"
-                          size={16}
-                          color={PALETTE.muted}
-                          style={styles.storeCardStatusIcon}
-                        />
-                      ) : null}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : (
-                <Text style={[styles.mutedText, { marginTop: 8 }]}>
-                  Chưa tải được danh sách cửa hàng đang hoạt động.
-                </Text>
-              )}
-            </>
-          ) : scopedStores.length > 0 ? (
-            <>
-              {selectedStore ? (
-                <View style={styles.storeHintBox}>
-                  <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
-                  <Text style={styles.storeHintText}>
-                    Bạn đang xem theo cửa hàng: {selectedStore.name} ({selectedStore.code})
-                  </Text>
-                </View>
-              ) : null}
-
-              <View style={{ gap: 10, marginTop: selectedStore ? 12 : 8 }}>
-                {scopedStores.map((store) => (
-                  <TouchableOpacity
-                    key={store.id}
-                    activeOpacity={0.88}
-                    onPress={() => onSelectStore?.(store)}
-                    style={[
-                      styles.storeCardRow,
-                      selectedStoreId === store.id && styles.storeCardRowActive,
-                    ]}
-                  >
-                    <View style={styles.storeCardContent}>
-                      <Text style={styles.storeCardTitle}>
-                        {store.name} ({store.code})
-                      </Text>
-                      <Text style={styles.storeCardMeta}>
-                        {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
-                      </Text>
-                      <Text style={styles.storeCardMeta}>
-                        Try-on: {store.supportsTryOn ? "Có" : "Không"} | Pickup: {store.supportsPickup ? "Có" : "Không"}
-                      </Text>
-                    </View>
-                    {selectedStoreId === store.id ? (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={18}
-                        color={PALETTE.navy}
-                        style={styles.storeCardStatusIcon}
-                      />
-                    ) : canSwitchStore ? (
-                      <Ionicons
-                        name="chevron-forward"
-                        size={16}
-                        color={PALETTE.muted}
-                        style={styles.storeCardStatusIcon}
-                      />
-                    ) : null}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          ) : (
-            <Text style={styles.mutedText}>
-              Sản phẩm này đang được quản lý theo cửa hàng, nhưng chưa có danh sách cửa hàng được map.
-            </Text>
-          )}
-
-          {canSwitchStore ? (
-            <Text style={[styles.mutedText, { marginTop: 10 }]}>
-              Bấm vào từng cửa hàng để đổi nhanh cửa hàng đang áp dụng cho sản phẩm này.
-            </Text>
-          ) : null}
-
-          {storeScope?.note ? (
-            <Text style={[styles.mutedText, { marginTop: 10 }]}>Ghi chú: {storeScope.note}</Text>
-          ) : null}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 function FrameOptions({
   product,
   orderType,
@@ -3069,41 +2881,6 @@ const styles = StyleSheet.create({
   tryOnStatusTextReady: { color: "#159947" },
   tryOnStatusTextPending: { color: "#D33A2C" },
   tryOnHint: { marginTop: 10, fontSize: 12, fontWeight: "700", color: PALETTE.muted },
-  storeHintBox: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 12,
-    backgroundColor: PALETTE.navyTint,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  storeHintText: { flex: 1, fontSize: 12, fontWeight: "700", color: PALETTE.navy },
-  storeCardRow: {
-    position: "relative",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: PALETTE.border,
-    backgroundColor: PALETTE.white,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  storeCardContent: {
-    flex: 1,
-    paddingRight: 24,
-  },
-  storeCardRowActive: {
-    borderColor: PALETTE.navy,
-    backgroundColor: PALETTE.navyTint,
-  },
-  storeCardStatusIcon: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-  },
-  storeCardTitle: { fontSize: 12.5, fontWeight: "800", color: PALETTE.text },
-  storeCardMeta: { marginTop: 4, fontSize: 11.5, fontWeight: "600", color: PALETTE.muted },
   tryOnButton: {
     marginTop: 12,
     height: 44,
@@ -3480,5 +3257,23 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.white,
     borderWidth: 1,
     borderColor: PALETTE.border,
+  },
+  headerIconWrap: {
+    position: "relative",
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerUnreadDot: {
+    position: "absolute",
+    top: -1,
+    right: -2,
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
   },
 });
