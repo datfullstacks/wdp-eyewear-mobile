@@ -154,6 +154,24 @@ function normalizeStoreRef(raw) {
   };
 }
 
+function normalizeWarrantyServiceOrder(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const code = toText(raw?.code, "");
+  if (!code) return null;
+
+  const status = toText(raw?.status, "created").toLowerCase();
+
+  return {
+    code,
+    status,
+    note: toText(raw?.note, ""),
+    createdBy: toId(raw?.createdBy),
+    createdAt: raw?.createdAt || null,
+    updatedAt: raw?.updatedAt || null,
+  };
+}
+
 function normalizeWarranty(raw = {}) {
   if (!raw || typeof raw !== "object") return null;
 
@@ -176,6 +194,7 @@ function normalizeWarranty(raw = {}) {
     approvedAt: raw?.approvedAt || null,
     completedBy: toId(raw?.completedBy),
     completedAt: raw?.completedAt || null,
+    serviceOrder: normalizeWarrantyServiceOrder(raw?.serviceOrder),
   };
 }
 
