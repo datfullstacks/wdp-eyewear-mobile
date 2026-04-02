@@ -479,7 +479,7 @@ export default function ProfileScreen({ navigation }) {
 
             <OrderShortcut
               icon="star-outline"
-              label="Đánh giá"
+              label="Đã giao"
               count={stats.orderReview}
               onPress={() => navigation.navigate("Orders", { initialFilter: "delivered" })}
             />

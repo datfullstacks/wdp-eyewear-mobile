@@ -280,60 +280,72 @@ function ProductRow({ item, onPreviewRxPhoto }) {
 
   return (
     <View style={styles.productRow}>
-      {item?.image ? (
-        <Image source={{ uri: item.image }} style={styles.productImage} />
-      ) : (
-        <View style={styles.productFallback}>
-          <Ionicons name="cube-outline" size={22} color={PALETTE.muted} />
-        </View>
-      )}
-
-      <View style={styles.productMid}>
-        <Text style={styles.productName} numberOfLines={2}>
-          {item?.name || "Sản phẩm"}
-        </Text>
-
-        {!!item?.displayLabel && (
-          <View style={styles.productTypeBadge}>
-            <Text style={styles.productTypeBadgeText}>{item.displayLabel}</Text>
+      <View style={styles.productTopRow}>
+        {item?.image ? (
+          <Image source={{ uri: item.image }} style={styles.productImage} />
+        ) : (
+          <View style={styles.productFallback}>
+            <Ionicons name="cube-outline" size={22} color={PALETTE.muted} />
           </View>
         )}
 
-        {!!item?.variantText && (
-          <Text style={styles.productVariant}>{item.variantText}</Text>
-        )}
+        <View style={styles.productMid}>
+          <Text style={styles.productName} numberOfLines={2}>
+            {item?.name || "Sản phẩm"}
+          </Text>
 
-        {showLensSpecs && !!item?.prescriptionSummary?.shortLabel && (
-          <Text style={styles.productVariant}>{item.prescriptionSummary.shortLabel}</Text>
-        )}
+          {!!item?.displayLabel && (
+            <View style={styles.productTypeBadge}>
+              <Text style={styles.productTypeBadgeText}>{item.displayLabel}</Text>
+            </View>
+          )}
 
-        {showLensSpecs &&
+          {!!item?.variantText && (
+            <Text style={styles.productVariant}>{item.variantText}</Text>
+          )}
+
+          {showLensSpecs && !!item?.prescriptionSummary?.shortLabel && (
+            <Text style={styles.productVariant}>{item.prescriptionSummary.shortLabel}</Text>
+          )}
+
+          {showLensSpecs &&
           Array.isArray(item?.prescriptionSummary?.lines) &&
           item.prescriptionSummary.lines.length ? (
-          <View style={{ marginTop: 6, gap: 4 }}>
-            {item.prescriptionSummary.lines.map((line) => (
-              <Text key={`${item?.itemId || item?.name}-${line}`} style={styles.productVariant}>
-                {line}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
-        {showLensSpecs && hasRxPhoto ? (
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={styles.uploadPreviewCard}
-            onPress={() => onPreviewRxPhoto?.(rxPhotoUrl)}
-          >
-            <Image source={{ uri: rxPhotoUrl }} style={styles.uploadPreviewImage} />
-            <View style={styles.uploadPreviewMeta}>
-              <Text style={styles.uploadPreviewTitle}>Ảnh đơn kính đã tải</Text>
-              <Text style={styles.uploadPreviewHint}>Nhấn để xem ảnh lớn</Text>
+            <View style={styles.lensSpecsWrap}>
+              {item.prescriptionSummary.lines.map((line) => (
+                <Text key={`${item?.itemId || item?.name}-${line}`} style={styles.lensSpecText}>
+                  {line}
+                </Text>
+              ))}
             </View>
-            <Ionicons name="expand-outline" size={18} color={PALETTE.navy} />
-          </TouchableOpacity>
-        ) : null}
+          ) : null}
+        </View>
 
+        <View style={styles.productRight}>
+          <Text style={styles.productLineTotal}>{formatVND(lineTotal)}</Text>
+        </View>
+      </View>
+
+      {showLensSpecs && hasRxPhoto ? (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          style={styles.uploadPreviewCard}
+          onPress={() => onPreviewRxPhoto?.(rxPhotoUrl)}
+        >
+          <Image source={{ uri: rxPhotoUrl }} style={styles.uploadPreviewImage} />
+          <View style={styles.uploadPreviewMeta}>
+            <Text style={styles.uploadPreviewTitle}>Ảnh đơn kính đã tải</Text>
+            <Text style={styles.uploadPreviewHint}>
+              Đơn kính được đính kèm riêng. Nhấn để xem ảnh lớn.
+            </Text>
+          </View>
+          <View style={styles.uploadPreviewAction}>
+            <Ionicons name="expand-outline" size={18} color={PALETTE.navy} />
+          </View>
+        </TouchableOpacity>
+      ) : null}
+
+      <View style={styles.productFooterRow}>
         <View style={styles.productMetaRow}>
           <Text style={styles.productMeta}>SL: {qty}</Text>
           <Text style={styles.productMeta}>Đơn giá: {formatVND(price)}</Text>
@@ -344,10 +356,6 @@ function ProductRow({ item, onPreviewRxPhoto }) {
             Thanh toán sau: {formatVND(item.payLater)}
           </Text>
         ) : null}
-      </View>
-
-      <View style={styles.productRight}>
-        <Text style={styles.productLineTotal}>{formatVND(lineTotal)}</Text>
       </View>
     </View>
   );
@@ -1378,13 +1386,18 @@ const styles = StyleSheet.create({
   },
 
   productRow: {
-    flexDirection: "row",
     gap: 12,
     padding: 10,
     borderRadius: 16,
     backgroundColor: PALETTE.navyTint,
     borderWidth: 1,
     borderColor: PALETTE.border,
+  },
+
+  productTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
   },
 
   productImage: {
@@ -1405,6 +1418,7 @@ const styles = StyleSheet.create({
 
   productMid: {
     flex: 1,
+    minWidth: 0,
   },
 
   productName: {
@@ -1451,7 +1465,6 @@ const styles = StyleSheet.create({
   productMetaRow: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 6,
     flexWrap: "wrap",
   },
 
@@ -1461,25 +1474,25 @@ const styles = StyleSheet.create({
     color: PALETTE.muted,
   },
   uploadPreviewCard: {
-    marginTop: 10,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: PALETTE.border,
     backgroundColor: PALETTE.white,
-    padding: 10,
+    padding: 12,
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "flex-start",
+    gap: 12,
   },
   uploadPreviewImage: {
-    width: 56,
-    height: 56,
+    width: 88,
+    height: 88,
     borderRadius: 12,
     backgroundColor: PALETTE.border,
   },
   uploadPreviewMeta: {
     flex: 1,
     gap: 4,
+    minWidth: 0,
   },
   uploadPreviewTitle: {
     fontSize: 12.5,
@@ -1490,10 +1503,27 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: "700",
     color: PALETTE.muted,
+    lineHeight: 16,
+  },
+
+  uploadPreviewAction: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PALETTE.navyTint,
+  },
+
+  productFooterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
   },
 
   payLaterText: {
-    marginTop: 5,
     fontSize: 11.5,
     fontWeight: "700",
     color: "#B45309",
