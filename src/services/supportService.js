@@ -68,6 +68,40 @@ function normalizeMessage(raw = {}) {
   };
 }
 
+export function getLatestSupportMessage(ticket) {
+  const messages = Array.isArray(ticket?.messages) ? ticket.messages : [];
+  return messages.length ? messages[messages.length - 1] : null;
+}
+
+export function getLatestStaffMessage(ticket) {
+  const messages = Array.isArray(ticket?.messages) ? ticket.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (toText(message?.sender, "").toLowerCase() === "staff") {
+      return message;
+    }
+  }
+  return null;
+}
+
+export function getLatestStaffMessageAt(ticket) {
+  return getLatestStaffMessage(ticket)?.createdAt || null;
+}
+
+export function isSupportTicketUnread(ticket, seenAt) {
+  const latestMessage = getLatestSupportMessage(ticket);
+  if (!latestMessage) return false;
+
+  const latestSender = toText(latestMessage?.sender, "").toLowerCase();
+  if (latestSender !== "staff") return false;
+
+  const latestTime = new Date(latestMessage?.createdAt || 0).getTime();
+  if (!Number.isFinite(latestTime) || latestTime <= 0) return false;
+
+  const seenTime = new Date(seenAt || 0).getTime();
+  return !Number.isFinite(seenTime) || seenTime < latestTime;
+}
+
 function normalizeOrderRef(raw) {
   if (!raw) return null;
   const id = toId(raw);

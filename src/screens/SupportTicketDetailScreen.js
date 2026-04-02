@@ -23,6 +23,7 @@ import {
   pickAndUploadSupportAttachmentAsync,
   SUPPORT_ATTACHMENT_MAX_ITEMS,
 } from "../services/supportMediaService";
+import { useSupportInboxStore } from "../store/supportInboxStore";
 
 const PALETTE = {
   navy: "#0c2c5c",
@@ -86,7 +87,7 @@ function MetaBadge({ label, fg, bg }) {
 function MessageBubble({ item }) {
   const isStaff = String(item?.sender || "").toLowerCase() === "staff";
   return (
-    <View style={[styles.messageWrap, isStaff ? styles.messageWrapRight : null]}>
+    <View style={[styles.messageWrap, !isStaff ? styles.messageWrapRight : null]}>
       <View
         style={[
           styles.messageBubble,
@@ -94,7 +95,7 @@ function MessageBubble({ item }) {
         ]}
       >
         <Text style={[styles.messageSender, isStaff && styles.messageSenderStaff]}>
-          {isStaff ? "Staff" : "Bạn"}
+          {isStaff ? "Nhân viên" : "Bạn"}
         </Text>
         <Text style={[styles.messageText, isStaff && styles.messageTextStaff]}>
           {item?.message || "--"}
@@ -111,6 +112,7 @@ function MessageBubble({ item }) {
 }
 
 export default function SupportTicketDetailScreen({ navigation, route }) {
+  const markTicketSeen = useSupportInboxStore((s) => s.markTicketSeen);
   const ticketId = route?.params?.ticketId || route?.params?.ticket?._id || route?.params?.ticket?.id;
   const seededTicket = route?.params?.ticket || null;
 
@@ -147,6 +149,10 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
   );
 
   useEffect(() => { loadTicket(); }, [loadTicket]);
+  useEffect(() => {
+    if (!ticket) return;
+    void markTicketSeen(ticket);
+  }, [ticket, markTicketSeen]);
 
   const warrantyEnabled = isWarrantyTicket(ticket);
   const warranty = ticket?.warranty || null;

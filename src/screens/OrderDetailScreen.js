@@ -355,7 +355,7 @@ function ProductRow({ item, onPreviewRxPhoto }) {
 
 function buildOrderSupportSubject(order, item = null) {
   if (item?.name) {
-    return `Bao hanh ${item.name}`;
+    return `Bảo hành ${item.name}`;
   }
 
   const orderCode = String(order?.paymentCode || order?._id || order?.id || "").trim();
@@ -414,6 +414,8 @@ export default function OrderDetailScreen({ navigation, route }) {
   const paymentKey = String(order?.paymentStatus || order?.payment?.status || "").toLowerCase();
   const isPaid = ["paid", "success", "succeeded"].includes(paymentKey);
   const paidAmount = Math.max(0, Number(order?.paidAmount || 0));
+
+  // Các trạng thái cho phép hủy đơn: pending, confirmed
   const canCancel = ["pending", "confirmed", "processing"].includes(statusKey);
   const refundStatus = String(order?.refund?.status || "").trim().toLowerCase();
   const hasClosedRefund = ["completed", "rejected"].includes(refundStatus);

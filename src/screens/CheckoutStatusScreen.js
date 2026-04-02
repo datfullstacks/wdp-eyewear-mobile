@@ -351,7 +351,9 @@ const normalizePaymentStatus = (
     ["pending", "cancelled"].includes(normalizedOrderStatus) &&
     ["pending", "partial", "failed", "expired"].includes(normalized);
 
-  if (normalized === "paid") return "PAID";
+  if (["paid", "success", "succeeded", "completed", "complete"].includes(normalized)) {
+    return "PAID";
+  }
   if (normalized === "failed") return "FAILED";
   if (normalized === "refunded") return "REFUNDED";
   if (normalized === "expired" || isExpiredWindow) return "EXPIRED";
@@ -361,6 +363,11 @@ const normalizePaymentStatus = (
   }
 
   return method === "COD" || payNow <= 0 ? "PENDING_COD" : "PENDING_QR";
+};
+
+const isPlaceholderOrderId = (value) => {
+  const id = String(value || "").trim();
+  return !id || id === "OD--";
 };
 
 const normalizeOrderStatus = (status) => {
@@ -542,7 +549,7 @@ const mergeOrderSnapshot = (localOrder = {}, serverOrder = {}) => {
   const localPayment = localOrder.payment || {};
   const serverPayment = serverOrder.payment || {};
   const nextPaymentStatus =
-    serverPayment.status || serverOrder.paymentStatus || localPayment.status;
+    serverOrder.paymentStatus || serverPayment.status || localPayment.status;
 
   const inferredPaidAt =
     String(nextPaymentStatus || "").toLowerCase() === "paid"
@@ -649,9 +656,12 @@ const normalizeOrder = (raw) => {
     breakdown.discountAmount ?? raw?.discountAmount ?? raw?.discount ?? 0;
   const shippingFee = breakdown.shippingFee ?? raw?.shippingFee ?? 0;
   const total = breakdown.total ?? raw?.total ?? 0;
-  const payNow = breakdown.payNow ?? raw?.payNow ?? 0;
+  const payNow = breakdown.payNow ?? raw?.payNow ?? raw?.payNowTotal ?? 0;
   const payLater =
-    breakdown.payLater ?? raw?.payLater ?? Math.max(0, total - payNow);
+    breakdown.payLater ??
+    raw?.payLater ??
+    raw?.payLaterTotal ??
+    Math.max(0, total - payNow);
   const paidAmount = Number(raw?.paidAmount || 0);
   const unpaidAmount = Math.max(0, total - paidAmount);
   const shippingCollectionTiming =
@@ -680,7 +690,7 @@ const normalizeOrder = (raw) => {
     raw?.payment_expires_at ||
     null;
   const paymentStatus = normalizePaymentStatus(
-    payment.status || raw?.paymentStatus,
+    raw?.paymentStatus || payment.status,
     {
       payNow,
       method: paymentMethod,
@@ -951,11 +961,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   const displayPaymentStatus = isClientExpired ? "EXPIRED" : paymentStatus;
 
   useEffect(() => {
-    if (
-      !pollOrderId ||
-      pollOrderId === "OD--" ||
-      /^OD\d+$/i.test(pollOrderId)
-    ) {
+    if (isPlaceholderOrderId(pollOrderId)) {
       return undefined;
     }
 
@@ -1094,7 +1100,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
   const handleBackToHome = () => navigateToTab("HomeTab", "Home");
   const handleViewOrderDetail = () => {
-    if (pollOrderId && pollOrderId !== "OD--" && !/^OD\d+$/i.test(pollOrderId)) {
+    if (!isPlaceholderOrderId(pollOrderId)) {
       navigation.navigate("Tabs", {
         screen: "ProfileTab",
         params: {
@@ -1132,7 +1138,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
       initialOrder?.orderId ||
       null;
 
-    if (!orderId || orderId === "OD--" || /^OD\d+$/i.test(String(orderId))) {
+    if (isPlaceholderOrderId(orderId)) {
       Alert.alert("Không thể hủy", "Thiếu orderId hợp lệ.");
       return;
     }
@@ -1289,8 +1295,8 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <View style={styles.timerCard}>
               <Text style={styles.timerLabel}>
                 {isClientExpired
-                  ? "Da qua thoi gian giu don 15 phut."
-                  : "Don nay duoc giu trong 15 phut."}
+                  ? "Đã qua thời gian giữ đơn 15 phút."
+                  : "Đơn này được giữ trong 15 phút."}
               </Text>
               <Text
                 style={[
@@ -1299,11 +1305,11 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                 ]}
               >
                 {isClientExpired
-                  ? "He thong dang cap nhat trang thai don hang."
-                  : `Con lai ${formatCountdown(paymentHoldRemainingMs)}`}
+                  ? "Hệ thống đang cập nhật trạng thái đơn hàng."
+                  : `Còn lại ${formatCountdown(paymentHoldRemainingMs)}`}
               </Text>
               <Text style={styles.timerSubText}>
-                Het han luc {formatDateTime(paymentExpiryDate)}
+                Hết hạn lúc {formatDateTime(paymentExpiryDate)}
               </Text>
             </View>
           ) : null}
@@ -1326,7 +1332,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             <View style={styles.rowBetween}>
               <Text style={styles.metaLabel}>Số tiền cần chuyển</Text>
-              <Text style={styles.metaValue}>
+              <Text style={styles.metaValuePrice}>
                 {formatVND(order.payment.amount)}
               </Text>
             </View>
@@ -1399,6 +1405,22 @@ export default function CheckoutStatusScreen({ navigation, route }) {
                       : canCancelWithRefund
                         ? "Hủy đơn và hoàn tiền"
                         : "Hủy thanh toán"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.actionBtn,
+                    styles.backBtn,
+                    { marginTop: 12 },
+                  ]}
+                  activeOpacity={0.85}
+                  disabled={isCancelling}
+                  onPress={handleBackToHome}
+                >
+                  {/* <Ionicons name="close-circle-outline" size={16} color={PALETTE.navy} /> */}
+                  <Text style={styles.backBtnText}>
+                    Trở về trang chủ
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1532,12 +1554,12 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
             <View style={styles.actionRow}>
               <TouchableOpacity
-                style={[styles.actionBtn, styles.actionBtnGhost]}
+                style={[styles.actionBtn, styles.backBtn]}
                 activeOpacity={0.85}
-                onPress={handleContinueShopping}
+                onPress={handleBackToHome}
               >
-                <Text style={[styles.actionText, styles.actionTextGhost]}>
-                  Mua tiếp
+                <Text style={[styles.actionText, styles.backBtnText]}>
+                  Trở về trang chủ
                 </Text>
               </TouchableOpacity>
 
@@ -2101,6 +2123,14 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
 
+  metaValuePrice: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: "green",
+    textAlign: "right",
+  },
+
   actionSection: {
     marginTop: 14,
     paddingTop: 12,
@@ -2137,6 +2167,18 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: {
     color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  backBtn: {
+    backgroundColor: PALETTE.navyTint,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    flexDirection: "row",
+    gap: 6,
+  },
+  backBtnText: {
+    color: PALETTE.navy,
     fontSize: 13,
     fontWeight: "900",
   },

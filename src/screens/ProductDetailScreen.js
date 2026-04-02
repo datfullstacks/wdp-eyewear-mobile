@@ -48,6 +48,7 @@ import CartIconButton from "../components/CartIconButton";
 import ProductCard from "../components/ProductCard";
 import { uploadFileApi } from "../services/uploadService";
 import { useAuthStore } from "../store/authStore";
+import { useSupportInboxStore } from "../store/supportInboxStore";
 import { useSystemConfigStore } from "../store/systemConfigStore";
 import ProductModelViewer from "../components/ProductModelViewer";
 import { startNativeTryOnSession } from "../services/nativeTryOnService";
@@ -1632,6 +1633,8 @@ export default function ProductDetailScreen({ navigation, route }) {
 /* -------------------- Components -------------------- */
 
 function HeaderBar({ navigation, title, isPreorderMode }) {
+  const hasUnreadSupport = useSupportInboxStore((s) => s.unreadTicketIds.length > 0);
+
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
@@ -1673,7 +1676,10 @@ function HeaderBar({ navigation, title, isPreorderMode }) {
             })
           }
         >
-          <AntDesign name="comment" size={18} color={PALETTE.navy} />
+          <View style={styles.headerIconWrap}>
+            <AntDesign name="comment" size={18} color={PALETTE.navy} />
+            {hasUnreadSupport ? <View style={styles.headerUnreadDot} /> : null}
+          </View>
         </Pressable>
       </View>
     </View>
@@ -3251,5 +3257,23 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.white,
     borderWidth: 1,
     borderColor: PALETTE.border,
+  },
+  headerIconWrap: {
+    position: "relative",
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerUnreadDot: {
+    position: "absolute",
+    top: -1,
+    right: -2,
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
   },
 });
