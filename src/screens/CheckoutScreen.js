@@ -12,7 +12,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { CART_TYPES } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
-import { useStoreNetworkStore } from "../store/storeNetworkStore";
 import { useSystemConfigStore } from "../store/systemConfigStore";
 import {
   buildCheckoutPayload,
@@ -234,7 +233,6 @@ export default function CheckoutScreen({ navigation, route }) {
       : CART_TYPES.ORDER;
   const cartItems = initialCartItems;
   const token = useAuthStore((s) => s.token);
-  const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
   const preorderRuntimeEnabled = useSystemConfigStore(
     (s) => s.config?.featureFlags?.preorderEnabled !== false,
   );
@@ -816,7 +814,6 @@ export default function CheckoutScreen({ navigation, route }) {
 
     const payload = buildCheckoutPayload({
       items: checkoutItems,
-      storeId: selectedStoreId || undefined,
       shippingMethod: shippingId,
       discountAmount:
         typeof cartDiscountAmount === "number" ? cartDiscountAmount : undefined,
@@ -874,7 +871,6 @@ export default function CheckoutScreen({ navigation, route }) {
     paymentId,
     cartType,
     preorderRuntimeEnabled,
-    selectedStoreId,
   ]);
 
   const applyVoucher = async () => {
@@ -915,7 +911,6 @@ export default function CheckoutScreen({ navigation, route }) {
 
       const quotePayload = buildCheckoutPayload({
         items: checkoutItems,
-        storeId: selectedStoreId || undefined,
         shippingMethod: shippingId,
         shippingAddress: addressComplete ? address : null,
         voucherCode: code,
@@ -968,7 +963,6 @@ export default function CheckoutScreen({ navigation, route }) {
 
       const payload = buildCheckoutPayload({
         items: checkoutItems,
-        storeId: selectedStoreId || undefined,
         shippingMethod: shippingId,
         shippingAddress: addressComplete ? address : null,
         note: mergedNote || undefined,
@@ -1050,6 +1044,11 @@ export default function CheckoutScreen({ navigation, route }) {
             data?.paymentStatus ||
             serverPayment?.status ||
             serverPayment?.paymentStatus ||
+            null,
+          paymentExpiresAt:
+            data?.paymentExpiresAt ||
+            serverPayment?.expiresAt ||
+            serverPayment?.paymentExpiresAt ||
             null,
           payment: serverPayment,
           items: [],

@@ -16,10 +16,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import HeaderSearchActions from "../components/HeaderSearchActions";
 import ProductCard from "../components/ProductCard";
 import { useProducts } from "../hooks/useProducts";
-import { useStores } from "../hooks/useStores";
 import { getMyFavoriteIdsApi } from "../services/userService";
 import { useAuthStore } from "../store/authStore";
-import { useStoreNetworkStore } from "../store/storeNetworkStore";
 
 const PALETTE = {
   navy: "#0c2c5c",
@@ -113,14 +111,7 @@ export default function ProductsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => s.token);
   const [query, setQuery] = useState("");
-  const selectedStoreId = useStoreNetworkStore((s) => s.selectedStoreId);
-  const hydrateStoreSelection = useStoreNetworkStore((s) => s.hydrate);
-  const setSelectedStoreId = useStoreNetworkStore((s) => s.setSelectedStoreId);
-  const ensureDefaultStore = useStoreNetworkStore((s) => s.ensureDefaultStore);
-  const { stores } = useStores();
-  const { products, isLoading, isError } = useProducts({
-    storeId: selectedStoreId || undefined,
-  });
+  const { products, isLoading, isError } = useProducts();
   const [favoriteIds, setFavoriteIds] = useState([]);
 
   const [onlyInStock, setOnlyInStock] = useState(false);
@@ -138,16 +129,6 @@ export default function ProductsScreen({ navigation }) {
 
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [storeOpen, setStoreOpen] = useState(false);
-
-  useEffect(() => {
-    void hydrateStoreSelection();
-  }, [hydrateStoreSelection]);
-
-  useEffect(() => {
-    if (!stores.length) return;
-    void ensureDefaultStore(stores);
-  }, [ensureDefaultStore, stores]);
 
   useEffect(() => {
     const params = route?.params || {};
@@ -428,11 +409,6 @@ export default function ProductsScreen({ navigation }) {
     return SORT_OPTIONS.find((x) => x.key === sortKey)?.label ?? "Mặc định";
   }, [sortKey]);
 
-  const selectedStoreLabel = useMemo(() => {
-    const selectedStore = stores.find((store) => store.id === selectedStoreId);
-    return selectedStore?.name || "Tất cả cửa hàng";
-  }, [selectedStoreId, stores]);
-
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
@@ -484,7 +460,6 @@ export default function ProductsScreen({ navigation }) {
                   </Text>
                 </View>
 
-                {/* Đã cập nhật: Nút Sắp xếp & Bộ lọc được dời lên đây thay vì nút chọn Cửa hàng */}
                 <View style={{ flexDirection: "row", gap: 6 }}>
                   <TouchableOpacity
                     style={styles.pillBtn}
@@ -506,24 +481,6 @@ export default function ProductsScreen({ navigation }) {
                 </View>
               </View>
             </View>
-
-            {/* Đã cập nhật: Nút Cửa hàng được dời xuống ScrollView bên dưới */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.actionRow}
-            >
-              <TouchableOpacity
-                style={styles.pillBtn}
-                activeOpacity={0.85}
-                onPress={() => setStoreOpen(true)}
-              >
-                <Ionicons name="business-outline" size={16} color={PALETTE.navy} />
-                <Text style={styles.pillBtnText} numberOfLines={1}>
-                  {selectedStoreLabel}
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
 
             <ScrollView
               horizontal
@@ -617,66 +574,6 @@ export default function ProductsScreen({ navigation }) {
             );
           })}
         </View>
-      </BottomSheet>
-
-      <BottomSheet
-        visible={storeOpen}
-        title="Chọn cửa hàng"
-        onClose={() => setStoreOpen(false)}
-      >
-        <ScrollView
-          style={styles.sheetScroll}
-          nestedScrollEnabled
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator
-          contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}
-        >
-          <TouchableOpacity
-            style={[
-              styles.optionRow,
-              !selectedStoreId && styles.optionRowActive,
-            ]}
-            activeOpacity={0.85}
-            onPress={() => {
-              void setSelectedStoreId(null);
-              setStoreOpen(false);
-            }}
-          >
-            <Text style={[styles.optionText, !selectedStoreId && styles.optionTextActive]}>
-              Tất cả cửa hàng
-            </Text>
-            {!selectedStoreId ? <Ionicons name="checkmark" size={18} color={PALETTE.gold} /> : null}
-          </TouchableOpacity>
-
-          {stores.map((store) => {
-            const active = selectedStoreId === store.id;
-            return (
-              <TouchableOpacity
-                key={store.id}
-                style={[
-                  styles.optionRow,
-                  styles.optionRowMultiline,
-                  active && styles.optionRowActive,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => {
-                  void setSelectedStoreId(store.id);
-                  setStoreOpen(false);
-                }}
-              >
-                <View style={styles.optionContent}>
-                  <Text style={[styles.optionText, active && styles.optionTextActive]}>
-                    {store.name} ({store.code})
-                  </Text>
-                  <Text style={styles.optionSubText}>
-                    {[store.addressLine1, store.district, store.city].filter(Boolean).join(", ") || "Chưa có địa chỉ"}
-                  </Text>
-                </View>
-                {active ? <Ionicons name="checkmark" size={18} color={PALETTE.gold} /> : null}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
       </BottomSheet>
 
       <BottomSheet
@@ -952,13 +849,6 @@ const styles = StyleSheet.create({
   countText: { fontSize: 13, fontWeight: "800", color: PALETTE.navy },
   subText: { fontSize: 12, fontWeight: "600", color: PALETTE.muted, marginTop: 2 },
 
-  actionRow: {
-    paddingBottom: 10,
-    paddingRight: 2,
-    gap: 10,
-    alignItems: "center",
-  },
-
   pillBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -970,7 +860,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: PALETTE.border,
   },
-  storePillBtn: { maxWidth: "52%" },
   pillBtnText: { fontSize: 12.5, fontWeight: "800", color: PALETTE.navy },
 
   appliedRow: {
