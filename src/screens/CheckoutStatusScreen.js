@@ -172,6 +172,31 @@ const formatDateTime = (value) => {
   return d.toLocaleString("vi-VN", { hour12: false });
 };
 
+const parseDateValue = (value) => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatCountdown = (value) => {
+  const totalSeconds = Math.max(0, Math.floor(Number(value || 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+      2,
+      "0"
+    )}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(
+    2,
+    "0"
+  )}`;
+};
+
 const makeQrUrl = (content) => {
   if (!content) return null;
   return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
@@ -305,18 +330,31 @@ const normalizePaymentMethod = (value, payNow = 0) => {
 
 const normalizePaymentStatus = (
   status,
-  { payNow = 0, method = "SEPAY" } = {}
+  { payNow = 0, method = "SEPAY", expiresAt = null, orderStatus = "", paidAmount = 0 } = {}
 ) => {
   if (typeof status === "string" && PAYMENT_STATUS_META[status]) return status;
 
   const normalized = String(status || "")
     .trim()
     .toLowerCase();
+  const normalizedOrderStatus = String(orderStatus || "")
+    .trim()
+    .toLowerCase();
+  const paymentExpiryDate = parseDateValue(expiresAt);
+  const hasOutstandingUpfrontPayment =
+    String(method || "").trim().toUpperCase() !== "COD" &&
+    Number(payNow || 0) > Math.max(0, Number(paidAmount || 0));
+  const isExpiredWindow =
+    paymentExpiryDate &&
+    paymentExpiryDate.getTime() <= Date.now() &&
+    hasOutstandingUpfrontPayment &&
+    ["pending", "cancelled"].includes(normalizedOrderStatus) &&
+    ["pending", "partial", "failed", "expired"].includes(normalized);
 
   if (normalized === "paid") return "PAID";
   if (normalized === "failed") return "FAILED";
   if (normalized === "refunded") return "REFUNDED";
-  if (normalized === "expired") return "EXPIRED";
+  if (normalized === "expired" || isExpiredWindow) return "EXPIRED";
   if (normalized === "partial") return "PENDING_QR";
   if (normalized === "pending") {
     return method === "COD" || payNow <= 0 ? "PENDING_COD" : "PENDING_QR";
@@ -633,11 +671,22 @@ const normalizeOrder = (raw) => {
     payment.method || breakdown.payNowMethod || raw?.paymentMethod,
     payNow
   );
+  const paymentExpiresAt =
+    payment.expiresAt ||
+    payment.expireAt ||
+    payment.paymentExpiresAt ||
+    payment.payment_expires_at ||
+    raw?.paymentExpiresAt ||
+    raw?.payment_expires_at ||
+    null;
   const paymentStatus = normalizePaymentStatus(
     payment.status || raw?.paymentStatus,
     {
       payNow,
       method: paymentMethod,
+      expiresAt: paymentExpiresAt,
+      orderStatus: raw?.status,
+      paidAmount: raw?.paidAmount ?? raw?.paid_amount ?? 0,
     }
   );
 
@@ -816,6 +865,7 @@ const normalizeOrder = (raw) => {
       bankName: paymentBankName,
       bankAccountName: paymentAccountName,
       createdAt: paymentCreatedAt,
+      expiresAt: paymentExpiresAt,
       paidAt: paymentPaidAt,
       paymentUrl: paymentLink,
       qrUrl,
@@ -833,6 +883,7 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
   const [serverOrder, setServerOrder] = useState(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const clearCart = useCartStore((s) => s.clear);
   const clearedRef = useRef(false);
@@ -859,6 +910,45 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     setPaymentStatus(order.payment.status);
     setPaidAt(order.payment.paidAt || null);
   }, [order.payment.status, order.payment.paidAt]);
+
+  const paymentExpiryDate = useMemo(
+    () => parseDateValue(order.payment.expiresAt),
+    [order.payment.expiresAt]
+  );
+
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, [order.payment.expiresAt]);
+
+  useEffect(() => {
+    if (!paymentExpiryDate) return undefined;
+
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [paymentExpiryDate ? paymentExpiryDate.getTime() : null]);
+
+  const rawPaidAmount = Math.max(0, Number(order.paidAmount || 0));
+  const hasInitialPaymentHold =
+    Boolean(paymentExpiryDate) &&
+    String(order.payment.method || "").trim().toUpperCase() !== "COD" &&
+    Number(order.totals.payNow || 0) > rawPaidAmount;
+  const paymentHoldRemainingMs = hasInitialPaymentHold
+    ? Math.max(0, paymentExpiryDate.getTime() - nowMs)
+    : null;
+  const rawOrderStatusKey = String(rawOrder?.status || order.status || "")
+    .trim()
+    .toUpperCase();
+  const isClientExpired =
+    hasInitialPaymentHold &&
+    paymentHoldRemainingMs === 0 &&
+    ["PENDING", "CANCELLED"].includes(rawOrderStatusKey) &&
+    !["PAID", "REFUNDED", "PENDING_COD"].includes(
+      String(paymentStatus || "").toUpperCase()
+    );
+  const displayPaymentStatus = isClientExpired ? "EXPIRED" : paymentStatus;
 
   useEffect(() => {
     if (
@@ -898,20 +988,20 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   }, [pollOrderId]);
 
   const paymentMeta =
-    PAYMENT_STATUS_META[paymentStatus] || PAYMENT_STATUS_META.PENDING_QR;
+    PAYMENT_STATUS_META[displayPaymentStatus] || PAYMENT_STATUS_META.PENDING_QR;
 
   const isPaymentSettled =
-    paymentStatus === "PAID" || paymentStatus === "REFUNDED";
+    displayPaymentStatus === "PAID" || displayPaymentStatus === "REFUNDED";
   const isCodCheckout =
     String(order.payment.method || "").trim().toUpperCase() === "COD";
   const shouldShowSuccessActions = isPaymentSettled || isCodCheckout;
   const shouldClearCartAfterCheckout =
-    paymentStatus === "PAID" || paymentStatus === "PENDING_COD";
+    displayPaymentStatus === "PAID" || displayPaymentStatus === "PENDING_COD";
 
   const shouldShowQr =
     Boolean(order.payment.qrUrl) &&
     !isPaymentSettled &&
-    paymentStatus === "PENDING_QR";
+    displayPaymentStatus === "PENDING_QR";
 
   const qrImageSource = useMemo(
     () => buildQrImageSource(order.payment.qrUrl),
@@ -919,7 +1009,9 @@ export default function CheckoutStatusScreen({ navigation, route }) {
   );
 
   const canOpenPaymentUrl =
-    Boolean(order.payment.paymentUrl) && !isPaymentSettled;
+    Boolean(order.payment.paymentUrl) &&
+    !isPaymentSettled &&
+    displayPaymentStatus !== "EXPIRED";
 
   const paymentMethodLabel =
     order.payment.method === "VNPAY"
@@ -930,18 +1022,17 @@ export default function CheckoutStatusScreen({ navigation, route }) {
 
   const shippingMethodLabel = getShippingMethodLabel(order.shippingMethod);
 
-  const normalizedOrderStatus = String(order.status || "").toUpperCase();
-  const rawOrderStatusKey = String(order.status || "")
-    .trim()
-    .toUpperCase();
   const isCancelledOrder = rawOrderStatusKey === "CANCELLED";
   const hasPaidAmount =
-    Number(order.paidAmount || 0) > 0 ||
-    ["PAID", "SUCCESS", "SUCCEEDED"].includes(String(paymentStatus || "").toUpperCase());
+    rawPaidAmount > 0 ||
+    ["PAID", "SUCCESS", "SUCCEEDED"].includes(
+      String(displayPaymentStatus || "").toUpperCase()
+    );
 
   const canCancelOrder =
     ["PENDING", "CONFIRMED", "PROCESSING"].includes(rawOrderStatusKey) &&
-    !hasPaidAmount;
+    !hasPaidAmount &&
+    displayPaymentStatus !== "EXPIRED";
   const refundStatus = String(order.refund?.status || "")
     .trim()
     .toLowerCase();
@@ -949,7 +1040,6 @@ export default function CheckoutStatusScreen({ navigation, route }) {
     order.refund &&
     ["completed", "rejected"].includes(refundStatus);
   const hasActiveRefund = Boolean(order.refund && !hasClosedRefund);
-  const rawPaidAmount = Math.max(0, Number(order.paidAmount || 0));
   const canCancelWithRefund =
     Boolean(pollOrderId) &&
     !hasActiveRefund &&
@@ -1195,6 +1285,28 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             </Text>
           </View>
           <Text style={styles.descText}>{paymentMeta.desc}</Text>
+          {hasInitialPaymentHold ? (
+            <View style={styles.timerCard}>
+              <Text style={styles.timerLabel}>
+                {isClientExpired
+                  ? "Da qua thoi gian giu don 15 phut."
+                  : "Don nay duoc giu trong 15 phut."}
+              </Text>
+              <Text
+                style={[
+                  styles.timerValue,
+                  isClientExpired && styles.timerValueExpired,
+                ]}
+              >
+                {isClientExpired
+                  ? "He thong dang cap nhat trang thai don hang."
+                  : `Con lai ${formatCountdown(paymentHoldRemainingMs)}`}
+              </Text>
+              <Text style={styles.timerSubText}>
+                Het han luc {formatDateTime(paymentExpiryDate)}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {shouldShowQr ? (
@@ -1396,6 +1508,15 @@ export default function CheckoutStatusScreen({ navigation, route }) {
             <Text style={styles.metaLabel}>Thời gian giao dịch</Text>
             <Text style={styles.metaValue}>{formatDateTime(paidAt)}</Text>
           </View>
+
+          {paymentExpiryDate ? (
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>Hết hạn giữ đơn</Text>
+              <Text style={styles.metaValue}>
+                {formatDateTime(paymentExpiryDate)}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {shouldShowSuccessActions ? (
@@ -1923,6 +2044,36 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: PALETTE.muted,
     lineHeight: 17,
+  },
+
+  timerCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: PALETTE.navyTint,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+  },
+  timerLabel: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: PALETTE.text,
+  },
+  timerValue: {
+    marginTop: 6,
+    fontSize: 18,
+    fontWeight: "900",
+    color: PALETTE.navy,
+  },
+  timerValueExpired: {
+    fontSize: 13,
+    color: "#991B1B",
+  },
+  timerSubText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: PALETTE.muted,
   },
 
   qrWrap: {
