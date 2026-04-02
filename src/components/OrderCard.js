@@ -1,4 +1,3 @@
-// components/OrderCard.js
 import React, { useMemo, useState } from "react";
 import {
   Image,
@@ -82,9 +81,11 @@ const formatDate = (v) => {
 
   if (diffDays === 0) {
     return `Hôm nay, ${d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`;
-  } else if (diffDays === 1) {
+  }
+  if (diffDays === 1) {
     return `Hôm qua, ${d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`;
-  } else if (diffDays < 7) {
+  }
+  if (diffDays < 7) {
     return `${diffDays} ngày trước`;
   }
 
@@ -135,6 +136,8 @@ function OrderItemRow({ orderItem }) {
   };
 
   const hasImage = Boolean(orderItem?.image);
+  const rxPhotoUrl = String(orderItem?.rxPhoto?.uri || "").trim();
+  const hasRxPhoto = Boolean(rxPhotoUrl);
 
   return (
     <View style={styles.orderItemRow}>
@@ -147,12 +150,12 @@ function OrderItemRow({ orderItem }) {
           </View>
         )}
 
-        {orderItem?.preorder && (
+        {orderItem?.preorder ? (
           <View style={styles.preorderItemBadge}>
             <Ionicons name="time-outline" size={10} color="#15803D" />
             <Text style={styles.preorderItemBadgeText}>Đặt trước</Text>
           </View>
-        )}
+        ) : null}
       </View>
 
       <View style={styles.orderItemMid}>
@@ -171,14 +174,23 @@ function OrderItemRow({ orderItem }) {
           <Text style={styles.orderItemPrice}>{formatVND(orderItem?.price)}</Text>
         </View>
 
-        {(orderItem?.payLater ?? 0) > 0 && (
+        {(orderItem?.payLater ?? 0) > 0 ? (
           <View style={styles.payLaterBadge}>
             <Ionicons name="card-outline" size={10} color="#B45309" />
-            <Text style={styles.payLaterText}>
-              Còn {formatVND(orderItem.payLater)}
-            </Text>
+            <Text style={styles.payLaterText}>Còn {formatVND(orderItem.payLater)}</Text>
           </View>
-        )}
+        ) : null}
+
+        {hasRxPhoto ? (
+          <View style={styles.rxPhotoCard}>
+            <Image source={{ uri: rxPhotoUrl }} style={styles.rxPhotoThumb} />
+            <View style={styles.rxPhotoMeta}>
+              <Text style={styles.rxPhotoTitle}>Ảnh đơn kính đã tải</Text>
+              <Text style={styles.rxPhotoHint}>Xem ảnh lớn trong chi tiết đơn</Text>
+            </View>
+            <Ionicons name="image-outline" size={16} color="#2563EB" />
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -235,7 +247,7 @@ export default function OrderCard({
 
           <View style={styles.badgeContainer}>
             <StatusBadge status={order?.status} />
-            {hasPreorder && <PreorderBadge />}
+            {hasPreorder ? <PreorderBadge /> : null}
           </View>
         </View>
 
@@ -245,7 +257,7 @@ export default function OrderCard({
             <Text style={styles.itemsCountText}>{totalItems} sản phẩm</Text>
           </View>
 
-          {orderItems.length > 0 && (
+          {orderItems.length > 0 ? (
             <View style={styles.itemsList}>
               {visibleItems.map((item, idx) => (
                 <OrderItemRow
@@ -254,7 +266,7 @@ export default function OrderCard({
                 />
               ))}
 
-              {canExpand && (
+              {canExpand ? (
                 <TouchableOpacity
                   style={styles.viewMoreBtn}
                   activeOpacity={0.8}
@@ -268,9 +280,9 @@ export default function OrderCard({
                   </Text>
                   <Ionicons name="chevron-down" size={14} color="#2563EB" />
                 </TouchableOpacity>
-              )}
+              ) : null}
 
-              {canCollapse && (
+              {canCollapse ? (
                 <TouchableOpacity
                   style={styles.viewMoreBtn}
                   activeOpacity={0.8}
@@ -282,9 +294,9 @@ export default function OrderCard({
                   <Text style={styles.viewMoreText}>Thu gọn</Text>
                   <Ionicons name="chevron-up" size={14} color="#2563EB" />
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
-          )}
+          ) : null}
         </View>
 
         <View style={styles.cardFooter}>
@@ -303,7 +315,7 @@ export default function OrderCard({
           </View>
 
           <View style={styles.footerRight}>
-            {canCancel && (
+            {canCancel ? (
               <TouchableOpacity
                 style={styles.cancelBtn}
                 activeOpacity={0.8}
@@ -315,7 +327,7 @@ export default function OrderCard({
                 <Ionicons name="close-outline" size={16} color="#991B1B" />
                 <Text style={styles.cancelBtnText}>Huỷ</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
 
             <View style={styles.totalContainer}>
               <Text style={styles.totalLabel}>Tổng</Text>
@@ -443,9 +455,9 @@ const styles = StyleSheet.create({
 
   orderItemRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 8,
     backgroundColor: "#F9FAFB",
     borderRadius: 14,
@@ -495,6 +507,7 @@ const styles = StyleSheet.create({
 
   orderItemMid: {
     flex: 1,
+    minWidth: 0,
   },
 
   orderItemName: {
@@ -552,6 +565,43 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     color: "#B45309",
+  },
+
+  rxPhotoCard: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+
+  rxPhotoThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#F3F4F6",
+  },
+
+  rxPhotoMeta: {
+    flex: 1,
+    gap: 2,
+  },
+
+  rxPhotoTitle: {
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: "#111827",
+  },
+
+  rxPhotoHint: {
+    fontSize: 10.5,
+    fontWeight: "600",
+    color: "#6B7280",
+    lineHeight: 14,
   },
 
   viewMoreBtn: {

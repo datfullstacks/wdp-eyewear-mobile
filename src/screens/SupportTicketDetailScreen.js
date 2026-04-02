@@ -35,6 +35,7 @@ const PALETTE = {
   muted: "#6B7280",
   border: "#EEF2F7",
   blue: "#2563EB",
+  gold: "#ad8216",
 };
 
 function formatTime(value) {
@@ -409,13 +410,13 @@ const styles = StyleSheet.create({
   messageWrapRight: { alignItems: "flex-end" },
   messageBubble: { maxWidth: "88%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12 },
   messageBubbleUser: { backgroundColor: "#F3F4F6" },
-  messageBubbleStaff: { backgroundColor: PALETTE.navy },
+  messageBubbleStaff: { backgroundColor: PALETTE.border },
   messageSender: { fontSize: 11.5, fontWeight: "900", color: PALETTE.blue },
-  messageSenderStaff: { color: "#93C5FD" },
+  messageSenderStaff: { color: PALETTE.gold },
   messageText: { marginTop: 4, fontSize: 13, fontWeight: "700", color: PALETTE.text, lineHeight: 19 },
-  messageTextStaff: { color: PALETTE.white },
+  messageTextStaff: { color: PALETTE.navy },
   messageTime: { marginTop: 6, fontSize: 10.5, fontWeight: "700", color: PALETTE.muted },
-  messageTimeStaff: { color: "#CBD5E1" },
+  messageTimeStaff: { color: "gray" },
   replyInput: { minHeight: 120, marginTop: 12, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 16, padding: 14, fontSize: 13.5, fontWeight: "700", color: PALETTE.text, backgroundColor: "#FFFFFF" },
   submitBtn: { marginTop: 12, height: 48, borderRadius: 16, backgroundColor: PALETTE.navy, alignItems: "center", justifyContent: "center" },
   submitBtnDisabled: { opacity: 0.6 },
