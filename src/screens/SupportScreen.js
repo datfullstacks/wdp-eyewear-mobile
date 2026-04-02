@@ -133,6 +133,12 @@ function TicketCard({ item, onPress }) {
         </Text>
       ) : null}
 
+      {item?.warranty?.serviceOrder?.code ? (
+        <Text style={styles.secondaryText}>
+          Đơn bảo hành: {item.warranty.serviceOrder.code}
+        </Text>
+      ) : null}
+
       {item?.order?.paymentCode ? (
         <Text style={styles.secondaryText}>Đơn: {item.order.paymentCode}</Text>
       ) : null}
@@ -208,6 +214,8 @@ export default function SupportScreen({ navigation, route }) {
     category,
     orderId: prefillOrderId,
   });
+  const warrantyPolicyHint =
+    "Với bảo hành kính tròng, vui lòng chụp rõ hiện trạng. Sale sẽ xác nhận và tạo đơn bảo hành nếu sản phẩm còn trong thời gian bảo hành.";
 
   const loadData = useCallback(
     async ({ silent = false } = {}) => {
@@ -404,7 +412,7 @@ export default function SupportScreen({ navigation, route }) {
                   ) : null}
                   <Text style={styles.contextHint}>
                     {isWarrantyDraft
-                      ? "Yêu cầu này sẽ được tạo dưới loại Bảo hành và gắn với sản phẩm đã chọn."
+                      ? `${warrantyPolicyHint} Yêu cầu này sẽ được gắn với sản phẩm đã chọn.`
                       : "Yêu cầu này sẽ được gắn với đơn hàng hiện tại."}
                   </Text>
                 </View>
@@ -469,9 +477,11 @@ export default function SupportScreen({ navigation, route }) {
               <SupportAttachmentSection
                 title="Hình ảnh / video chứng minh"
                 helperText={
-                  needsEvidence
-                    ? "Hỗ trợ sau mua cần ít nhất 1 ảnh hoặc video để chứng minh lỗi của đơn hàng."
-                    : "Bạn có thể đính kèm ảnh hoặc video để nhân viên xử lý nhanh hơn."
+                  category === "warranty"
+                    ? warrantyPolicyHint
+                    : needsEvidence
+                      ? "Hỗ trợ sau mua cần ít nhất 1 ảnh hoặc video để chứng minh lỗi của đơn hàng."
+                      : "Bạn có thể đính kèm ảnh hoặc video để nhân viên xử lý nhanh hơn."
                 }
                 emptyText="Chưa có ảnh hoặc video nào được chọn."
                 attachments={attachments}

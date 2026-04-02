@@ -51,6 +51,15 @@ function getEligibilityLabel(value) {
   return "--";
 }
 
+function getWarrantyOrderStatusLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "created") return "Đã tạo đơn bảo hành";
+  if (normalized === "in_service") return "Đang xử lý bảo hành";
+  if (normalized === "completed") return "Đã hoàn tất bảo hành";
+  if (normalized === "cancelled") return "Đã hủy đơn bảo hành";
+  return "--";
+}
+
 function SectionCard({ title, icon, children, right }) {
   return (
     <View style={styles.card}>
@@ -288,6 +297,33 @@ export default function SupportTicketDetailScreen({ navigation, route }) {
             <InfoRow label="Mặt hàng" value={warranty?.itemName || "--"} />
             <InfoRow label="Tình trạng" value={getEligibilityLabel(warranty?.eligibility)} />
             <InfoRow label="Thời hạn" value={warranty?.warrantyMonths ? `${warranty.warrantyMonths} tháng` : "Không có"} />
+            <InfoRow
+              label="Quy trình"
+              value={
+                warranty?.serviceOrder?.code
+                  ? "Sale đã xác nhận và tạo đơn bảo hành cho case này."
+                  : "Khách cần gửi ảnh hoặc video hiện trạng để sale xác nhận trước khi tạo đơn bảo hành."
+              }
+            />
+            {warranty?.serviceOrder?.code ? (
+              <>
+                <InfoRow label="Đơn bảo hành" value={warranty.serviceOrder.code} />
+                <InfoRow
+                  label="Trạng thái đơn"
+                  value={getWarrantyOrderStatusLabel(warranty.serviceOrder.status)}
+                />
+                <InfoRow
+                  label="Tạo lúc"
+                  value={formatTime(warranty.serviceOrder.createdAt)}
+                />
+                {warranty?.serviceOrder?.note ? (
+                  <InfoRow
+                    label="Ghi chú đơn"
+                    value={warranty.serviceOrder.note}
+                  />
+                ) : null}
+              </>
+            ) : null}
           </SectionCard>
         )}
 
