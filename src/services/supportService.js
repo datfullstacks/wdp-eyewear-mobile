@@ -1,4 +1,5 @@
 import { api } from "./apiClient";
+import { normalizeSupportAttachments } from "./supportMediaService";
 
 export const SUPPORT_CATEGORY_META = Object.freeze({
   general: { label: "Chung", bg: "#F3F4F6", fg: "#374151" },
@@ -62,6 +63,7 @@ function normalizeMessage(raw = {}) {
   return {
     sender: toText(raw?.sender || "user", "user").toLowerCase(),
     message: toText(raw?.message, ""),
+    attachments: normalizeSupportAttachments(raw?.attachments),
     createdAt: raw?.createdAt || null,
   };
 }
