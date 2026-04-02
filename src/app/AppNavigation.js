@@ -11,6 +11,7 @@ import { useAuthStore } from "../store/authStore";
 import { useCartStore } from "../store/cartStore";
 import { useSystemConfigStore } from "../store/systemConfigStore";
 import { useFavoriteStore } from "../store/favoriteStore";
+import { useSupportInboxStore } from "../store/supportInboxStore";
 
 import LoginScreen from "../screens/LoginScreen";
 import MaintenanceScreen from "../screens/MaintenanceScreen";
@@ -377,6 +378,7 @@ export default function AppNavigation() {
 
   const setCartUser = useCartStore((s) => s.setUser);
   const isHydratingCart = useCartStore((s) => s.isHydrating);
+  const setSupportInboxUser = useSupportInboxStore((s) => s.setUser);
 
   useEffect(() => {
     hydrateAuth();
@@ -389,8 +391,9 @@ export default function AppNavigation() {
   useEffect(() => {
     if (!isHydratingAuth) {
       setCartUser(userKey);
+      setSupportInboxUser(userKey);
     }
-  }, [isHydratingAuth, userKey, setCartUser]);
+  }, [isHydratingAuth, userKey, setCartUser, setSupportInboxUser]);
 
   useEffect(() => {
     installAppAlert();

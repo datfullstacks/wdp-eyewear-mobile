@@ -24,6 +24,7 @@ import {
   connectRealtime,
   isNotificationRealtimeEvent,
 } from "../services/realtimeService";
+import { useSupportInboxStore } from "../store/supportInboxStore";
 
 const PALETTE = {
   navy: "#0c2c5c",
@@ -235,6 +236,8 @@ export default function ProfileScreen({ navigation }) {
   const logout = useAuthStore((s) => s.logout);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+  const hasUnreadSupport = useSupportInboxStore((s) => s.unreadTicketIds.length > 0);
+  const refreshSupportUnread = useSupportInboxStore((s) => s.refreshUnreadFromApi);
 
   const [stats, setStats] = useState({
     tier: "Member",
@@ -323,7 +326,8 @@ export default function ProfileScreen({ navigation }) {
     useCallback(() => {
       loadStats();
       loadUnreadNotifications();
-    }, [loadStats, loadUnreadNotifications])
+      void refreshSupportUnread().catch(() => {});
+    }, [loadStats, loadUnreadNotifications, refreshSupportUnread])
   );
 
   useEffect(() => {
@@ -343,6 +347,7 @@ export default function ProfileScreen({ navigation }) {
         onMessage: (payload) => {
           if (!isNotificationRealtimeEvent(payload)) return;
           void loadUnreadNotifications();
+          void refreshSupportUnread().catch(() => {});
         },
         onClose: () => {
           if (isDisposed) return;
@@ -360,7 +365,7 @@ export default function ProfileScreen({ navigation }) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socket) socket.close();
     };
-  }, [token, loadUnreadNotifications]);
+  }, [token, loadUnreadNotifications, refreshSupportUnread]);
 
   if (!token) {
     return (
@@ -648,6 +653,7 @@ export default function ProfileScreen({ navigation }) {
                 })
               }
               accent={SETTING_ACCENTS.support}
+              showBadge={hasUnreadSupport}
             />
             <Divider />
             <RowItem

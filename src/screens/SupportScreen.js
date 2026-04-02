@@ -16,8 +16,10 @@ import { useFocusEffect } from "@react-navigation/native";
 import {
   createSupportTicketApi,
   getSupportTicketsApi,
+  isSupportTicketUnread,
   SUPPORT_CATEGORY_META,
 } from "../services/supportService";
+import { useSupportInboxStore } from "../store/supportInboxStore";
 
 const PALETTE = {
   navy: "#0c2c5c",
@@ -80,43 +82,46 @@ function buildDefaultSubject({ category, orderCode, orderItemName }) {
   return "";
 }
 
-function TicketCard({ item, onPress }) {
+function TicketCard({ item, onPress, showUnread }) {
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.88} onPress={() => onPress(item)}>
       <View style={styles.cardTop}>
         <Text style={styles.subject} numberOfLines={2}>
           {item?.subject || "--"}
         </Text>
-        <View style={styles.metaBadges}>
-          <View
-            style={[
-              styles.metaBadge,
-              { backgroundColor: item?.categoryMeta?.bg || PALETTE.navyTint },
-            ]}
-          >
-            <Text
+        <View style={styles.cardTopRight}>
+          {showUnread ? <View style={styles.unreadDot} /> : null}
+          <View style={styles.metaBadges}>
+            <View
               style={[
-                styles.metaBadgeText,
-                { color: item?.categoryMeta?.fg || PALETTE.navy },
+                styles.metaBadge,
+                { backgroundColor: item?.categoryMeta?.bg || PALETTE.navyTint },
               ]}
             >
-              {item?.categoryMeta?.label || item?.category || "Support"}
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.metaBadge,
-              { backgroundColor: item?.statusMeta?.bg || PALETTE.border },
-            ]}
-          >
-            <Text
+              <Text
+                style={[
+                  styles.metaBadgeText,
+                  { color: item?.categoryMeta?.fg || PALETTE.navy },
+                ]}
+              >
+                {item?.categoryMeta?.label || item?.category || "Support"}
+              </Text>
+            </View>
+            <View
               style={[
-                styles.metaBadgeText,
-                { color: item?.statusMeta?.fg || PALETTE.text },
+                styles.metaBadge,
+                { backgroundColor: item?.statusMeta?.bg || PALETTE.border },
               ]}
             >
-              {item?.statusMeta?.label || item?.status || "open"}
-            </Text>
+              <Text
+                style={[
+                  styles.metaBadgeText,
+                  { color: item?.statusMeta?.fg || PALETTE.text },
+                ]}
+              >
+                {item?.statusMeta?.label || item?.status || "open"}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -153,6 +158,8 @@ function TicketCard({ item, onPress }) {
 }
 
 export default function SupportScreen({ navigation, route }) {
+  const seenByTicketId = useSupportInboxStore((s) => s.seenByTicketId);
+  const refreshSupportUnread = useSupportInboxStore((s) => s.refreshUnreadFromApi);
   const prefillCategory = String(route?.params?.prefillCategory || "general")
     .trim()
     .toLowerCase();
@@ -220,7 +227,9 @@ export default function SupportScreen({ navigation, route }) {
           params.category = activeFilter;
         }
         const result = await getSupportTicketsApi(params);
-        setItems(Array.isArray(result?.items) ? result.items : []);
+        const nextItems = Array.isArray(result?.items) ? result.items : [];
+        setItems(nextItems);
+        void refreshSupportUnread().catch(() => {});
       } catch (err) {
         const msg =
           err?.response?.data?.message ||
@@ -233,7 +242,7 @@ export default function SupportScreen({ navigation, route }) {
         setRefreshing(false);
       }
     },
-    [activeFilter]
+    [activeFilter, refreshSupportUnread]
   );
 
   useFocusEffect(
@@ -483,6 +492,10 @@ export default function SupportScreen({ navigation, route }) {
         renderItem={({ item }) => (
           <TicketCard
             item={item}
+            showUnread={isSupportTicketUnread(
+              item,
+              seenByTicketId[String(item?.id || item?._id || "").trim()] || null,
+            )}
             onPress={(selected) =>
               navigation.navigate("SupportTicketDetail", {
                 ticketId: selected?.id || selected?._id,
@@ -680,6 +693,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 10,
   },
+  cardTopRight: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
   subject: {
     flex: 1,
     fontSize: 13.5,
@@ -690,6 +707,14 @@ const styles = StyleSheet.create({
   metaBadges: {
     alignItems: "flex-end",
     gap: 6,
+  },
+  unreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5,
+    borderColor: PALETTE.white,
   },
   metaBadge: {
     paddingHorizontal: 10,
