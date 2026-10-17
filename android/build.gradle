@@ -1,0 +1,42 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    classpath('com.android.tools.build:gradle')
+    classpath('com.facebook.react:react-native-gradle-plugin')
+    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+  }
+}
+
+allprojects {
+  repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://www.jitpack.io' }
+// @generated begin wdp-tryon-android-maven - expo prebuild (DO NOT MODIFY) sync-7756899f0484db6f8df367c2e086555ccb17131b
+    def banubaAndroidMavenUrl = System.getenv("BANUBA_ANDROID_MAVEN_URL") ?: findProperty("BANUBA_ANDROID_MAVEN_URL")
+    def banubaAndroidMavenUsername =
+        System.getenv("BANUBA_ANDROID_MAVEN_USERNAME") ?: findProperty("BANUBA_ANDROID_MAVEN_USERNAME") ?: "sdk-banuba"
+    def banubaAndroidMavenPassword =
+        System.getenv("BANUBA_ANDROID_MAVEN_PASSWORD") ?: findProperty("BANUBA_ANDROID_MAVEN_PASSWORD")
+    if (banubaAndroidMavenUrl) {
+      maven {
+        url banubaAndroidMavenUrl
+        if (banubaAndroidMavenPassword) {
+          credentials {
+            username banubaAndroidMavenUsername
+            password banubaAndroidMavenPassword
+          }
+        }
+      }
+    }
+// @generated end wdp-tryon-android-maven
+  }
+}
+
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"

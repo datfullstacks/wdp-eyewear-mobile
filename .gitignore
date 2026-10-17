@@ -1,0 +1,75 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+.expo-*/
+.expo-mobile-demo-smoke/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.env
+.env.*
+!.env.example
+
+# typescript
+*.tsbuildinfo
+
+# native build outputs and machine-local files
+android_bak_*/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/**/.cxx/
+android/**/*.iml
+android/**/*.hprof
+android/*.log
+/ios
+*.apk
+*.aab
+
+# IDE local files
+.idea/caches/
+.idea/deviceManager.xml
+.idea/emulatorDisplays.xml
+.idea/tasks.xml
+.idea/workspace.xml
+
+# local docs and data
+docs/
+product.md
+seeds/
+
+# local helper scripts (tmp)
+tmp_delete.py
+tmp_lines.py
+tmp_print.py
+tmp_products5k.py
+tmp_search.py
+tmp_view.py

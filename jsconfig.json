@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2020",
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "App.js",
+    "index.js",
+    "src/**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "android",
+    "android_bak_20260304085453",
+    "dist",
+    ".expo",
+    ".expo-*"
+  ]
+}
